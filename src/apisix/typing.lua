@@ -1,0 +1,227 @@
+--
+-- TencentBlueKing is pleased to support the open source community by making
+-- 蓝鲸智云 - API 网关(BlueKing - APIGateway) available.
+-- Copyright (C) 2017 THL A29 Limited, a Tencent company. All rights reserved.
+-- Licensed under the MIT License (the "License"); you may not use this file except
+-- in compliance with the License. You may obtain a copy of the License at
+--
+--     http://opensource.org/licenses/MIT
+--
+-- Unless required by applicable law or agreed to in writing, software distributed under
+-- the License is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND,
+-- either express or implied. See the License for the specific language governing permissions and
+-- limitations under the License.
+--
+-- We undertake not to change the open source license (MIT license) applicable
+-- to the current version of the project delivered to anyone in the future.
+--
+
+---@class nginx.ContextVar nginx 内建变量
+--- Embedded Variables
+--- see https://nginx.org/en/docs/http/ngx_http_core_module.html#variables
+---@field binary_remote_addr string|nil client address in a binary form, value’s length is always 4 bytes for IPv4 addresses or 16 bytes for IPv6 addresses
+---@field body_bytes_sent number|nil number of bytes sent to a client, not counting the response header; this variable is compatible with the “%B” parameter of the mod_log_config Apache module
+---@field bytes_sent number|nil number of bytes sent to a client (1.3.8, 1.2.5)
+---@field connection string|nil connection serial number (1.3.8, 1.2.5)
+---@field connection_requests string|nil current number of requests made through a connection (1.3.8, 1.2.5)
+---@field connection_time string|nil connection time in seconds with a milliseconds resolution (1.19.10)
+---@field content_length string|nil “Content-Length” request header field
+---@field content_type string|nil “Content-Type” request header field
+---@field document_root string|nil root or alias directive’s value for the current request
+---@field document_uri string|nil same as ---@field uri
+---@field host string|nil in this order of precedence: host name from the request line, or host name from the “Host” request header field, or the server name matching a request
+---@field hostname string|nil host name
+---@field https string '"on"'|'""'|nil “on” if connection operates in SSL mode, or an empty string otherwise
+---@field is_args string|nil “?” if a request line has arguments, or an empty string otherwise
+---@field limit_rate string|nil setting this variable enables response rate limiting; see limit_rate
+---@field msec string|nil current time in seconds with the milliseconds resolution (1.3.9, 1.2.6)
+---@field nginx_version string|nil nginx version
+---@field pid string|nil PID of the worker process
+---@field pipe string|nil “p” if request was pipelined, “.” otherwise (1.3.12, 1.2.7)
+---@field query_string string|nil same as ngx.var.args
+---@field realpath_root string|nil an absolute pathname corresponding to the root or alias directive’s value for the current request, with all symbolic links resolved to real paths
+---@field remote_addr string|nil client address
+---@field remote_port string|nil client port
+---@field remote_user string|nil user name supplied with the Basic authentication
+---@field request string|nil full original request line
+--- The variable’s value is made available in locations processed by the proxy_pass, fastcgi_pass, uwsgi_pass, and scgi_pass directives when the request body was read to a memory buffer.
+---@field request_body string|nil request body
+--- At the end of processing, the file needs to be removed.
+--- To always write the request body to a file, client_body_in_file_only needs to be enabled.
+--- When the name of a temporary file is passed in a proxied request or in a request to a FastCGI/uwsgi/SCGI server, passing the request body should be disabled by the proxy_pass_request_body off, fastcgi_pass_request_body off, uwsgi_pass_request_body off, or scgi_pass_request_body off directives, respectively.
+---@field request_body_file string|nil name of a temporary file with the request body
+---@field request_completion string|nil “OK” if a request has completed, or an empty string otherwise
+---@field request_filename string|nil file path for the current request, based on the root or alias directives, and the request URI
+---@field request_id string|nil unique request identifier generated from 16 random bytes, in hexadecimal (1.11.0)
+---@field request_length string|nil request length (including request line, header, and request body) (1.3.12, 1.2.7)
+---@field request_method string|nil request method, usually “GET” or “POST”
+---@field request_time string|nil request processing time in seconds with a milliseconds resolution (1.3.9, 1.2.6); time elapsed since the first bytes were read from the client
+---@field request_uri string|nil full original request URI (with arguments)
+---@field scheme string|nil request scheme, “http” or “https”
+--- Computing a value of this variable usually requires one system call. To avoid a system call, the listen directives must specify addresses and use the bind parameter.
+---@field server_addr string|nil an address of the server which accepted a request
+---@field server_name string|nil name of the server which accepted a request
+---@field server_port string|nil port of the server which accepted a request
+---@field server_protocol string|nil request protocol, usually “HTTP/1.0”, “HTTP/1.1”, or “HTTP/2.0”
+---@field status string|nil response status (1.3.2, 1.2.2)
+---@field time_iso8601 string|nil local time in the ISO 8601 standard format (1.3.12, 1.2.7)
+---@field time_local string|nil local time in the Common Log Format (1.3.12, 1.2.7)
+--- The value of $uri may change during request processing, e.g. when doing internal redirects, or when using index files.
+---@field uri string|nil current URI in request, normalized
+--- Updating query arguments via the NGINX variable `$args` (or `ngx.var.args` in Lua) at runtime is also supported:
+---
+--- ```lua
+---  ---@field args = "a=3&b=42"
+---  local args, err = ngx.req.get_uri_args()
+--- ```
+---
+--- Here the `args` table will always look like
+---
+--- ```lua
+---  {a = 3, b = 42}
+--- ```
+---
+--- regardless of the actual request query string.
+---@field args string|nil
+--- embedded upstream variables
+--- https://nginx.org/en/docs/http/ngx_http_upstream_module.html#variables
+---
+--- If several servers were contacted during request processing, their addresses are separated by commas, e.g. “192.168.1.1:80, 192.168.1.2:80, unix:/tmp/sock”.
+--- If an internal redirect from one server group to another happens, initiated by “X-Accel-Redirect” or error_page, then the server addresses from different groups are separated by colons, e.g. “192.168.1.1:80, 192.168.1.2:80, unix:/tmp/sock : 192.168.10.1:80, 192.168.10.2:80”.
+--- If a server cannot be selected, the variable keeps the name of the server group.
+---@field upstream_addr string|nil IP address and port, or the path to the UNIX-domain socket of the upstream server.
+---@field upstream_bytes_received string|nil number of bytes received from an upstream server (1.11.4). Values from several connections are separated by commas and colons like addresses in the $upstream_addr variable.
+---@field upstream_bytes_sent string|nil number of bytes sent to an upstream server (1.15.8). Values from several connections are separated by commas and colons like addresses in the $upstream_addr variable.
+---@field upstream_cache_status string|nil status of accessing a response cache (0.8.3). The status can be either “MISS”, “BYPASS”, “EXPIRED”, “STALE”, “UPDATING”, “REVALIDATED”, or “HIT”.
+--- the time is kept in seconds with millisecond resolution.
+--- In case of SSL, includes time spent on handshake.
+--- Times of several connections are separated by commas and colons like addresses in the $upstream_addr variable.
+---@field upstream_connect_time string|nil time spent on establishing a connection with the upstream server (1.9.1)
+--- the time is kept in seconds with millisecond resolution.
+--- Times of several responses are separated by commas and colons like addresses in the $upstream_addr variable.
+---@field upstream_header_time string|nil time spent on receiving the response header from the upstream server (1.7.10)
+--- the time is kept in seconds with millisecond resolution.
+--- Times of several responses are separated by commas and colons like addresses in the $upstream_addr variable.
+---@field upstream_queue_time string|nil the time the request spent in the upstream queue (1.13.9).
+--- the length is kept in bytes.
+--- Lengths of several responses are separated by commas and colons like addresses in the $upstream_addr variable.
+---@field upstream_response_length string|nil the length of the response obtained from the upstream server (0.7.27).
+--- the time is kept in seconds with millisecond resolution.
+--- Times of several responses are separated by commas and colons like addresses in the $upstream_addr variable.
+---@field upstream_response_time string|nil time spent on receiving the response from the upstream server
+--- Status codes of several responses are separated by commas and colons like addresses in the $upstream_addr variable.
+--- If a server cannot be selected, the variable keeps the 502 (Bad Gateway) status code.
+---@field upstream_status string|nil status code of the response obtained from the upstream server.
+---
+---@class apisix.ExtPluginConfig APISIX 外置插件配置
+---@field name string 插件名称
+---@field value any 插件配置
+---
+---@class apisix.Route APISIX 路由
+---@field value any 路由配置
+---
+---@class bk_gateway.ApiAuth 应用认证配置
+---@field api_type integer 应用类型
+---@field unfiltered_sensitive_keys table 不过滤的敏感参数
+---@field user_conf table|nil 用户配置
+---
+---@class bk_gateway.ResourceAuth 资源认证信息
+---@field verified_app_required boolean 是否需要验证应用
+---@field verified_user_required boolean 是否需要验证用户
+---@field resource_perm_required boolean 是否需要验证资源权限
+---@field skip_user_verification boolean 是否跳过用户验证
+---
+---@class bk_gateway.ContextVar 网关注入的上下文变量
+---@field instance_id string 实例 ID
+---@field bk_request_id string 请求 ID
+---@field bk_app_code string 请求的应用
+---@field bk_username string 请求的用户
+---@field bk_gateway_name string 网关名
+---@field bk_gateway_id integer|nil 网关 ID
+---@field bk_stage_name string 网关环境
+---@field bk_service_name string 网关后端服务
+---@field bk_resource_name string 网关资源
+---@field bk_resource_id integer|nil 网关资源 ID
+---@field bk_skip_error_wrapper boolean|nil 是否跳过错误拦截器
+---@field bk_status_rewrite_200 boolean|nil 是否重写 200 状态码
+---@field bk_api_auth bk_gateway.ApiAuth|nil 应用认证配置
+---@field bk_resource_auth bk_gateway.ResourceAuth|nil 资源权限配置
+---@field verified_user_exempted_apps table|nil 免用户认证应用白名单
+---@field proxy_phase string|nil 转发阶段
+---@field proxy_error string 访问后端是否错误
+---@field should_log_response_body boolean|nil 跳过记录响应体
+---@field bk_apigw_error_response_body string 网关错误响应，如 IP校验失败等
+---@field upstream_uri_without_args string 后端 uri
+---@field bk_apigw_error table 网关返回的错误信息
+---@field bk_concurrency_limit_key string 并发限制 key; 仅在 bk-concurrency-limit 中使用
+---
+---@class bk_gateway.LogContextVar 日志相关的上下文变量，仅在 log 阶段可用
+---@field bk_log_request_timestamp integer|nil 日志请求秒级时间戳
+---@field bk_log_request_body string|nil 请求内容（过长截断）
+---@field bk_log_request_duration integer|nil 接收请求延时（单位毫秒）
+---@field bk_log_upstream_duration integer|nil 转发总耗时（包含重试，单位毫秒）
+---@field bk_log_response_body string|nil 响应内容（过长截断）
+---@field bk_log_backend_path string 后端地址(不带 args)
+---
+---@class apisix.ContextVar:bk_gateway.ContextVar,bk_gateway.LogContextVar,nginx.ContextVar APISIX 上下文变量
+---@field uri string 路由匹配的路径（去除末尾/）
+---@field host string 请求域名
+---@field real_request_uri string 真实请求路径
+---@field request_uri string 包含请求参数的路径
+---@field remote_addr string 客户端 IP（使用 core.request.get_remote_client_ip 替代）
+---@field realip_remote_addr string 请求的 TCP 来源 IP（使用 core.reuqest.get_ip 替代）
+---@field request_method string 请求方法
+---@field method string 转发方法
+---@field request_time number|nil 请求总耗时
+---@field upstream_response_time number|nil 上游响应总秒数
+---@field upstream_connect_time number|nil 上游连接总秒数
+---@field upstream_header_time number|nil 上游头响应总秒数
+---@field request_length number|nil 请求长度
+---@field bytes_sent number|nil 发送给客户端的字节数
+---
+---@class apisix.Context APISIX 上下文
+---@field var apisix.ContextVar 上下文变量
+---@field route_id string 路由 ID
+---@field route_name string 路由名称
+---@field matched_route apisix.Route 匹配的路由
+---@field service_id string|nil 服务 ID
+---@field service_name string|nil 服务名称
+---@field conf_type string 配置类型
+---@field conf_version string 配置版本
+---@field conf_id 配置 ID（路由 ID + 服务 ID）
+---
+---@class apisix.Plugin 插件
+---@field name string 名称
+---@field version number 版本
+---@field priority integer 优先级
+---@field schema table 配置 schema
+---@field metadata table 元数据 schema
+---@field init fun() 插件初始化
+---@field check_schema fun(conf: any, schema_type?:integer) 校验配置
+---@field rewrite fun(conf: any, ctx:apisix.Context) 转发、重定向、缓存等功能
+---@field access fun(conf: any, ctx:apisix.Context) 准入控制、权限校验等情况
+---@field before_proxy fun(conf: any, ctx:apisix.Context) 选择节点后调用
+---@field header_filter fun(conf: any, ctx:apisix.Context) 响应头处理
+---@field body_filter fun(conf: any, ctx:apisix.Context) 响应体处理（优先）
+---@field delayed_body_filter fun(conf: any, ctx:apisix.Context) 响应体处理（延后）
+---@field log fun(conf: any, ctx:apisix.Context) 日志处理
+---@field destroy fun() 插件卸载
+---@field control_api fun() 注册控制接口
+---
+---@class apisix.PluginMetadata 插件元数据
+---@field key string 元数据 key
+---@field value table<string, any> 元数据配置
+---
+---@class prometheus.Gauge
+---@field set fun(self, value: number, label_values: string[])
+---
+---@class prometheus.Counter
+---@field inc fun(self, value: number, label_values: string[])
+---
+---@class prometheus.Histogram
+---@field observe fun(self, value: number, label_values: string[])
+---
+---@class prometheus.Registry Prometheus Registry
+---@field counter fun(self, name: string, help: string, label_names: string[]):prometheus.Counter
+---@field gauge fun(self, name: string, help: string, label_names: string[]):prometheus.Gauge
+---@field histogram fun(self, name: string, help: string, label_names: string[], buckets: number[]):prometheus.Histogram

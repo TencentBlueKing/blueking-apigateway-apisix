@@ -1,0 +1,11 @@
+project_root = "."
+editions_root = "./editions"
+linker_type = "default"
+
+[[editions]]
+name = "TE"
+rel_directory = "te"
+
+[[editions]]
+name = "EE"
+rel_directory = "ee"

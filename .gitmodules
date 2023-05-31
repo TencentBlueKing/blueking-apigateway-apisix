@@ -1,0 +1,4 @@
+[submodule "src/apisix-core"]
+	path = src/apisix-core
+	url = https://github.com/apache/apisix.git
+	branch = release/3.2

@@ -1,0 +1,55 @@
+apisix:
+  router:
+    http: radixtree_uri_with_parameter
+  enable_admin: false
+  config_center: yaml
+  node_listen:
+    - port: 8080
+  extra_lua_path: "/bkgateway/?.lua"
+  extra_lua_cpath: "/bkgateway/?.so"
+
+nginx_config:
+  http_server_configuration_snippet: |
+    set $bk_api_name "testing";
+  http_end_configuration_snippet: |
+    lua_shared_dict plugin-bk-permission 10m; # cache for bk-permission
+
+plugins:
+  - "bkgw-runner"
+
+bk_gateway:
+  bkauth:
+    authorization_keys:
+      - "access_token"
+      - "bk_app_code"
+      - "bk_app_secret"
+      - "bk_username"
+    sensitive_keys:
+      - "access_token"
+      - "bk_app_secret"
+
+  bkapp:
+    bk_app_code: "bk-apigateway"
+    bk_app_secret: "fake-secret"
+
+  instance:
+    id: "2c4562899afc453f85bb9c228ed6febd"
+    secret: "fake-secret"
+
+  hosts:
+    apigw-dashboard:
+      addr: "http://apigw-dashboard.example.com"
+    authapi:
+      addr: "http://authapi.example.com"
+    bkauth-legacy:
+      addr: "http://bkauth-legacy.example.com"
+    bkauth:
+      addr: "http://bkauth.example.com"
+    login-tencent:
+      addr: "http://login-tencent.example.com"
+    login:
+      addr: "http://login.example"
+    ssm:
+      addr: "http://ssm.example.com"
+    bkcore:
+      addr: "http://bkcore.example.com"

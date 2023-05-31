@@ -1,0 +1,25 @@
+From be9f4ca58dcbf062991b31c83feb6c34b7c95986 Mon Sep 17 00:00:00 2001
+From: 80317381 <zhengwei@oppo.com>
+Date: Sat, 10 Dec 2022 08:49:18 +0800
+Subject: [PATCH 1/2] fix the bug:when the key is deleted is will throw a
+ exception
+
+---
+ apisix/core/config_util.lua | 4 ++++
+ 1 file changed, 4 insertions(+)
+
+diff --git a/apisix/core/config_util.lua b/apisix/core/config_util.lua
+index b3fb13b7cce5..4cc0ed33daf3 100644
+--- a/apisix/core/config_util.lua
++++ b/apisix/core/config_util.lua
+@@ -96,6 +96,10 @@ end
+
+ -- fire all clean handlers added by add_clean_handler.
+ function _M.fire_all_clean_handlers(item)
++    -- When the key is deleted, the item will be set to false.
++    if not item then
++        return
++    end
+     if not item.clean_handlers then
+         return
+     end
