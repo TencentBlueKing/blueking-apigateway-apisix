@@ -5,7 +5,7 @@ echo "starting......"
 # if standaloneConfigPath not empty, watch the path
 if [ x"${standaloneConfigPath}" != x"" ]
 then
-    echo "it's standalone mode, will watch config file first, the start apisix"
+    echo "it's standalone mode, will watch config file first, then start apisix"
     if [ ! -f /usr/local/apisix/conf/apisix.yaml ]
     then
         echo "generate an empty apisix.yaml, while the operator not sync the data into apisix.yaml"
