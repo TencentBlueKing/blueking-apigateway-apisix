@@ -30,7 +30,8 @@
 --
 -- This plugin depends on:
 --     * bk-resource-auth: To determine whether a verified data is necessary.
---     * bk-auth-verify: Get the verified bk_app and bk_user objects
+--     * bk-auth-verify: Get the verified bk_app and bk_user objects.
+--     * bk-verified-user-exempted-apps: Get the whitelist configurations of current gateway.
 --
 local core = require("apisix.core")
 local errorx = require("apisix.plugins.bk-core.errorx")

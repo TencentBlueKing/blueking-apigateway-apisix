@@ -16,6 +16,16 @@
 -- to the current version of the project delivered to anyone in the future.
 --
 
+-- # bk-verified-user-exempted-apps
+--
+-- Add the whitelist configuration to the current request context, the config data is related to
+-- "exempt a user from verification".
+--
+-- The plugin reads the data from the plugin configuration, then transforms it to another data
+-- structure to make it easily usable by other plugins.
+--
+-- This plugin have no dependencies.
+
 local core = require("apisix.core")
 local pl_types = require("pl.types")
 local ipairs = ipairs
@@ -59,16 +69,24 @@ local _M = {
     schema = schema,
 }
 
+
+-- Get the whitelist config of "user exempted from verification".
+-- @param exempted_apps A list of raw config data.
+-- @return A table contains two whitelists in different dimensions.
+--
+--     An example:
+--     {
+--        by_gateway = {app1 = true, app2 = true},
+--        by_resource = {app3 = {"100" = true, "12" = true}}
+--     }
+--
+-- TODO: Rename "Verified User Exempted Apps" to a shorter and more precise name.
 local function get_verified_user_exempted_apps(exempted_apps)
     if pl_types.is_empty(exempted_apps) then
         return nil
     end
 
-    -- exemple:
-    -- {
-    --    by_gateway = {app1 = true, app2 = true},
-    --    by_resource = {app3 = {"100" = true, "12" = true}}
-    -- }
+
     local verified_user_exempted_apps = {
         by_gateway = {},
         by_resource = {},
