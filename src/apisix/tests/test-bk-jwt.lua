@@ -66,7 +66,6 @@ oQIDAQAB
 
 describe(
     "bk-jwt", function()
-
         context(
             "generate_bkapi_jwt_header", function()
                 context(
@@ -97,7 +96,7 @@ describe(
                         )
 
                         it(
-                            "error", function()
+                            "the private key is invalid", function()
                                 local app = bk_app_define.new_app(
                                     {
                                         app_code = "my-app",
@@ -173,7 +172,8 @@ describe(
                         local status = plugin.rewrite({}, ctx)
                         assert.is_nil(status)
                         assert.is_nil(ctx.var.bk_apigw_error)
-                        assert.stub(request.set_header).was_called()
+                        -- It should has been called twice
+                        assert.stub(request.set_header).was_called(2)
                     end
                 )
 
