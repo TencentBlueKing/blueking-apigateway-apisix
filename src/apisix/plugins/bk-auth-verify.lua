@@ -22,6 +22,10 @@
 -- "bk_app", "bk_user", "bk_username", etc. Other plugins may depend on this plugin to
 -- provide advanced functionalities, such as permission checking and validation.
 --
+-- This plugin won't directly change the request flow, such as redirecting to another page
+-- or returning an error response. Even if the verification fails or no parameters can be found,
+-- the plugin use anonymous application and user objects.
+--
 -- This plugin depends on:
 --     * bk-resource-auth: To determine whether the user verification should be skipped.
 --
