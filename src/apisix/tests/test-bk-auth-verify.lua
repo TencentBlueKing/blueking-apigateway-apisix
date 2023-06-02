@@ -37,7 +37,7 @@ describe(
         local uri_args
         local json_body
         local form_data
-        local mutipart_form_data
+        local multipart_form_data
 
         before_each(
             function()
@@ -45,7 +45,7 @@ describe(
                 uri_args = nil
                 json_body = nil
                 form_data = nil
-                mutipart_form_data = nil
+                multipart_form_data = nil
 
                 stub(
                     ngx.req, "get_method", function()
@@ -64,7 +64,7 @@ describe(
                 )
                 stub(
                     bk_core.request, "parse_multipart_form", function()
-                        return mutipart_form_data
+                        return multipart_form_data
                     end
                 )
                 stub(
@@ -106,7 +106,7 @@ describe(
                 )
 
                 it(
-                    "authorization not exist", function()
+                    "header not exists", function()
                         authorization = nil
 
                         local auth_params, err = plugin._get_auth_params_from_header({})
@@ -116,7 +116,7 @@ describe(
                 )
 
                 it(
-                    "authorization is not value json", function()
+                    "data is not valid json", function()
                         authorization = "not valid json"
 
                         local auth_params, err = plugin._get_auth_params_from_header({})
@@ -126,10 +126,10 @@ describe(
                 )
 
                 it(
-                    "ok", function()
+                    "normal", function()
                         authorization = core.json.encode(
                             {
-                                a = "b",
+                                foo = "bar",
                             }
                         )
 
@@ -137,7 +137,7 @@ describe(
                         assert.is_nil(err)
                         assert.is_same(
                             auth_params, {
-                                a = "b",
+                                foo = "bar",
                             }
                         )
                     end
@@ -159,7 +159,7 @@ describe(
                         json_body = {
                             bk_username = "admin",
                         }
-                        mutipart_form_data = {
+                        multipart_form_data = {
                             access_token = "my-token",
                         }
 
@@ -176,14 +176,14 @@ describe(
                 )
 
                 it(
-                    "some data is nil, or empty", function()
+                    "some data sources is nil or empty", function()
                         method = "POST"
                         uri_args = {
                             bk_app_code = "my-app",
                         }
                         form_data = nil
                         json_body = {}
-                        mutipart_form_data = nil
+                        multipart_form_data = nil
 
                         local auth_params = plugin._get_auth_params_from_parameters({}, authorization_keys)
                         assert.is_same(
@@ -199,7 +199,7 @@ describe(
                 )
 
                 it(
-                    "data override", function()
+                    "value in request body overwrites the one in uri args", function()
                         uri_args = {
                             bk_app_code = "my-app1",
                             bk_app_secret = "my-secret1",
@@ -223,7 +223,7 @@ describe(
                 )
 
                 it(
-                    "has mutiple values", function()
+                    "multiple values exists for the same param", function()
                         uri_args = {
                             bk_app_code = {
                                 "my-app",
@@ -240,9 +240,10 @@ describe(
                 )
 
                 it(
-                    "not include keys not in authorization_keys", function()
+                    "provide unrelated keys", function()
                         uri_args = {
                             bk_app_code = "my-app",
+                            -- This key is unrelated with "authorization_keys"
                             a = "b",
                         }
                         local auth_params = plugin._get_auth_params_from_parameters({}, authorization_keys)
@@ -273,6 +274,7 @@ describe(
                         assert.is_same(
                             auth_params, {
                                 bk_app_code = "my-app",
+                                -- The unrelated key is preserved when using header as data source
                                 a = "b",
                             }
                         )
@@ -463,7 +465,7 @@ describe(
         )
 
         context(
-            "rewrite", function()
+            "test rewrite function", function()
                 local ctx
 
                 before_each(
@@ -478,7 +480,7 @@ describe(
                 )
 
                 it(
-                    "ok", function()
+                    "normal", function()
                         stub(
                             plugin, "verify", function()
                                 return {
