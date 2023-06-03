@@ -25,11 +25,4 @@ jobs:
     - name: Build test image
       run: cd src/apisix && make apisix-test-image
     - name: Test
-      run: |
-        cd src/apisix && docker run --rm -ti \
-          -v ./tests/conf/config.yaml:/usr/local/apisix/conf/config.yaml \
-          -v ./tests:/bkgateway/tests/ \
-          -v ./logs/:/bkgateway/logs/ \
-          -v ./tests/conf/nginx.conf:/bkgateway/conf/nginx.conf \
-          -v ./plugins:/bkgateway/apisix/plugins \
-          apisix-test-image "/run-test.sh"
+      run: make test RUN_WITH_IT=""
