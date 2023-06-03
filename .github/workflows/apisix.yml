@@ -25,4 +25,4 @@ jobs:
     - name: Build test image
       run: cd src/apisix && make apisix-test-image
     - name: Test
-      run: make test RUN_WITH_IT=""
+      run: cd src/apisix && make test RUN_WITH_IT=""
