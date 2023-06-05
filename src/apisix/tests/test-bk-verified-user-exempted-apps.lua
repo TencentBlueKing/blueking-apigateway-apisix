@@ -20,7 +20,6 @@ local plugin = require("apisix.plugins.bk-verified-user-exempted-apps")
 
 describe(
     "bk-verified-user-exempted-apps", function()
-
         context(
             "plugin config", function()
                 it(
@@ -80,6 +79,7 @@ describe(
                                     dimension = "resource",
                                     resource_ids = {
                                         100,
+                                        -- This value is in wrong type, an integer is required
                                         "12",
                                     },
                                 },

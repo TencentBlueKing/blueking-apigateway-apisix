@@ -16,6 +16,19 @@
 -- to the current version of the project delivered to anyone in the future.
 --
 
+-- # bk-jwt
+--
+-- This plugin adds two headers to current request:
+--
+--     1. X-Bkapi-Jwt: A signed JWT token, its payload includes current application and user info,
+--          a LRU cache was introduced to prevent recreating the token every time.
+--     2. X-Bkapi-App: Current application info in JSON string, the header was added only when the
+--          header flag was configured in "include_system_headers".
+--
+-- This plugin depends on:
+--     * bk-auth-verify: Provides `bk_app` and `bk_user` object via ctx.
+--     * bk-stage-context: Provides `bk_api_auth` object via ctx.
+
 local core = require("apisix.core")
 local errorx = require("apisix.plugins.bk-core.errorx")
 local jwt_utils = require("apisix.plugins.bk-auth-verify.jwt-utils")

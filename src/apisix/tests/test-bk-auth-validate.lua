@@ -25,16 +25,16 @@ local plugin = require("apisix.plugins.bk-auth-validate")
 describe(
     "bk-auth-validate", function()
         context(
-            "is_app_exempted_from_verified_user", function()
-                local data = {
-                    -- whites is not exist
+            "test is_app_exempted_from_verified_user functions", function()
+                local cases = {
+                    -- whitelist config is absent
                     {
                         app_code = "test",
                         resource_id = 100,
                         verified_user_exempted_apps = nil,
                         expected = false,
                     },
-                    -- app is blank
+                    -- app code is empty
                     {
                         app_code = "",
                         resource_id = 100,
@@ -47,7 +47,7 @@ describe(
                         },
                         expected = false,
                     },
-                    -- app in whites, by_gateway
+                    -- app matches whitelist, by_gateway
                     {
                         app_code = "test1",
                         resource_id = 100,
@@ -60,7 +60,7 @@ describe(
                         },
                         expected = true,
                     },
-                    -- app in whites, by_resource
+                    -- app matches whitelist, by_resource
                     {
                         app_code = "test1",
                         resource_id = 100,
@@ -76,7 +76,7 @@ describe(
                         },
                         expected = true,
                     },
-                    -- app not in whites
+                    -- app not in whitelist
                     {
                         app_code = "test",
                         resource_id = 100,
@@ -91,7 +91,7 @@ describe(
                     },
                 }
 
-                for _, test in pairs(data) do
+                for _, test in pairs(cases) do
                     local result = plugin._is_app_exempted_from_verified_user(
                         test.app_code, test.resource_id, test.verified_user_exempted_apps
                     )
@@ -105,7 +105,7 @@ describe(
                 context(
                     "ok", function()
                         it(
-                            "app should not be verified", function()
+                            "app verification not required", function()
                                 local bk_resource_auth = context_resource_bkauth.new(
                                     {
                                         verified_app_required = false,
@@ -124,7 +124,7 @@ describe(
                         )
 
                         it(
-                            "app is verified", function()
+                            "verification required with verified app", function()
                                 local bk_resource_auth = context_resource_bkauth.new(
                                     {
                                         verified_app_required = true,
@@ -147,7 +147,7 @@ describe(
                 context(
                     "validate fail", function()
                         it(
-                            "app is not verified", function()
+                            "verification required with unverified app", function()
                                 local bk_resource_auth = context_resource_bkauth.new(
                                     {
                                         verified_app_required = true,
@@ -174,7 +174,7 @@ describe(
                 context(
                     "ok", function()
                         it(
-                            "skip user verification", function()
+                            "user verification is skipped", function()
                                 local bk_resource_auth = context_resource_bkauth.new(
                                     {
                                         skip_user_verification = true,
@@ -199,7 +199,7 @@ describe(
                         )
 
                         it(
-                            "user should not be verified", function()
+                            "user verification not required", function()
                                 local bk_resource_auth = context_resource_bkauth.new(
                                     {
                                         skip_user_verification = false,
@@ -226,7 +226,7 @@ describe(
                         )
 
                         it(
-                            "user should be verified, but app is exempted", function()
+                            "user verification required with unverified user, while app is exempted", function()
                                 local bk_resource_auth = context_resource_bkauth.new(
                                     {
                                         skip_user_verification = false,
@@ -259,7 +259,7 @@ describe(
                         )
 
                         it(
-                            "user is verified", function()
+                            "user verification required with verified user", function()
                                 local bk_resource_auth = context_resource_bkauth.new(
                                     {
                                         skip_user_verification = false,
@@ -287,7 +287,7 @@ describe(
                 context(
                     "validate fail", function()
                         it(
-                            "user is not verified", function()
+                            "user verification required with unverified user", function()
                                 local bk_resource_auth = context_resource_bkauth.new(
                                     {
                                         skip_user_verification = false,
