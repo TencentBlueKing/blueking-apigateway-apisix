@@ -70,17 +70,17 @@ local _M = {
 }
 
 
--- Get the whitelist config of "user exempted from verification".
--- @param exempted_apps A list of raw config data.
--- @return A table contains two whitelists in different dimensions.
---
---     An example:
---     {
---        by_gateway = {app1 = true, app2 = true},
---        by_resource = {app3 = {"100" = true, "12" = true}}
---     }
---
--- TODO: Rename "Verified User Exempted Apps" to a shorter and more precise name.
+---Get the whitelist config of "user exempted from verification".
+---@param exempted_apps table A list of raw config data.
+---@return table|nil apps A table contains two whitelists in different dimensions.
+---
+---    An example:
+---    {
+---       by_gateway = {app1 = true, app2 = true},
+---       by_resource = {app3 = {"100" = true, "12" = true}}
+---    }
+---
+---TODO: Rename "Verified User Exempted Apps" to a shorter and more precise name.
 local function get_verified_user_exempted_apps(exempted_apps)
     if pl_types.is_empty(exempted_apps) then
         return nil

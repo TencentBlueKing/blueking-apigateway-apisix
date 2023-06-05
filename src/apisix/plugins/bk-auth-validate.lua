@@ -56,11 +56,11 @@ function _M.check_schema(conf)
     return core.schema.check(schema, conf)
 end
 
--- Check if the current request is exempt from the requirement to provide a verified user.
--- @param app_code The Application code.
--- @bk_resource_id The ID of current resource.
--- @verified_user_exempted_apps The whitelist configuration data of current gateway.
--- @return The bool result.
+---Check if the current request is exempt from the requirement to provide a verified user.
+---@param app_code string The Application code.
+---@param bk_resource_id integer The ID of current resource.
+---@param verified_user_exempted_apps table The whitelist configuration data of current gateway.
+---@return boolean The result.
 local function is_app_exempted_from_verified_user(app_code, bk_resource_id, verified_user_exempted_apps)
     if pl_types.is_empty(app_code) or verified_user_exempted_apps == nil then
         return false
@@ -78,8 +78,8 @@ local function is_app_exempted_from_verified_user(app_code, bk_resource_id, veri
     return false
 end
 
--- Validate the given app object.
--- @return An error message when invalid.
+---Validate the given app object.
+---@return string|nil err An error message when invalid.
 local function validate_app(bk_resource_auth, app)
     if not bk_resource_auth:get_verified_app_required() then
         return nil
