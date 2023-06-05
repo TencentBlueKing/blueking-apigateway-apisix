@@ -16,11 +16,15 @@
 -- to the current version of the project delivered to anyone in the future.
 --
 
--- 未使用官方 mocking 插件的原因
--- 1. 官方插件不支持 response_headers
--- 2. 官方插件 access 中 core.utils.resolve_var(response_content) 时，
---    未指定 ctx，响应内容中若包含 "$var_name"，将导致处理异常，
---    如果能解析 var，可能导致敏感信息泄露
+-- # bk-mock
+--
+-- support mock the response for an route, you can mock the status, body and headers of the response.
+-- note: the plugin not re-use the official plugin mocking
+-- because:
+-- 1. the official plugin does not support response_headers
+-- 2. the official plugin do `core.utils.resolve_var(response_content, ctx.var)` in access phase,
+--    may cause sensitive information leakage
+
 local pl_types = require("pl.types")
 local core = require("apisix.core")
 local ngx = ngx
@@ -59,7 +63,7 @@ function _M.check_schema(conf)
 end
 
 function _M.access(conf, ctx)
-    -- 此插件状态码为 502 时，
+    -- should skip error wrapper, use the mocking response directly even the status code is 50x
     ctx.var.bk_skip_error_wrapper = true
 
     return conf.response_status, conf.response_example
@@ -71,7 +75,7 @@ function _M.header_filter(conf)
     end
 
     for key, value in pairs(conf.response_headers) do
-        -- 如果响应头已被其它插件设置，则不能覆盖，插件中设置的头优先级更高
+        -- set the header if it is not set by other plugins(they have higher priority)
         if not ngx.header[key] then
             core.response.set_header(key, value)
         end

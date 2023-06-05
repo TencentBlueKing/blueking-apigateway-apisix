@@ -16,6 +16,13 @@
 -- to the current version of the project delivered to anyone in the future.
 --
 
+-- # bk-debug
+--
+-- return debug info in response header if request header X-Bkapi-Debug is true
+-- this plugin is a default plugin for all `stage` of bk-apigateway
+-- so, we can get X-Bkapi-Debug-Info by `curl -H 'X-Bkapi-Debug: True'`
+
+
 local core = require("apisix.core")
 local pl_types = require("pl.types")
 
@@ -40,7 +47,8 @@ function _M.check_schema(conf)
     return core.schema.check(schema, conf)
 end
 
----- @param ctx apisix.Context
+---@param ctx apisix.Context
+---@return table<string, any>
 local function get_debug_info(ctx)
     return {
         bk_request_id = ctx.var.bk_request_id,
@@ -53,6 +61,7 @@ local function get_debug_info(ctx)
 end
 
 function _M.header_filter(conf, ctx) -- luacheck: no unused
+    -- TODO: 99.999% got no BK_DEBUG_HEADER, should we check it first?
     if pl_types.to_bool(core.request.header(ctx, BK_DEBUG_HEADER)) then
         local debug_info = get_debug_info(ctx)
         core.response.set_header(BK_DEBUG_INFO_HEADER, core.json.encode(debug_info))

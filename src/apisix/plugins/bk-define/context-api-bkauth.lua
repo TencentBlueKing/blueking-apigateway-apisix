@@ -123,6 +123,8 @@ function ContextApiBkAuth.get_api_type(self)
     return self.api_type
 end
 
+--- Get the unfiltered sensitive keys.
+---@return table
 function ContextApiBkAuth.get_unfiltered_sensitive_keys(self)
     return self.unfiltered_sensitive_keys
 end
@@ -143,6 +145,8 @@ function ContextApiBkAuth.is_esb_api(self)
     return self.api_type == ESB
 end
 
+--- Filter the sensitive params or not, do the filter if api_type is not ESB.
+---@return boolean
 function ContextApiBkAuth.is_filter_sensitive_params(self)
     return self.api_type ~= ESB
 end
