@@ -151,6 +151,7 @@ local function extract_error_info_from_body(body)
     -- <html>\r\n<head><title>404 Not Found<\/title>...
     if pl_stringx.startswith(body, "<html>") then
         -- TODO: 此时这种类型的错误不会有任何信息被注入到 bk_apigw_error, 那么是否意味着错误信息被吞掉了?
+        -- will be ignored
         return nil
     end
 
@@ -211,6 +212,7 @@ function _M.body_filter(conf, ctx) -- luacheck: no unused
 end
 
 if _TEST then
+    _M._get_upstream_error_msg = _get_upstream_error_msg
     _M._extract_error_info_from_body = extract_error_info_from_body
 end
 
