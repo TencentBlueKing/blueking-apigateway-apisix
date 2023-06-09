@@ -108,10 +108,11 @@ local function get_auth_params_from_parameters(ctx, authorization_keys)
     return auth_params
 end
 
--- Get the authentication related params from current request
--- @param ctx The current context object
--- @param authorization_keys The possible collection of auth-related keys, defined in the config,
--- @return The params table and an error, params will be `nil` if an error happens.
+---Get the authentication related params from current request.
+---@param ctx table The current context object.
+---@param authorization_keys table The possible collection of auth-related keys, defined in the config.
+---@return table|nil auth_params The params data.
+---@return string|nil err The error message.
 local function get_auth_params_from_request(ctx, authorization_keys)
     -- 请求头 X-Bkapi-Authorization 只要存在，则使用此数据作为认证信息，若不存在，则从参数中获取认证信息
     local auth_params, err = get_auth_params_from_header(ctx)
@@ -126,10 +127,10 @@ local function get_auth_params_from_request(ctx, authorization_keys)
 end
 -- utils end
 
--- Verify the incoming request, try to get the app and user objects from it.
--- @param ctx Current context object.
--- @return the app and user object, both are anonymous objects when verification is
---     not performed or failed.
+---Verify the incoming request, try to get the app and user objects from it.
+---@param ctx table Current context object.
+---@return table app the app object, is an anonymous object when verification is not performed or failed.
+---@return table user the user object, is an anonymous object when verification is not performed or failed.
 function _M.verify(ctx)
     local app, user
 
