@@ -27,7 +27,7 @@
 -- but still, we need to delete the sensitive parameters in the uri args and body, for the compatibility.
 
 -- FIXME: we should merge sensitive_keys and unfiltered_sensitive_keys first,
---       otherthan do the check in the loop with `continue`.
+--       other than do the check in the loop with `continue`.
 
 local pl_types = require("pl.types")
 local core = require("apisix.core")

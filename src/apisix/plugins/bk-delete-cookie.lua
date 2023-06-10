@@ -19,6 +19,7 @@
 -- # bk-delete-cookie
 --
 -- Delete the cookie in the request header, which is used to avoid the cookie being sent to the upstream service.
+-- e.g. the login credentials like bk_token
 
 local core = require("apisix.core")
 
