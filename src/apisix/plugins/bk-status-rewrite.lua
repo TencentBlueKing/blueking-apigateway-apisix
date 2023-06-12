@@ -16,6 +16,12 @@
 -- to the current version of the project delivered to anyone in the future.
 --
 
+-- # bk-status-rewrite
+--
+-- the status code will be rewrited to 200, if the route configure the bk-status-rewrite plugin.
+-- it set the `ctx.var.bk_status_rewrite_200 = true`, and do the status code rewrite in `errorx.lua:exit_plugin()`
+-- note: this is a legacy plugin, and will be removed in the future. please not use it in other conditions.
+
 local core = require("apisix.core")
 
 local plugin_name = "bk-status-rewrite"

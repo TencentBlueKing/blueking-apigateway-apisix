@@ -77,16 +77,19 @@ describe(
                 it(
                     "bk plugins error", function()
                         plugin.header_filter(nil, ctx)
-                        assert.is_equal(errorx.new_app_verify_failed().status, ctx.var.bk_apigw_error.status)
-                        assert.is_equal(errorx.new_app_verify_failed().error.code, ctx.var.bk_apigw_error.error.code)
+                        local bk_apigw_error = errorx.new_app_verify_failed()
+
+                        assert.is_equal(bk_apigw_error.status, ctx.var.bk_apigw_error.status)
+                        assert.is_equal(bk_apigw_error.error.code, ctx.var.bk_apigw_error.error.code)
+
                         assert.stub(response.clear_header_as_body_modified).was.called()
                         assert.stub(response.set_header)
                             .was_called_with("Content-Type", "application/json; charset=utf-8")
                         assert.stub(response.set_header).was_called_with(
-                            "X-Bkapi-Error-Code", tostring(errorx.new_app_verify_failed().error.code)
+                            "X-Bkapi-Error-Code", tostring(bk_apigw_error.error.code)
                         )
                         assert.stub(response.set_header).was_called_with(
-                            "X-Bkapi-Error-Message", errorx.new_app_verify_failed().error.message
+                            "X-Bkapi-Error-Message", bk_apigw_error.error.message
                         )
                         assert.is_nil(ctx.var.proxy_phase)
                     end
@@ -110,16 +113,20 @@ describe(
                     "apisix plugins error", function()
                         ngx.status = 404
                         plugin.header_filter(nil, ctx)
-                        assert.is_equal(errorx.new_api_not_found().status, ctx.var.bk_apigw_error.status)
-                        assert.is_equal(errorx.new_api_not_found().error.code, ctx.var.bk_apigw_error.error.code)
+
+                        local bk_apigw_error = errorx.new_api_not_found()
+
+                        assert.is_equal(bk_apigw_error.status, ctx.var.bk_apigw_error.status)
+                        assert.is_equal(bk_apigw_error.error.code, ctx.var.bk_apigw_error.error.code)
+
                         assert.stub(response.clear_header_as_body_modified).was.called()
                         assert.stub(response.set_header)
                             .was_called_with("Content-Type", "application/json; charset=utf-8")
                         assert.stub(response.set_header).was_called_with(
-                            "X-Bkapi-Error-Code", tostring(errorx.new_api_not_found().error.code)
+                            "X-Bkapi-Error-Code", tostring(bk_apigw_error.error.code)
                         )
                         assert.stub(response.set_header).was_called_with(
-                            "X-Bkapi-Error-Message", errorx.new_api_not_found().error.message
+                            "X-Bkapi-Error-Message", bk_apigw_error.error.message
                         )
                         assert.is_nil(ctx.var.proxy_phase)
                     end
@@ -130,7 +137,19 @@ describe(
                         ngx.status = 409
                         plugin.header_filter(nil, ctx)
                         assert.is_not_nil(ctx.var.bk_apigw_error)
+
+                        local bk_apigw_error = errorx.new_unkonwon_error(409)
+
                         assert.stub(response.clear_header_as_body_modified).was_called()
+                        assert.stub(response.set_header)
+                            .was_called_with("Content-Type", "application/json; charset=utf-8")
+                        assert.stub(response.set_header).was_called_with(
+                            "X-Bkapi-Error-Code", tostring(bk_apigw_error.error.code)
+                        )
+                        assert.stub(response.set_header).was_called_with(
+                            "X-Bkapi-Error-Message", bk_apigw_error.error.message
+                        )
+                        assert.is_nil(ctx.var.proxy_phase)
                     end
                 )
             end
@@ -168,6 +187,34 @@ describe(
                         plugin.header_filter(nil, ctx)
                         assert.is_nil(ctx.var.bk_apigw_error)
                         assert.is_equal(ctx.var.proxy_phase, proxy_phases.FINISH)
+                    end
+                )
+
+                it(
+                    "upstream returns 5xx, not finished", function()
+                        ngx.status = 502
+                        ctx = CTX(
+                            {
+                                upstream_status = 502,
+                            }
+                        )
+                        local bk_apigw_error = errorx.new_bad_gateway()
+
+                        plugin.header_filter(nil, ctx)
+                        assert.is_equal(ctx.var.proxy_error, "1")
+                        assert.is_equal(ctx.var.proxy_phase, proxy_phases.CONNECTING)
+                        assert.is_not_nil(ctx.var.bk_apigw_error)
+
+                        assert.stub(response.clear_header_as_body_modified).was_called()
+                        assert.stub(response.set_header)
+                            .was_called_with("Content-Type", "application/json; charset=utf-8")
+                        assert.stub(response.set_header).was_called_with(
+                            "X-Bkapi-Error-Code", tostring(bk_apigw_error.error.code)
+                        )
+                        assert.stub(response.set_header).was_called_with(
+                            "X-Bkapi-Error-Message",
+                            bk_apigw_error.error.message .. " [upstream_error=\"failed to connect to upstream\"]"
+                        )
                     end
                 )
             end
@@ -251,16 +298,19 @@ describe(
                 it(
                     "error have debug info", function()
                         plugin.header_filter(nil, ctx)
-                        assert.is_equal(errorx.new_app_verify_failed().status, ctx.var.bk_apigw_error.status)
-                        assert.is_equal(errorx.new_app_verify_failed().error.code, ctx.var.bk_apigw_error.error.code)
+
+                        local bk_apigw_error = errorx.new_app_verify_failed()
+
+                        assert.is_equal(bk_apigw_error.status, ctx.var.bk_apigw_error.status)
+                        assert.is_equal(bk_apigw_error.error.code, ctx.var.bk_apigw_error.error.code)
                         assert.stub(response.clear_header_as_body_modified).was.called()
                         assert.stub(response.set_header)
                             .was_called_with("Content-Type", "application/json; charset=utf-8")
                         assert.stub(response.set_header).was_called_with(
-                            "X-Bkapi-Error-Code", tostring(errorx.new_app_verify_failed().error.code)
+                            "X-Bkapi-Error-Code", tostring(bk_apigw_error.error.code)
                         )
                         assert.stub(response.set_header).was_called_with(
-                            "X-Bkapi-Error-Message", errorx.new_app_verify_failed().error.message
+                            "X-Bkapi-Error-Message", bk_apigw_error.error.message
                         )
                     end
                 )
@@ -269,16 +319,19 @@ describe(
                     "error does not have debug info", function()
                         ctx.var.bk_apigw_error.extra = nil
                         plugin.header_filter(nil, ctx)
-                        assert.is_equal(errorx.new_app_verify_failed().status, ctx.var.bk_apigw_error.status)
-                        assert.is_equal(errorx.new_app_verify_failed().error.code, ctx.var.bk_apigw_error.error.code)
+
+                        local bk_apigw_error = errorx.new_app_verify_failed()
+
+                        assert.is_equal(bk_apigw_error.status, ctx.var.bk_apigw_error.status)
+                        assert.is_equal(bk_apigw_error.error.code, ctx.var.bk_apigw_error.error.code)
                         assert.stub(response.clear_header_as_body_modified).was.called()
                         assert.stub(response.set_header)
                             .was_called_with("Content-Type", "application/json; charset=utf-8")
                         assert.stub(response.set_header).was_called_with(
-                            "X-Bkapi-Error-Code", tostring(errorx.new_app_verify_failed().error.code)
+                            "X-Bkapi-Error-Code", tostring(bk_apigw_error.error.code)
                         )
                         assert.stub(response.set_header).was_called_with(
-                            "X-Bkapi-Error-Message", errorx.new_app_verify_failed().error.message
+                            "X-Bkapi-Error-Message", bk_apigw_error.error.message
                         )
                     end
                 )
@@ -403,10 +456,13 @@ describe(
                         ngx.arg[1] = ""
                         ngx.arg[2] = true
                         plugin.body_filter(nil, ctx)
+
+                        local bk_apigw_error = errorx.new_api_not_found()
+
                         local err = core.json.decode(ngx.arg[1])
-                        assert.is_equal(errorx.new_api_not_found().error.code, err.code)
-                        assert.is_equal(errorx.new_api_not_found().error.code_name, err.code_name)
-                        assert.is_equal(errorx.new_api_not_found().error.message, err.message)
+                        assert.is_equal(bk_apigw_error.error.code, err.code)
+                        assert.is_equal(bk_apigw_error.error.code_name, err.code_name)
+                        assert.is_equal(bk_apigw_error.error.message, err.message)
                         assert.is_true(ngx.arg[2])
                     end
                 )
@@ -416,13 +472,13 @@ describe(
                         ngx.arg[1] = "{\"error_msg\": \"test error message\"}"
                         ngx.arg[2] = true
                         plugin.body_filter(nil, ctx)
+
+                        local bk_apigw_error = errorx.new_api_not_found():with_field("reason", "test error message")
+
                         local err = core.json.decode(ngx.arg[1])
-                        assert.is_equal(errorx.new_api_not_found().error.code, err.code)
-                        assert.is_equal(errorx.new_api_not_found().error.code_name, err.code_name)
-                        assert.is_equal(
-                            errorx.new_api_not_found():with_field("reason", "test error message").error.message,
-                            err.message
-                        )
+                        assert.is_equal(bk_apigw_error.error.code, err.code)
+                        assert.is_equal(bk_apigw_error.error.code_name, err.code_name)
+                        assert.is_equal(bk_apigw_error.error.message, err.message)
                         assert.is_true(ngx.arg[2])
                     end
                 )
@@ -461,19 +517,78 @@ describe(
 describe(
     "utils", function()
         context(
-            "extract_error_info_from_body", function()
-
+            "_get_upstream_error_msg", function()
                 it(
-                    "apisix response will extract", function()
-                        assert.is_equal(
-                            "test error message",
-                            plugin._extract_error_info_from_body("{\"error_msg\": \"test error message\"}")
-                        )
+                    "failed to connect to upstream", function()
+                        local ctx = {
+                            var = {
+                                upstream_connect_time = nil,
+                            },
+                        }
+                        local phase, err = plugin._get_upstream_error_msg(ctx)
+                        assert.is_equal(proxy_phases.CONNECTING, phase)
+                        assert.is_equal("failed to connect to upstream", err)
                     end
                 )
 
                 it(
-                    "openresty response will ignore", function()
+                    "cannot read header from upstream", function()
+                        local ctx = {
+                            var = {
+                                upstream_connect_time = 100,
+                            },
+                        }
+                        local phase, err = plugin._get_upstream_error_msg(ctx)
+                        assert.is_equal(proxy_phases.HEADER_WAITING, phase)
+                        assert.is_equal("cannot read header from upstream", err)
+
+                    end
+                )
+
+                it(
+                    "failed to read header from upstream", function()
+                        local ctx = {
+                            var = {
+                                upstream_connect_time = 100,
+                                upstream_bytes_received = ", 1",
+                            },
+                        }
+                        local phase, err = plugin._get_upstream_error_msg(ctx)
+                        assert.is_equal(proxy_phases.HEAEDER_RECEIVING, phase)
+                        assert.is_equal("failed to read header from upstream", err)
+
+                    end
+                )
+
+                it(
+                    "finished", function()
+                        local ctx = {
+                            var = {
+                                upstream_connect_time = 100,
+                                upstream_bytes_received = ", 1",
+                                upstream_header_time = 100,
+                            },
+                        }
+                        local phase = plugin._get_upstream_error_msg(ctx)
+                        assert.is_equal(proxy_phases.FINISH, phase)
+
+                    end
+                )
+
+            end
+        )
+
+        context(
+            "extract_error_info_from_body", function()
+                it(
+                    "empty or nil response will ignore", function()
+                        assert.is_equal(nil, plugin._extract_error_info_from_body(""))
+                        assert.is_equal(nil, plugin._extract_error_info_from_body(nil))
+                    end
+                )
+
+                it(
+                    "openresty response will be ignored", function()
                         assert.is_equal(
                             nil, plugin._extract_error_info_from_body(
                                 [[<html>
@@ -489,17 +604,39 @@ describe(
                     end
                 )
 
+
+                it(
+                    "apisix response will be extracted", function()
+                        assert.is_equal(
+                            "test error message",
+                            plugin._extract_error_info_from_body("{\"error_msg\": \"test error message\"}")
+                        )
+                    end
+                )
+
+                it(
+                    "response with .message will be extracted", function()
+                        assert.is_equal(
+                            "test error message",
+                            plugin._extract_error_info_from_body("{\"message\": \"test error message\"}")
+                        )
+                    end
+                )
+
+                it(
+                    "response with not .message/.error_msg will be returned", function()
+                        assert.is_equal(
+                            "{\"test\": \"test data\"}",
+                            plugin._extract_error_info_from_body("{\"test\": \"test data\"}")
+                        )
+                    end
+                )
+
                 it(
                     "other response will directly returned", function()
                         assert.is_equal(
                             "test error message", plugin._extract_error_info_from_body("test error message")
                         )
-                    end
-                )
-                it(
-                    "empty or nil response will ignore", function()
-                        assert.is_equal(nil, plugin._extract_error_info_from_body(""))
-                        assert.is_equal(nil, plugin._extract_error_info_from_body(nil))
                     end
                 )
             end

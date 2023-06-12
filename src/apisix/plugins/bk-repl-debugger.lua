@@ -16,15 +16,17 @@
 -- to the current version of the project delivered to anyone in the future.
 --
 
+-- # bk-repl-debugger
+--
+-- This is a debug tool for apisix, it will pause a request and start a repl console.
+-- Do not use this plugin in production environment!!!
+-- For safety reason, you should set the basic.enable in debug.yaml to enable this plugin.
+-- and you should start apisix by this command:
+-- openresty -p /usr/local/apisix -c /usr/local/apisix/conf/nginx.conf -g 'daemon off;'
+
 local core = require("apisix.core")
 local debug = require("apisix.debug")
 local types = require("pl.types")
-
--- Do not use this plugin in production environment!!!
--- This a debug tool for apisix, it will pause a request and start a repl console.
--- For safety reason, you should set the basic.enable in debug.yaml to enable this plugin.
--- You should start apisix by this command:
--- openresty -p /usr/local/apisix -c /usr/local/apisix/conf/nginx.conf -g 'daemon off;'
 
 local schema = {
     type = "object",
