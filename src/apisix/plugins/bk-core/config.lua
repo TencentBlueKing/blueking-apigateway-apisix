@@ -27,7 +27,7 @@ function _M.get_authorization_keys()
     return core.table.try_read_attr(conf, "bk_gateway", "bkauth", "authorization_keys")
 end
 
---- Get the sensitive keys
+---Get the sensitive keys
 ---@return table
 function _M.get_sensitive_keys()
     local conf = core.config.local_conf()

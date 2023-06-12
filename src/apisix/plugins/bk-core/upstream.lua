@@ -39,8 +39,8 @@ local function get_last_item(list_string, sep)
     return splited[#splited]
 end
 
---- get_last_upstream_bytes_received get the last upstream bytes received
---- this will make sense after or in header_filter phase
+---get_last_upstream_bytes_received get the last upstream bytes received
+---this will make sense after or in header_filter phase
 ---@param ctx apisix.Context
 ---@return number|nil
 function _M.get_last_upstream_bytes_received(ctx)

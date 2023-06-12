@@ -63,12 +63,12 @@ function _M.before_proxy(conf, ctx)
 end
 
 
---- get the upstream phase and error message by checking the `ctx.var.upstream_*_time`
---- you can know the error detail by check the status_code + error_message
---- like:
----   - 502 + failed to connect to upstream: the upstream port is not listened
----   - 504 + failed to connect to upstream: the upstream port is listened, but the handshake timeout
----     usually network problem
+---get the upstream phase and error message by checking the `ctx.var.upstream_*_time`
+---you can know the error detail by check the status_code + error_message
+---like:
+---  - 502 + failed to connect to upstream: the upstream port is not listened
+---  - 504 + failed to connect to upstream: the upstream port is listened, but the handshake timeout
+---    usually network problem
 ---@param ctx apisix.Context
 ---@return string,string|nil @the specific phase and error message
 local function _get_upstream_error_msg(ctx)
@@ -137,9 +137,9 @@ function _M.header_filter(conf, ctx) -- luacheck: no unused
     core.response.set_header(BK_ERROR_MESSAGE_HEADER, apigw_error.error.message)
 end
 
---- Parse the response body and extract error message
---- from `.error_msg` or `.message` field of response json body, if not found, return the body itself
---- if an openresty default error message is found, return nil
+---Parse the response body and extract error message
+---from `.error_msg` or `.message` field of response json body, if not found, return the body itself
+---if an openresty default error message is found, return nil
 ---@param body string|nil
 ---@return string|nil error_msg nil represents no error_msg
 local function extract_error_info_from_body(body)
@@ -171,7 +171,7 @@ local function extract_error_info_from_body(body)
 end
 
 
---- Phase body_filter, it's for bk_apigw_error only, will extract the error and make a new response
+---Phase body_filter, it's for bk_apigw_error only, will extract the error and make a new response
 ---@param conf table @apisix plugin configuration
 ---@param ctx table @apisix context
 function _M.body_filter(conf, ctx) -- luacheck: no unused

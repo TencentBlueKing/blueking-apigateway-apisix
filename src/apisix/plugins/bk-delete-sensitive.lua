@@ -56,8 +56,8 @@ function _M.check_schema(conf)
 end
 
 
---- Delete the sensitive parameters in the request header, uri args and body,
---- it will check the first, then do the modification.
+---Delete the sensitive parameters in the request header, uri args and body,
+---it will check the first, then do the modification.
 ---@param ctx apisix.Context
 ---@param sensitive_keys table @the sensitive keys
 ---@param unfiltered_sensitive_keys table @the unfiltered sensitive keys, the white list of sensitive keys
@@ -119,8 +119,8 @@ local function delete_sensitive_params(ctx, sensitive_keys, unfiltered_sensitive
     end
 end
 
---- Delete the sensitive headers.
---- currently, it will delete the X-Request-Uri and X-Bkapi-Authorization headers.
+---Delete the sensitive headers.
+---currently, it will delete the X-Request-Uri and X-Bkapi-Authorization headers.
 local function delete_sensitive_headers()
     ngx.req.clear_header("X-Request-Uri")
     ngx.req.clear_header(BKAPI_AUTHORIZATION_HEADER)
