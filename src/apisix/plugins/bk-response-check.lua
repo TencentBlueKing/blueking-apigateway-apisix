@@ -52,7 +52,7 @@ function _M.init()
             "resource_name",
             "service_name",
             "method",
-            "path",
+            "matched_uri",
             "status",
             "proxy_phase",
             "proxy_error",
@@ -68,7 +68,7 @@ function _M.init()
             "resource_name",
             "service_name",
             "method",
-            "path",
+            "matched_uri",
         }, {
             100,
             300,
@@ -103,10 +103,17 @@ function _M.log(conf, ctx)
     local service_name = ctx.var.bk_service_name or ""
     local instance = ctx.var.instance_id or ""
     local method = ctx.var.method
-    local path = ctx.var.uri
+    --        it's route.uri/uris, how to get it from apisix?
     local proxy_phase = ctx.var.proxy_phase or ""
     local status = ctx.var.status
     local proxy_error = ctx.var.proxy_error or "0"
+
+    -- NOTE: change from path to matched_uri, to decrease the metrics(use /a/{id} instead of /a/123)
+    -- local path = ctx.var.uri
+    local matched_uri = ""
+    if ctx.curr_req_matched then
+        matched_uri = ctx.curr_req_matched._path or ""
+    end
 
     local status_label = ""
     if status then
@@ -121,7 +128,7 @@ function _M.log(conf, ctx)
             resource_name,
             service_name,
             method,
-            path,
+            matched_uri,
             status_label,
             proxy_phase,
             proxy_error,
@@ -137,7 +144,7 @@ function _M.log(conf, ctx)
                 resource_name,
                 service_name,
                 method,
-                path,
+                matched_uri,
             }
         )
     end
