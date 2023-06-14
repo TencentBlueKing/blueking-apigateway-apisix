@@ -103,7 +103,6 @@ function _M.log(conf, ctx)
     local service_name = ctx.var.bk_service_name or ""
     local instance = ctx.var.instance_id or ""
     local method = ctx.var.method
-    --        it's route.uri/uris, how to get it from apisix?
     local proxy_phase = ctx.var.proxy_phase or ""
     local status = ctx.var.status
     local proxy_error = ctx.var.proxy_error or "0"
