@@ -141,8 +141,11 @@ describe(
                         assert.is_equal(ctx.headers["todelete"], "todelete")
                         assert.is_equal(ctx.headers["toadd"], nil)
                         plugin.rewrite(conf, ctx)
-                        assert.stub(ngx_req.set_header).was_called_with("toadd", "added")
-                        assert.stub(ngx_req.set_header).was_called_with("todelete", "")
+                        -- NOTE: the stub is not working because the `ngx.req.set_header` was replaced by
+                        -- `local req_set_header = ngx.req.set_header` in `apisix.core.request`(3.2.1)
+
+                        -- assert.stub(ngx_req.set_header).was_called_with("toadd", "added")
+                        -- assert.stub(ngx_req.set_header).was_called_with("todelete", "")
                         assert.is_equal(ctx.headers["todelete"], "")
                         assert.is_equal(ctx.headers["toadd"], "added")
                     end
