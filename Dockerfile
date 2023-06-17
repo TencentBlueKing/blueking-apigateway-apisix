@@ -11,7 +11,8 @@ RUN mv /etc/yum.repos.d/CentOS-Base.repo /etc/yum.repos.d/CentOS-Base.repo.backu
 
 # install tools
 # TODO: add more tools for debug
-RUN yum install -y wget unzip patch make sudo less iproute vim bind-utils && rm -rf /var/cache/yum
+# alreay on image: ifconfig nslookup ping dig ip ss route 
+RUN yum install -y wget unzip patch make sudo less iproute traceroute telnet lsof net-tools tcpdump mtr vim bind-utils && rm -rf /var/cache/yum
 RUN curl -LJ https://github.com/stedolan/jq/releases/download/jq-1.6/jq-linux64 -o jq && chmod 755 jq && mv jq /usr/bin/jq
 
 RUN mkdir -p /data/bkgateway/bin && rm -rf /usr/local/apisix/logs/*
