@@ -1,9 +1,9 @@
 ARG APISIX_VERSION="3.2.0"
 FROM apache/apisix:$APISIX_VERSION-centos
 
-RUN mv /etc/yum.repos.d/CentOS-Base.repo /etc/yum.repos.d/CentOS-Base.repo.backup && \ 
-    curl -o /etc/yum.repos.d/CentOS-Base.repo http://mirrors.cloud.tencent.com/repo/centos7_base.repo && \
-    yum clean all
+# RUN mv /etc/yum.repos.d/CentOS-Base.repo /etc/yum.repos.d/CentOS-Base.repo.backup && \ 
+#     curl -o /etc/yum.repos.d/CentOS-Base.repo http://mirrors.cloud.tencent.com/repo/centos7_base.repo && \
+#     yum clean all
 
 RUN yum install -y sudo make gcc curl wget unzip git valgrind
 
