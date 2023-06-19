@@ -133,7 +133,8 @@
 ---
 ---@class bk_gateway.ContextVar 网关注入的上下文变量
 ---@field instance_id string 实例 ID
----@field bk_request_id string 请求 ID
+---@field bk_request_id string 请求 ID, bkapi维度唯一, 36位 uuid
+---@field x_request_id string 请求 ID, 上游设置则使用上游的, 否则使用bk_request_id(去掉-, 32 位 uuid)
 ---@field bk_app_code string 请求的应用
 ---@field bk_username string 请求的用户
 ---@field bk_gateway_name string 网关名
