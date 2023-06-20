@@ -23,6 +23,6 @@ jobs:
     - name: Change Edition
       run: make edition-ee
     - name: Build test image
-      run: cd src/apisix && make apisix-test-image
+      run: cd src/apisix && make apisix-test-images
     - name: Test
       run: cd src/apisix && make test RUN_WITH_IT=""

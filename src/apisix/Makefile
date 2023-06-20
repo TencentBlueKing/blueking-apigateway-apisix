@@ -31,6 +31,13 @@ test-nginx:
 	-v ${ROOT_DIR}/plugins:/bkgateway/apisix/plugins \
 	apisix-test-nginx "${cmd}" ${flag}
 
+.PHONY: apisix-test-images
+apisix-test-images: apisix-test-busted apisix-test-nginx
+
+.PHONY: test
+test: test-busted test-nginx
+
+
 .PHONY: lint
 lint:
 	@docker run --rm ${RUN_WITH_IT} \
