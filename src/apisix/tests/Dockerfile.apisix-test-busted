@@ -23,5 +23,10 @@ ENV LUA_CPATH='/usr/local/apisix/?.so;/usr/local/apisix/deps/lib/lua/5.1/?.so;/u
 
 RUN mkdir -p /bkgateway/apisix/plugins /bkgateway/tests/ /bkgateway/logs/ /bkgateway/conf/
 WORKDIR /bkgateway/
+<<<<<<<< HEAD:src/apisix/tests/Dockerfile.apisix-unittest
 COPY tests/run-test.sh /
 CMD ["/run-test.sh"]
+========
+COPY ci/run-test-busted.sh /
+CMD ["/run-test-busted.sh"]
+>>>>>>>> ee83e3a (test(test-nginx): support test-nginx):src/apisix/tests/Dockerfile.apisix-test-busted
