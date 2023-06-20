@@ -14,13 +14,14 @@ echo "copy the t/*"
 cp -r /bkgateway/t/* /usr/local/apisix/t/
 
 echo "register the bk-* plugins"
+# append the bk plugins into the plugin list
 ls /usr/local/apisix/apisix/plugins |
     egrep "bk-.*.lua" | awk -F '.' '{print "  - "$1}' |
     sed '1i\temp:' |
     yq ea -iPM '. as $item ireduce({}; . * $item) | .plugins += .temp | del(.temp)' /usr/local/apisix/conf/config-default.yaml -
 
+# why: bk-components/*.lua will error if the settings below is absent
 echo "append the bk-apigateway config into user_yaml_config"
-
 cat << EOF | sed -i '/my $profile = $ENV{"APISIX_PROFILE"};/r /dev/stdin' /usr/local/apisix/t/APISIX.pm
 \$user_yaml_config = <<_EOC_;
 bk_gateway:
@@ -68,4 +69,9 @@ echo "run test"
 
 export PATH=/usr/local/openresty/nginx/sbin:$PATH
 
-prove t/bk-*.t
+# why: ci/centos7-ci.sh run_case
+export OPENRESTY_PREFIX="/usr/local/openresty-debug"
+export APISIX_MAIN="https://raw.githubusercontent.com/apache/incubator-apisix/master/rockspec/apisix-master-0.rockspec"
+export PATH=$OPENRESTY_PREFIX/nginx/sbin:$OPENRESTY_PREFIX/luajit/bin:$OPENRESTY_PREFIX/bin:$PATH
+
+FLUSH_ETCD=1 prove --timer -Itest-nginx/lib -I./  t/bk-*.t
