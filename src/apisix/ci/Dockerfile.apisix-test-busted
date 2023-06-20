@@ -19,5 +19,5 @@ ENV LUA_CPATH='/usr/local/apisix/?.so;/usr/local/apisix/deps/lib/lua/5.1/?.so;/u
 
 RUN mkdir -p /bkgateway/apisix/plugins /bkgateway/tests/ /bkgateway/logs/ /bkgateway/conf/
 WORKDIR /bkgateway/
-COPY ci/run-test.sh /
-CMD ["/run-test.sh"]
+COPY ci/run-test-busted.sh /
+CMD ["/run-test-busted.sh"]
