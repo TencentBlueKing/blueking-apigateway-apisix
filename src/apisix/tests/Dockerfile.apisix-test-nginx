@@ -25,11 +25,28 @@ ARG ETCD_VERSION='3.5.4'
 RUN wget https://github.com/etcd-io/etcd/releases/download/v${ETCD_VERSION}/etcd-v${ETCD_VERSION}-linux-amd64.tar.gz && \
     tar -xvf etcd-v${ETCD_VERSION}-linux-amd64.tar.gz && \
     cd etcd-v${ETCD_VERSION}-linux-amd64 && \
-    sudo cp -a etcd etcdctl /usr/bin/
+    sudo cp -a etcd etcdctl /usr/bin/ && \
+    rm -rf /usr/local/apisix/etcd-v${ETCD_VERSION}-linux-amd64.tar.gz /usr/local/apisix/etcd-v${ETCD_VERSION}-linux-amd64
 
-# copy the ru
-# COPY ci/run_case /usr/local/apisix/run_case
-# COPY ci/bar.t /usr/local/apisix/t/bar.t
+# install test-toolkit-0.1.1 (which is submdoule in apisix)
+RUN wget https://github.com/api7/test-toolkit/archive/refs/tags/v0.1.1.tar.gz && \
+    tar -xvf v0.1.1.tar.gz && \
+    mv test-toolkit-0.1.1/* /usr/local/apisix/t/toolkit/ && \
+    rm -rf test-toolkit-0.1.1 v0.1.1.tar.gz
+
+# install yq
+RUN wget https://github.com/mikefarah/yq/releases/download/v4.23.1/yq_linux_amd64 -O yq && \
+    chmod 755 yq &&  mv yq /usr/bin/yq
+
+# install plugins dependencies
+COPY ci/requirements-dev-0.rockspec /
+RUN luarocks install --deps-only /requirements-dev-0.rockspec --server https://luarocks.cn
+
+# clean up
+RUN rm -rf /var/cache/yum
+RUN rm -rf /root/.cache/luarocks/ || echo "no /root/.cache/luarocks to clean"
+RUN rm -rf /codes/
+
 
 RUN mkdir -p /bkgateway/apisix/plugins /bkgateway/t/
 COPY ci/run-test-nginx.sh /
