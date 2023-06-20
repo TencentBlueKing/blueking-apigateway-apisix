@@ -1,9 +1,9 @@
-ARG APISIX_VERSION="3.2.0"
+ARG APISIX_VERSION="3.2.1"
 FROM apache/apisix:$APISIX_VERSION-centos
 
-# RUN mv /etc/yum.repos.d/CentOS-Base.repo /etc/yum.repos.d/CentOS-Base.repo.backup && \ 
-#     curl -o /etc/yum.repos.d/CentOS-Base.repo http://mirrors.cloud.tencent.com/repo/centos7_base.repo && \
-#     yum clean all
+RUN mv /etc/yum.repos.d/CentOS-Base.repo /etc/yum.repos.d/CentOS-Base.repo.backup && \ 
+    curl -o /etc/yum.repos.d/CentOS-Base.repo http://mirrors.cloud.tencent.com/repo/centos7_base.repo && \
+    yum clean all
 
 RUN yum install -y sudo make gcc curl wget unzip git valgrind
 
@@ -11,7 +11,7 @@ ARG APISIX_VERSION
 RUN curl https://raw.githubusercontent.com/apache/apisix/${APISIX_VERSION}/utils/linux-install-luarocks.sh | bash
 RUN luarocks install https://github.com/lunarmodules/busted/releases/download/v2.1.1/busted-2.1.1-1.rockspec
 
-COPY tests/requirements-dev-0.rockspec /
+COPY ci/requirements-dev-0.rockspec /
 RUN luarocks install --deps-only /requirements-dev-0.rockspec --server https://luarocks.cn
 
 ENV LUA_PATH='/usr/local/apisix/?.lua;/usr/local/apisix/?/init.lua;/usr/local/apisix/deps/share/lua/5.1/?/init.lua;/usr/local/apisix/deps/share/lua/5.1/?.lua;/usr/local/apisix/apisix/?.lua;/usr/local/apisix/t/?.lua;;'
@@ -19,5 +19,5 @@ ENV LUA_CPATH='/usr/local/apisix/?.so;/usr/local/apisix/deps/lib/lua/5.1/?.so;/u
 
 RUN mkdir -p /bkgateway/apisix/plugins /bkgateway/tests/ /bkgateway/logs/ /bkgateway/conf/
 WORKDIR /bkgateway/
-COPY tests/run-test.sh /
+COPY ci/run-test.sh /
 CMD ["/run-test.sh"]

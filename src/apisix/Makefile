@@ -4,10 +4,10 @@ RUN_WITH_IT ?= -it
 
 .PHONY: apisix-test-image
 apisix-test-image:
-	docker build -t apisix-test-image -f tests/Dockerfile.apisix-unittest .
+	docker build -t apisix-test-busted -f ci/Dockerfile.apisix-unittest .
 
-.PHONY: test
-test:
+.PHONY: test-busted
+test-busted:
 	$(eval cmd ?= "/run-test.sh")
 	$(eval flag ?= )
 	@docker run --rm ${RUN_WITH_IT} \
@@ -16,7 +16,7 @@ test:
 	-v ${ROOT_DIR}/logs/:/bkgateway/logs/ \
 	-v ${ROOT_DIR}/tests/conf/nginx.conf:/bkgateway/conf/nginx.conf \
 	-v ${ROOT_DIR}/plugins:/bkgateway/apisix/plugins \
-	apisix-test-image "${cmd}" ${flag}
+	apisix-test-busted "${cmd}" ${flag}
 
 .PHONY: lint
 lint:
