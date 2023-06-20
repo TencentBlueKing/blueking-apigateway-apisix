@@ -1,7 +1,7 @@
 ARG APISIX_VERSION="3.2.1"
 FROM apache/apisix:$APISIX_VERSION-centos
 
-# in github action, change the source of yum is not ok
+# note: uncomment below if it's slow to build image
 # RUN mv /etc/yum.repos.d/CentOS-Base.repo /etc/yum.repos.d/CentOS-Base.repo.backup && \ 
 #     curl -o /etc/yum.repos.d/CentOS-Base.repo http://mirrors.cloud.tencent.com/repo/centos7_base.repo && \
 #     yum clean all
@@ -23,10 +23,5 @@ ENV LUA_CPATH='/usr/local/apisix/?.so;/usr/local/apisix/deps/lib/lua/5.1/?.so;/u
 
 RUN mkdir -p /bkgateway/apisix/plugins /bkgateway/tests/ /bkgateway/logs/ /bkgateway/conf/
 WORKDIR /bkgateway/
-<<<<<<<< HEAD:src/apisix/tests/Dockerfile.apisix-unittest
-COPY tests/run-test.sh /
-CMD ["/run-test.sh"]
-========
 COPY ci/run-test-busted.sh /
 CMD ["/run-test-busted.sh"]
->>>>>>>> ee83e3a (test(test-nginx): support test-nginx):src/apisix/tests/Dockerfile.apisix-test-busted
