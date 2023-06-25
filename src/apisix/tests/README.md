@@ -1,6 +1,28 @@
 # 插件单元测试
 
-apisix 原生测试，是基于 test-nginx 的接口测试，偏向于功能测试。为更好地测试插件内部逻辑，推荐为每个插件开发单元测试。
+apisix 原生测试，是基于 test-nginx 的接口测试，偏向于功能测试。
+
+为更好地测试插件内部逻辑，推荐为每个插件开发 基于 busted 框架的单元测试。
+
+## 目录结构
+
+```text
+- apisix
+    - ci: ci 相关脚本
+        - Dockerfile.apisix-test-busted: 测试镜像 apisix-test-busted 的 Dockerfile
+        - run-test-busted.sh: 执行 busted 单元测试的脚本
+        - Dockerfile.apisix-test-nginx: 测试镜像 apisix-test-nginx 的 Dockerfile
+        - run-test-nginx.sh: 执行 test-nginx 单元测试的脚本
+    - plugins: 蓝鲸自定义插件
+    - t: test-nginx 测试用例
+    - tests: busted 单元测试
+        - *.lua: 单元测试用例
+        - **/*.lua: 单元测试用例
+        - conf: 测试配置
+            - config.yaml: apisix config.yaml 配置
+            - nginx.conf: resty http-include 配置文件，用于启动测试时，设置 apisix 缓存、错误日志等 nginx 配置
+    - logs: nginx error_log 日志
+```
 
 ## 单元测试框架
 
@@ -26,22 +48,6 @@ s:revert()
 ## 开发单元测试
 
 单元测试用例统一放在 apisix/tests/ 目录下，测试文件以 "test-" 开头，例如：apisix/tests/test-example.lua。编写完测试用例后，第一次执行 `make apisix-test-image` 构建本地测试镜像后，每次只要执行 `make test` 即可。
-
-### 目录结构
-
-```text
-- apisix
-    - plugins: 蓝鲸自定义插件
-    - tests: 单元测试
-        - *.lua: 单元测试用例
-        - **/*.lua: 单元测试用例
-        - conf: 测试配置
-            - config.yaml: apisix config.yaml 配置
-            - nginx.conf: resty http-include 配置文件，用于启动测试时，设置 apisix 缓存、错误日志等 nginx 配置
-        - Dockerfile.apisix-unittest: 测试镜像 apisix-test-image 的 Dockerfile
-        - run-test.sh: 执行单元测试的脚本
-    - logs: nginx error_log 日志
-```
 
 ## 执行单元测试
 
