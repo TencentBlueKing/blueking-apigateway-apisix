@@ -55,7 +55,7 @@ bk_gateway:
     login-tencent:
       addr: "http://login-tencent.example.com"
     login:
-      addr: "http://login.example"
+      addr: "http://login.example.com"
     ssm:
       addr: "http://ssm.example.com"
     bkcore:
