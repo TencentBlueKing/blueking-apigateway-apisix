@@ -152,7 +152,7 @@ describe(
                 )
 
                 it(
-                    "has multiple sensitive", function()
+                    "has multiple sensitive, uri_args and json_body", function()
                         uri_args = {
                             bk_app_secret = "fake-secret",
                             access_token = "fake-token",
@@ -170,6 +170,28 @@ describe(
                             }
                         )
                         assert.stub(ngx.req.set_body_data).was_called_with("{\"foo\":\"bar\"}")
+                    end
+                )
+
+                it(
+                    "has multiple sensitive, uri_args and form_data", function()
+                        uri_args = {
+                            bk_app_secret = "fake-secret",
+                            access_token = "fake-token",
+                            foo = "bar",
+                        }
+                        form_data = {
+                            bk_app_secret = "fake-secret",
+                            access_token = "fake-token",
+                            foo = "bar",
+                        }
+                        plugin._delete_sensitive_params({}, sensitive_keys, unfiltered_sensitive_keys)
+                        assert.stub(core.request.set_uri_args).was_called_with(
+                            {}, {
+                                foo = "bar",
+                            }
+                        )
+                        assert.stub(ngx.req.set_body_data).was_called_with("foo=bar")
                     end
                 )
 
@@ -201,8 +223,8 @@ describe(
                     "ok", function()
                         plugin._delete_sensitive_headers()
 
-                        assert.stub(ngx.req.clear_header).was_called_with("X-Bkapi-Authorization")
                         assert.stub(ngx.req.clear_header).was_called_with("X-Request-Uri")
+                        assert.stub(ngx.req.clear_header).was_called_with("X-Bkapi-Authorization")
                     end
                 )
             end
@@ -264,6 +286,7 @@ describe(
                     "delete sensitive headers", function()
                         plugin.rewrite({}, ctx)
 
+                        assert.stub(ngx.req.clear_header).was_called_with("X-Request-Uri")
                         assert.stub(ngx.req.clear_header).was_called_with("X-Bkapi-Authorization")
                     end
                 )

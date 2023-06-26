@@ -51,7 +51,7 @@ function _M.exit_plugin(ctx, status, content, skip_error_wrapper)
     return status, content
 end
 
---- bk plugins should call this function to exit with apigateway error
+---bk plugins should call this function to exit with apigateway error
 ---@param ctx apisix.Context|nil apisix ctx
 ---@param apigwerr table|nil errorx generated error metatable
 ---@param plugin apisix.Plugin|nil plugin object, or table that has name field

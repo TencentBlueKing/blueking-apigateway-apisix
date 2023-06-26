@@ -16,6 +16,19 @@
 -- to the current version of the project delivered to anyone in the future.
 --
 
+-- bk-delete-sensitive
+--
+-- Delete the sensitive parameters in the request header, uri args and body,
+-- which is used to avoid the sensitive parameters being sent to the upstream service.
+--
+-- in old version of bk-apigatewawy(python/go), it not a strict rule to call API send credential in the header,
+-- so, we need to delete the sensitive parameters in the uri args and body.
+-- in new version, we change the doc and the sdk, and the sensitive parameters should be sent in the header.
+-- but still, we need to delete the sensitive parameters in the uri args and body, for the compatibility.
+
+-- FIXME: we should merge sensitive_keys and unfiltered_sensitive_keys first,
+--       other than do the check in the loop with `continue`.
+
 local pl_types = require("pl.types")
 local core = require("apisix.core")
 local bk_core = require("apisix.plugins.bk-core.init")
@@ -42,6 +55,12 @@ function _M.check_schema(conf)
     return core.schema.check(schema, conf)
 end
 
+
+---Delete the sensitive parameters in the request header, uri args and body,
+---it will check the first, then do the modification.
+---@param ctx apisix.Context
+---@param sensitive_keys table @the sensitive keys
+---@param unfiltered_sensitive_keys table @the unfiltered sensitive keys, the white list of sensitive keys
 local function delete_sensitive_params(ctx, sensitive_keys, unfiltered_sensitive_keys)
     local include_sensitive_params = {}
     for _, key in ipairs(unfiltered_sensitive_keys) do
@@ -100,6 +119,8 @@ local function delete_sensitive_params(ctx, sensitive_keys, unfiltered_sensitive
     end
 end
 
+---Delete the sensitive headers.
+---currently, it will delete the X-Request-Uri and X-Bkapi-Authorization headers.
 local function delete_sensitive_headers()
     ngx.req.clear_header("X-Request-Uri")
     ngx.req.clear_header(BKAPI_AUTHORIZATION_HEADER)

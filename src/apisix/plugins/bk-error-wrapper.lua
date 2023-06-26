@@ -16,6 +16,14 @@
 -- to the current version of the project delivered to anyone in the future.
 --
 
+-- # bk-error-wrapper
+--
+-- this plugin is used to wrap error response from upstream
+-- it will check the upstream status and the innner bk_apigw_error, and then
+-- wrap the error response to a standard format
+-- upstream error: only in `header_filter`, will wrap and add some headers(do nothing to the body)
+-- apigw error: in `header_filter` and `body_filter`, will wrap and add some headers, will change the body
+
 local core = require("apisix.core")
 local errorx = require("apisix.plugins.bk-core.errorx")
 local bk_upstream = require("apisix.plugins.bk-core.upstream")
@@ -54,19 +62,23 @@ function _M.before_proxy(conf, ctx)
     ctx.var.proxy_phase = proxy_phases.PROXYING
 end
 
+
+---get the upstream phase and error message by checking the `ctx.var.upstream_*_time`
+---you can know the error detail by check the status_code + error_message
+---like:
+---  - 502 + failed to connect to upstream: the upstream port is not listened
+---  - 504 + failed to connect to upstream: the upstream port is listened, but the handshake timeout
+---    usually network problem
 ---@param ctx apisix.Context
----@return string,string|nil
+---@return string,string|nil @the specific phase and error message
 local function _get_upstream_error_msg(ctx)
-    --- 此处根据ngx upstream module的变量设置来确定upstream连接状态。连接状态配合status可以大致确认可能发生的问题。例如：
-    --- - 502 + failed to connect to upstream一般代表后端端口未监听
-    --- - 504 + failed to connect to upstream 一般代表握手超时，说明网络层面有丢包
     if not ctx.var.upstream_connect_time then -- 握手失败
         return proxy_phases.CONNECTING, "failed to connect to upstream"
-        -- 此处删掉对$upstream_bytes_sent判断的原因是，在header_filter阶段，upstream_bytes_sent只生效与响应头读取失败的情况
-        -- 响应头成功读取时，upstream_bytes_sent为0。这个预期外的行为导致无法根据upstream_bytes_sent来判断向后端发送请求数据
-        -- 过程的异常。
-        -- elseif not pl_types.to_bool(bk_upstream.get_last_upstream_bytes_sent()) then -- 握手成功，发送请求失败
-        --     upstream_error_msg = "cannot send request to upstream"
+    -- note: 此处删掉对$upstream_bytes_sent判断的原因是
+    -- 在header_filter阶段，upstream_bytes_sent只生效与响应头读取失败的情况响应头成功读取时,
+    -- upstream_bytes_sent为0。这个预期外的行为导致无法根据upstream_bytes_sent来判断向后端发送请求数据过程的异常。
+    -- elseif not pl_types.to_bool(bk_upstream.get_last_upstream_bytes_sent()) then -- 握手成功，发送请求失败
+    --     upstream_error_msg = "cannot send request to upstream"
     elseif not pl_types.to_bool(bk_upstream.get_last_upstream_bytes_received(ctx)) then -- 读取头失败
         return proxy_phases.HEADER_WAITING, "cannot read header from upstream"
     elseif not ctx.var.upstream_header_time then -- 读到了头，但未读完，可能是读头超时，可能是头格式不对
@@ -100,16 +112,19 @@ function _M.header_filter(conf, ctx) -- luacheck: no unused
 
     -- apisix or openresty default error
     if not ctx.var.bk_apigw_error and ngx.status >= ngx.HTTP_BAD_REQUEST then
+        -- wrap and generate a bk_apigw_error
         local error = errorx.new_default_error_with_status(ngx.status)
+        -- after set this, the body_filter will be called
         ctx.var.bk_apigw_error = error
     end
 
     local apigw_error = ctx.var.bk_apigw_error
-    -- no error have to deal with
+    -- do nothing if no error have to deal with
     if not apigw_error then
         return
     end
 
+    -- append the upstream error message
     if upstream_error_msg then
         apigw_error:with_field("upstream_error", upstream_error_msg)
     end
@@ -122,7 +137,9 @@ function _M.header_filter(conf, ctx) -- luacheck: no unused
     core.response.set_header(BK_ERROR_MESSAGE_HEADER, apigw_error.error.message)
 end
 
---- func desc
+---Parse the response body and extract error message
+---from `.error_msg` or `.message` field of response json body, if not found, return the body itself
+---if an openresty default error message is found, return nil
 ---@param body string|nil
 ---@return string|nil error_msg nil represents no error_msg
 local function extract_error_info_from_body(body)
@@ -133,6 +150,8 @@ local function extract_error_info_from_body(body)
     -- openresty default error message for non-200 status, for example
     -- <html>\r\n<head><title>404 Not Found<\/title>...
     if pl_stringx.startswith(body, "<html>") then
+        -- TODO: 此时这种类型的错误不会有任何信息被注入到 bk_apigw_error, 那么是否意味着错误信息被吞掉了?
+        -- will be ignored
         return nil
     end
 
@@ -151,8 +170,14 @@ local function extract_error_info_from_body(body)
     return body
 end
 
+
+---Phase body_filter, it's for bk_apigw_error only, will extract the error and make a new response
+---@param conf table @apisix plugin configuration
+---@param ctx table @apisix context
 function _M.body_filter(conf, ctx) -- luacheck: no unused
+
     local apigw_error = ctx.var.bk_apigw_error
+    -- note: only for bk_apigw_error
     if not apigw_error then
         return
     end
@@ -178,14 +203,16 @@ function _M.body_filter(conf, ctx) -- luacheck: no unused
         return
     end
 
-    -- 方便记录错误响应到日志
+    -- for logging
     ctx.var.bk_apigw_error_response_body = error_str
 
+    -- change the response
     ngx.arg[1] = error_str
     ngx.arg[2] = true
 end
 
 if _TEST then
+    _M._get_upstream_error_msg = _get_upstream_error_msg
     _M._extract_error_info_from_body = extract_error_info_from_body
 end
 
