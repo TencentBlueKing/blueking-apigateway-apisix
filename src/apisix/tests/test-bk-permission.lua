@@ -133,7 +133,7 @@ describe(
                 ctx.var.bk_app_code = ""
                 plugin.init()
                 local code = plugin.access(conf, ctx)
-                assert.is_not_nil(code)
+                assert.is_equal(code, 403)
                 assert.stub(cache_fallback.get_with_fallback).was_called(0)
             end
         )

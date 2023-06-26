@@ -77,7 +77,8 @@ function _M.access(conf, ctx)
         return errorx.exit_with_apigw_err(
             ctx, errorx.new_app_no_permission():with_fields(
                 {
-                    reason = "no permission, app is not verified, please provide valid app info to verify app.",
+                    reason = "if resource_perm_required is true, verified_app_required must be set to true too, " ..
+                        "please contact the managers of the gateway to handle.",
                 }
             ), _M
         )
