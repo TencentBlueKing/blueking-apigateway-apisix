@@ -15,11 +15,8 @@
 -- We undertake not to change the open source license (MIT license) applicable
 -- to the current version of the project delivered to anyone in the future.
 --
-
-local table_concat = table.concat
 local string_format = string.format
 local pairs = pairs
-local ipairs = ipairs
 local tostring = tostring
 local setmetatable = setmetatable
 
@@ -76,7 +73,7 @@ function _M.get_first_no_nil_string_from_two_keys(self, key1, key2)
         return tostring(value2), nil
     end
 
-    return "", string_format("keys [%s] are not found in auth parameters", key1 ..", " .. key2)
+    return "", string_format("keys [%s] are not found in auth parameters", key1 .. ", " .. key2)
 end
 
 function _M.to_url_values(self)
