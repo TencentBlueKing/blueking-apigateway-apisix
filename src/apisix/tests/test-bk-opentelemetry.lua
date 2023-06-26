@@ -65,6 +65,7 @@ describe(
                                 bk_resource_name = RANDSTR(),
                                 bk_service_name = RANDSTR(),
                                 bk_request_id = RANDSTR(),
+                                x_request_id = RANDSTR(),
                                 request_uri = "/",
                             }
                         )
@@ -130,6 +131,7 @@ describe(
                                 bk_resource_name = RANDSTR(),
                                 bk_service_name = RANDSTR(),
                                 bk_request_id = RANDSTR(),
+                                x_request_id = RANDSTR(),
                                 request_uri = "/hello/?a=1&b=2",
                                 uri = "/hello/"
                             }

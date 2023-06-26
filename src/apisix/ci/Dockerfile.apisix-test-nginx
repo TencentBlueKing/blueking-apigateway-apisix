@@ -1,0 +1,57 @@
+ARG APISIX_VERSION="3.2.1"
+FROM apache/apisix:$APISIX_VERSION-centos
+
+# note: uncomment below if it's slow to build image
+# RUN mv /etc/yum.repos.d/CentOS-Base.repo /etc/yum.repos.d/CentOS-Base.repo.backup && \ 
+#     curl -o /etc/yum.repos.d/CentOS-Base.repo http://mirrors.cloud.tencent.com/repo/centos7_base.repo && \
+#     yum clean all
+
+RUN yum install -y sudo make gcc curl wget unzip git valgrind vim cpanminus perl
+RUN cpanm --notest Test::Nginx IPC::Run > build.log 2>&1 || (cat build.log && exit 1)
+
+RUN mkdir /codes/
+
+# download source code
+ARG APISIX_VERSION
+RUN wget https://github.com/apache/apisix/archive/refs/tags/${APISIX_VERSION}.tar.gz && tar -xzf ${APISIX_VERSION}.tar.gz -C /codes/ && rm ${APISIX_VERSION}.tar.gz
+
+# install dependencies
+ARG CODE_DIR=/codes/apisix-${APISIX_VERSION}
+RUN sed -i 's#yum install -y openresty openresty-debug openresty-openssl111-debug-devel pcre pcre-devel#yum install -y openresty openresty-debug openresty-openssl111-debug-devel pcre pcre-devel --skip-broken#g' ${CODE_DIR}/ci/centos7-ci.sh
+RUN cd ${CODE_DIR} &&  bash ./ci/centos7-ci.sh install_dependencies
+RUN cp -r ${CODE_DIR}/t /usr/local/apisix/
+
+# the t/APISIX.pm:add_cleanup_handler will call it if the FLUSH_ETCD=1 
+RUN ln -s /usr/local/apisix/deps/bin /usr/local/apisix/bin
+
+# install etcd, we need to run in the container
+ARG ETCD_VERSION='3.5.4'
+RUN wget https://github.com/etcd-io/etcd/releases/download/v${ETCD_VERSION}/etcd-v${ETCD_VERSION}-linux-amd64.tar.gz && \
+    tar -xvf etcd-v${ETCD_VERSION}-linux-amd64.tar.gz && \
+    cd etcd-v${ETCD_VERSION}-linux-amd64 && \
+    sudo cp -a etcd etcdctl /usr/bin/ && \
+    rm -rf /usr/local/apisix/etcd-v${ETCD_VERSION}-linux-amd64.tar.gz /usr/local/apisix/etcd-v${ETCD_VERSION}-linux-amd64
+
+# install test-toolkit-0.1.1 (which is submdoule in apisix, we download the code directly got no .git)
+RUN wget https://github.com/api7/test-toolkit/archive/refs/tags/v0.1.1.tar.gz && \
+    tar -xvf v0.1.1.tar.gz && \
+    mv test-toolkit-0.1.1/* /usr/local/apisix/t/toolkit/ && \
+    rm -rf test-toolkit-0.1.1 v0.1.1.tar.gz
+
+# install yq (in ./ci/run-test-nginx.sh will use yq to append the bk plugins)
+RUN wget https://github.com/mikefarah/yq/releases/download/v4.23.1/yq_linux_amd64 -O yq && \
+    chmod 755 yq &&  mv yq /usr/bin/yq
+
+# install plugins dependencies
+COPY ci/requirements-dev-0.rockspec /
+RUN luarocks install --deps-only /requirements-dev-0.rockspec --server https://luarocks.cn
+
+# clean up
+RUN rm -rf /var/cache/yum
+RUN rm -rf /root/.cache/luarocks/ || echo "no /root/.cache/luarocks to clean"
+RUN rm -rf /codes/
+
+
+RUN mkdir -p /bkgateway/apisix/plugins /bkgateway/t/
+COPY ci/run-test-nginx.sh /
+CMD ["/run-test-nginx.sh"]
