@@ -56,5 +56,60 @@ describe(
             end
         )
 
+        context(
+            "log", function()
+                it(
+                    "should log the metrics", function()
+                        ctx = {
+                            var = {
+                                gateway = "gateway",
+                                api_name = "api_name",
+                                stage_name = "stage_name",
+                                resource_name = "resource_name",
+                                service_name = "service_name",
+                                method = "method",
+                                matched_uri = "matched_uri",
+                                status = 200,
+                                proxy_phase = "proxy_phase",
+                                proxy_error = "proxy_error",
+                            },
+                            curr_req_matched = {
+                                _path = "matched_uri"
+                            },
+                        }
+                        plugin.init()
+                        plugin.log(nil, ctx)
+
+                        assert.is_not_nil(prometheus.registry["apigateway_api_requests_total"])
+                        assert.is_not_nil(prometheus.registry["apigateway_api_request_duration_milliseconds"])
+                        assert.is_not_nil(prometheus.registry["apigateway_app_requests_total"])
+
+                        local api_requests_total = prometheus.registry["apigateway_api_requests_total"]
+                        local expected_label_names = {
+                            'gateway',
+                            'api_name',
+                            'stage_name',
+                            'resource_name',
+                            'service_name',
+                            'method',
+                            'matched_uri',
+                            'status',
+                            'proxy_phase',
+                            'proxy_error' ,
+                        }
+                        local expected_key = 'apigateway_api_requests_total{gateway="",api_name="",stage_name="",' ..
+                        'resource_name="",service_name="",method="method",matched_uri="matched_uri",status="200",' ..
+                        'proxy_phase="proxy_phase",proxy_error="proxy_error"}'
+
+                        assert.is_same(expected_label_names, api_requests_total["label_names"])
+                        assert.equal(expected_key, api_requests_total["_key_index"]["keys"][2])
+
+                    end
+                )
+            end
+        )
+
+
+
     end
 )
