@@ -114,7 +114,8 @@ local function inject_span(ctx)
             attr.string("bk_stage_name", ctx.var.bk_stage_name),
             attr.string("bk_resource_name", ctx.var.bk_resource_name),
             attr.string("bk_service_name", ctx.var.bk_service_name),
-            attr.string("bk_request_id", ctx.var.bk_request_id)
+            attr.string("bk_request_id", ctx.var.bk_request_id),
+            attr.string("x_request_id", ctx.var.x_request_id)
         )
     end
 end
