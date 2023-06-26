@@ -2,9 +2,9 @@ ARG APISIX_VERSION="3.2.1"
 FROM apache/apisix:$APISIX_VERSION-centos
 
 # note: uncomment below if it's slow to build image
-RUN mv /etc/yum.repos.d/CentOS-Base.repo /etc/yum.repos.d/CentOS-Base.repo.backup && \ 
-    curl -o /etc/yum.repos.d/CentOS-Base.repo http://mirrors.cloud.tencent.com/repo/centos7_base.repo && \
-    yum clean all
+# RUN mv /etc/yum.repos.d/CentOS-Base.repo /etc/yum.repos.d/CentOS-Base.repo.backup && \ 
+#     curl -o /etc/yum.repos.d/CentOS-Base.repo http://mirrors.cloud.tencent.com/repo/centos7_base.repo && \
+#     yum clean all
 
 RUN yum install -y sudo make gcc curl wget unzip git valgrind vim cpanminus perl
 RUN cpanm --notest Test::Nginx IPC::Run > build.log 2>&1 || (cat build.log && exit 1)
