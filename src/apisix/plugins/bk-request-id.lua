@@ -20,9 +20,9 @@
 --
 -- Add x-bkapi-request-id and x-request-id to the request and response header,
 -- 1. x-bkapi-request-id is unique for each request in bkapi, 36 bytes
---    e.g. X-Bkapi-Request-Id: f2dcff5b-2b42-4dbd-b008-8cca4a87a19c
+--    e.g. X-Bkapi-Request-ID: f2dcff5b-2b42-4dbd-b008-8cca4a87a19c
 -- 2. x-request-id, respect the request header(maybe not unique)
---    e.g. X-Request-Id: f2dcff5b2b424dbdb0088cca4a87a19c
+--    e.g. X-Request-ID: f2dcff5b2b424dbdb0088cca4a87a19c
 --    in request: if the request header has x-request-id, use it
 --                else, use the x-bkapi-request-id (remove the `-`, 32 bytes, easy to identify), as ctx.var.x_request_id
 --    in response: if the response header has x-request-id, use it
@@ -39,8 +39,8 @@ local uuid = require("resty.jit-uuid")
 -- plugin config
 local plugin_name = "bk-request-id"
 
-local BKAPI_REQUEST_ID_HEADER = "X-Bkapi-Request-Id"
-local X_REQUEST_ID_HEADER = "X-Request-Id"
+local BKAPI_REQUEST_ID_HEADER = "X-Bkapi-Request-ID"
+local X_REQUEST_ID_HEADER = "X-Request-ID"
 
 local schema = {
     type = "object",
@@ -68,8 +68,8 @@ function _M.rewrite(conf, ctx) -- luacheck: ignore
     ctx.var.bk_request_id = uuid_val
 
     local headers = ngx.req.get_headers()
-    if not headers[X_REQUEST_ID_HEADER] then
-        -- remove the '-' in uuid, make it more easy to identify the x-bkapi-request-id and x-request-id
+    if headers[X_REQUEST_ID_HEADER] == nil then
+        -- remove the '-' in uuid, make it easier to identify the x-bkapi-request-id and x-request-id
         local uuid_val_32 = string.gsub(uuid_val, "-", "")
         core.request.set_header(ctx, X_REQUEST_ID_HEADER, uuid_val_32)
         ctx.var.x_request_id = uuid_val_32
@@ -84,7 +84,7 @@ function _M.header_filter(conf, ctx) -- luacheck: ignore
 
     -- x-request-id, respect the response header
     local headers = ngx.resp.get_headers()
-    if not headers[X_REQUEST_ID_HEADER] then
+    if headers[X_REQUEST_ID_HEADER] == nil then
         core.response.set_header(X_REQUEST_ID_HEADER, ctx.var.x_request_id)
     end
 
