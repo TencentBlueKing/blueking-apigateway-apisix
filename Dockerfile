@@ -1,4 +1,4 @@
-ARG APISIX_VERSION="3.2.0"
+ARG APISIX_VERSION="3.2.1"
 FROM apache/apisix:$APISIX_VERSION-centos
 
 WORKDIR /usr/local/apisix
@@ -10,8 +10,8 @@ RUN mv /etc/yum.repos.d/CentOS-Base.repo /etc/yum.repos.d/CentOS-Base.repo.backu
 
 
 # install tools
-# TODO: add more tools for debug
-# alreay on image: ifconfig nslookup ping dig ip ss route 
+# you can add more tools for debug
+# alreay on image: ifconfig nslookup ping dig ip ss route
 RUN yum install -y wget unzip patch make sudo less iproute traceroute telnet lsof net-tools tcpdump mtr vim bind-utils && rm -rf /var/cache/yum
 RUN curl -LJ https://github.com/stedolan/jq/releases/download/jq-1.6/jq-linux64 -o jq && chmod 755 jq && mv jq /usr/bin/jq
 
@@ -28,10 +28,8 @@ RUN luarocks install multipart --tree=/usr/local/apisix/deps && \
 
 ADD ./build/config-watcher ./src/build/bin/apisix-start.sh ./src/build/bin/config-watcher-start.sh /data/bkgateway/bin/
 ADD ./src/apisix/plugins/ /usr/local/apisix/apisix/plugins/
-ADD ./src/build/patches /usr/local/apisix/patches
 
 RUN chmod 755 /data/bkgateway/bin/* && chmod 777 /usr/local/apisix/logs
-RUN ls /usr/local/apisix/patches | sort | xargs -L1 -I __patch_file__ sh -c 'cat ./patches/__patch_file__ | patch -t -p1'
 
 
 CMD ["sh", "-c", "/usr/bin/apisix init && /usr/bin/apisix init_etcd && /usr/local/openresty/bin/openresty -p /usr/local/apisix -g 'daemon off;'"]

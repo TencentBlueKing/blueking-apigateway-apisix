@@ -1,6 +1,7 @@
-ARG APISIX_VERSION="3.2.0"
+ARG APISIX_VERSION="3.2.1"
 FROM apache/apisix:$APISIX_VERSION-centos
 
+# in github action, change the source of yum is not ok
 # RUN mv /etc/yum.repos.d/CentOS-Base.repo /etc/yum.repos.d/CentOS-Base.repo.backup && \ 
 #     curl -o /etc/yum.repos.d/CentOS-Base.repo http://mirrors.cloud.tencent.com/repo/centos7_base.repo && \
 #     yum clean all
@@ -16,6 +17,9 @@ RUN luarocks install --deps-only /requirements-dev-0.rockspec --server https://l
 
 ENV LUA_PATH='/usr/local/apisix/?.lua;/usr/local/apisix/?/init.lua;/usr/local/apisix/deps/share/lua/5.1/?/init.lua;/usr/local/apisix/deps/share/lua/5.1/?.lua;/usr/local/apisix/apisix/?.lua;/usr/local/apisix/t/?.lua;;'
 ENV LUA_CPATH='/usr/local/apisix/?.so;/usr/local/apisix/deps/lib/lua/5.1/?.so;/usr/local/apisix/deps/lib64/lua/5.1/?.so;;'
+
+# this change in 3.2.1 will make the `stub(ngx.req, "set_header")` not working, and the unittest will be failed
+# RUN sed -i 's#req_set_header(header_name, header_value)#ngx.req.set_header(header_name, header_value)#g' /usr/local/apisix/apisix/core/request.lua
 
 RUN mkdir -p /bkgateway/apisix/plugins /bkgateway/tests/ /bkgateway/logs/ /bkgateway/conf/
 WORKDIR /bkgateway/
