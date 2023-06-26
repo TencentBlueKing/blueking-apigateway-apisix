@@ -15,7 +15,6 @@
 -- We undertake not to change the open source license (MIT license) applicable
 -- to the current version of the project delivered to anyone in the future.
 --
-
 local core = require("apisix.core")
 local errorx = require("apisix.plugins.bk-core.errorx")
 local cache_fallback = require("apisix.plugins.bk-cache-fallback.init")
@@ -43,18 +42,18 @@ function _M.check_schema(conf)
     return core.schema.check(schema, conf)
 end
 
-
 local cache
 
 function _M.init()
-    cache = cache_fallback.new({
-        lrucache_max_items = 5120,
-        lrucache_ttl = 60,
-        lrucache_short_ttl = 30,
-        fallback_cache_ttl = 60 * 60,
-    }, plugin_name)
+    cache = cache_fallback.new(
+        {
+            lrucache_max_items = 5120,
+            lrucache_ttl = 60,
+            lrucache_short_ttl = 30,
+            fallback_cache_ttl = 60 * 60,
+        }, plugin_name
+    )
 end
-
 
 ---@param gateway_name string @the name of the gateway
 ---@param resource_name string @the name of the resource
@@ -72,31 +71,35 @@ function _M.access(conf, ctx)
         return
     end
 
-    local gateway_name = ctx.var.bk_gateway_name
-    local resource_name = ctx.var.bk_resource_name
-    local stage_name = ctx.var.bk_stage_name
     local app_code = ctx.var.bk_app_code
 
-    -- get data from lrucache -> http api; if http api failed, use the fallback cache(shared_dict)
-    local key = gateway_name .. ":" .. resource_name .. ":" .. app_code
-    local data, err = cache:get_with_fallback(ctx, key, nil,
-                                            query_permission, gateway_name, stage_name, resource_name, app_code)
-    if err ~= nil then
+    if pl_types.is_empty(app_code) then
         return errorx.exit_with_apigw_err(
-            ctx,
-            errorx.new_internal_server_error():with_field("reason", err),
-            _M
+            ctx, errorx.new_app_no_permission():with_fields(
+                {
+                    reason = "if resource_perm_required is true, verified_app_required must be set to true too, " ..
+                        "please contact the managers of the gateway to handle.",
+                }
+            ), _M
         )
     end
 
+    local gateway_name = ctx.var.bk_gateway_name
+    local resource_name = ctx.var.bk_resource_name
+    local stage_name = ctx.var.bk_stage_name
+
+    -- get data from lrucache -> http api; if http api failed, use the fallback cache(shared_dict)
+    local key = gateway_name .. ":" .. resource_name .. ":" .. app_code
+    local data, err = cache:get_with_fallback(
+        ctx, key, nil, query_permission, gateway_name, stage_name, resource_name, app_code
+    )
+    if err ~= nil then
+        return errorx.exit_with_apigw_err(ctx, errorx.new_internal_server_error():with_field("reason", err), _M)
+    end
 
     -- 0. no permission records, return app_no_permission
     if pl_types.is_empty(data) then
-        return errorx.exit_with_apigw_err(
-            ctx,
-            errorx.new_app_no_permission():with_field("reason", reason_no_perm),
-            _M
-        )
+        return errorx.exit_with_apigw_err(ctx, errorx.new_app_no_permission():with_field("reason", reason_no_perm), _M)
     end
 
     local now = ngx_time()
@@ -113,9 +116,7 @@ function _M.access(conf, ctx)
             if pl_tablex.size(data) == 1 then
                 -- expired: permission has expired
                 return errorx.exit_with_apigw_err(
-                    ctx,
-                    errorx.new_app_no_permission():with_field("reason", reason_perm_expired),
-                    _M
+                    ctx, errorx.new_app_no_permission():with_field("reason", reason_perm_expired), _M
                 )
             end
 
@@ -131,19 +132,13 @@ function _M.access(conf, ctx)
         else
             -- expired: permission has expired
             return errorx.exit_with_apigw_err(
-                ctx,
-                errorx.new_app_no_permission():with_field("reason", reason_perm_expired),
-                _M
+                ctx, errorx.new_app_no_permission():with_field("reason", reason_perm_expired), _M
             )
         end
     end
 
     -- no permission
-    return errorx.exit_with_apigw_err(
-        ctx,
-        errorx.new_app_no_permission():with_field("reason", reason_no_perm),
-        _M
-    )
+    return errorx.exit_with_apigw_err(ctx, errorx.new_app_no_permission():with_field("reason", reason_no_perm), _M)
 end
 
 if _TEST then
