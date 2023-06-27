@@ -16,6 +16,10 @@
 -- to the current version of the project delivered to anyone in the future.
 --
 
+-- bk-cors
+--
+-- Handle cross-origin requests using the official cors plugin.
+
 -- The cors preflight request should return directly without reporting an error,
 -- so its priority should be higher
 local cors = require("apisix.plugins.cors")

@@ -16,6 +16,10 @@
 -- to the current version of the project delivered to anyone in the future.
 --
 
+-- bk-proxy-rewrite
+--
+-- Rewrite the upstream, headers, uri, and method of a request using the plugin configuration.
+
 -- 由 apisix 官方插件改造而来，uri支持路径参数替换
 -- 该插件融合了蓝鲸网关对于路径变量和子路径匹配的特殊规则，不应当被手动配置，只允许被 Operator 配置
 --

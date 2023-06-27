@@ -16,6 +16,10 @@
 -- to the current version of the project delivered to anyone in the future.
 --
 
+-- bk-not-found-handler
+--
+-- Rewriting the request returns api not found error.
+
 -- 该插件应用于 operator 创建的根路由，所有路由到该路由的请求均应视为404
 -- 为了避免覆盖边缘网关可能创建的根路由，operator 会将默认根路由优先级设为 -1
 local core = require("apisix.core")
