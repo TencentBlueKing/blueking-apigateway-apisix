@@ -52,6 +52,7 @@ end
 local function get_debug_info(ctx)
     return {
         bk_request_id = ctx.var.bk_request_id,
+        x_request_id = ctx.var.x_request_id,
         bk_app_code = ctx.var.bk_app_code,
         bk_username = ctx.var.bk_username,
         instance_id = ctx.var.instance_id,

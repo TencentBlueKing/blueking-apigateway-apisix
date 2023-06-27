@@ -30,6 +30,7 @@ describe(
                 ctx = {
                     var = {
                         bk_request_id = "unique-foo-id",
+                        x_request_id = "fake-request-id",
                         bk_app_code = "fake-app",
                         bk_username = "admin",
                         instance_id = "fake-instance-id",
@@ -75,6 +76,7 @@ describe(
                         assert.is_same(
                             debug_info, {
                                 bk_request_id = "unique-foo-id",
+                                x_request_id = "fake-request-id",
                                 bk_app_code = "fake-app",
                                 bk_username = "admin",
                                 instance_id = "fake-instance-id",
@@ -116,6 +118,7 @@ describe(
                             "X-Bkapi-Debug-Info", core.json.encode(
                                 {
                                     bk_request_id = "unique-foo-id",
+                                    x_request_id = "fake-request-id",
                                     bk_app_code = "fake-app",
                                     bk_username = "admin",
                                     instance_id = "fake-instance-id",
