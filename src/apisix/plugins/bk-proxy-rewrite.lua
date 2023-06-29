@@ -19,6 +19,16 @@
 -- bk-proxy-rewrite
 --
 -- Rewrite the upstream, headers, uri, and method of a request using the plugin configuration.
+-- Each route resource will use this plugin to rewrite upstream, headers, and request methods.
+--
+--     1. conf.uri used for rewriting the upstream uri.
+--     2. conf.method used for rewriting the upstream method.
+--     3. conf.host used for rewriting the upstream host.
+--     4. conf.headers used for rewriting the request headers.
+--     5. conf.use_real_request_uri_unsafe if true, use the original request uri, with a higher priority than conf.uri.
+--     6. conf.match_subpath if true, match subpath of upstream uri.
+--         if the upstream_uri ends with a slash and the original uri does not,
+--         then remove the trailing slash from the upstream_uri.
 
 -- 由 apisix 官方插件改造而来，uri支持路径参数替换
 -- 该插件融合了蓝鲸网关对于路径变量和子路径匹配的特殊规则，不应当被手动配置，只允许被 Operator 配置

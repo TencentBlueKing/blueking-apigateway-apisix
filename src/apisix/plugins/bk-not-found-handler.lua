@@ -16,9 +16,11 @@
 -- to the current version of the project delivered to anyone in the future.
 --
 
--- bk-not-found-handler
+-- bk-not-found-handler (special)
 --
 -- Rewriting the request returns api not found error.
+-- To match the /* route in the virtual stage with a priority of -100,
+-- and return a 404 error when none of the routes can be matched
 
 -- 该插件应用于 operator 创建的根路由，所有路由到该路由的请求均应视为404
 -- 为了避免覆盖边缘网关可能创建的根路由，operator 会将默认根路由优先级设为 -1

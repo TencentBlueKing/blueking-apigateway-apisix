@@ -18,7 +18,7 @@
 
 -- bk-concurrency-limit
 --
--- To implement concurrent rate limiting using the official limit-conn plugin,
+-- To implement concurrent limiting using the official limit-conn plugin,
 -- increase the count using bk_concurrency_limit_key when a request comes in.
 -- If the limit is exceeded, return a rate limiting error.
 -- Otherwise, continue with the execution. During the logging phase, decrease the count to reduce computation.
