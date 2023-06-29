@@ -26,7 +26,7 @@ local string_format = string.format
 
 local QUERY_PERMISSION_URL = "/api/v1/micro-gateway/%s/permissions/"
 local QUERY_PUBLIC_KEY_URL = "/api/v1/micro-gateway/%s/public_keys/"
-local BKCORE_TIMEOUT_MS = 2 * 1000
+local BKCORE_TIMEOUT_MS = 5 * 1000
 
 local _M = {
     host = bk_core.config.get_bk_apigateway_core_addr(),
