@@ -16,6 +16,13 @@
 -- to the current version of the project delivered to anyone in the future.
 --
 
+-- bk-concurrency-limit
+--
+-- To implement concurrent limiting using the official limit-conn plugin,
+-- increase the count using bk_concurrency_limit_key when a request comes in.
+-- If the limit is exceeded, return a rate limiting error.
+-- Otherwise, continue with the execution. During the logging phase, decrease the count to reduce computation.
+
 local core = require("apisix.core")
 local limiter = require("apisix.plugins.limit-conn.init")
 local limit_conn = require("apisix.plugins.limit-conn")

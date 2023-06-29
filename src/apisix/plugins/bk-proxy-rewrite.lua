@@ -16,6 +16,20 @@
 -- to the current version of the project delivered to anyone in the future.
 --
 
+-- bk-proxy-rewrite
+--
+-- Rewrite the upstream, headers, uri, and method of a request using the plugin configuration.
+-- Each route resource will use this plugin to rewrite upstream, headers, and request methods.
+--
+--     1. conf.uri used for rewriting the upstream uri.
+--     2. conf.method used for rewriting the upstream method.
+--     3. conf.host used for rewriting the upstream host.
+--     4. conf.headers used for rewriting the request headers.
+--     5. conf.use_real_request_uri_unsafe if true, use the original request uri, with a higher priority than conf.uri.
+--     6. conf.match_subpath if true, match subpath of upstream uri.
+--         if the upstream_uri ends with a slash and the original uri does not,
+--         then remove the trailing slash from the upstream_uri.
+
 -- 由 apisix 官方插件改造而来，uri支持路径参数替换
 -- 该插件融合了蓝鲸网关对于路径变量和子路径匹配的特殊规则，不应当被手动配置，只允许被 Operator 配置
 --
@@ -201,6 +215,7 @@ do
     end
 
     function _M.rewrite(conf, ctx)
+        -- rewrite upstream host
         for _, name in ipairs(upstream_names) do
             if conf[name] then
                 ctx.var[upstream_vars[name]] = conf[name]
@@ -210,6 +225,7 @@ do
         --     ctx.upstream_scheme = conf["scheme"]
         -- end
 
+        -- rewrite upstream uri
         local upstream_uri = ctx.var.uri
         if conf.use_real_request_uri_unsafe then
             upstream_uri = ctx.var.real_request_uri
@@ -219,8 +235,11 @@ do
 
         if not conf.use_real_request_uri_unsafe then
             local index = str_find(upstream_uri, "?")
+            -- if the upstream_uri ends with a slash and the original uri does not,
+            -- then remove the trailing slash from the upstream_uri.
             upstream_uri = check_ending_slash(conf, ctx, upstream_uri, index)
 
+            -- concatenate the args in the upstream_uri with the args in the original uri
             if ctx.var.is_args == "?" then
                 if index then
                     ctx.var.upstream_uri = upstream_uri .. "&" .. (ctx.var.args or "")
@@ -232,6 +251,7 @@ do
             end
         end
 
+        -- rewrite headers
         if conf.headers then
             -- 把 conf.headers 放入 conf.headers_arr
             if not conf.headers_arr then
@@ -254,6 +274,7 @@ do
             -- Q: 怎么保证的顺序? set -> delete
         end
 
+        -- rewrite method
         if conf.method then
             ngx.req.set_method(switch_map[conf.method])
         end

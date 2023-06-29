@@ -16,6 +16,12 @@
 -- to the current version of the project delivered to anyone in the future.
 --
 
+-- bk-break-recursive-call
+--
+-- Retrieve the previously called instance_id through apigateway from the request header.
+-- If the current instance_id already exists in the header, return a recursive call error.
+-- If it does not exist, add the current instance_id to the header.
+
 local core = require("apisix.core")
 local errorx = require("apisix.plugins.bk-core.errorx")
 local pl_types = require("pl.types")
