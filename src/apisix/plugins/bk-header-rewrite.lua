@@ -58,6 +58,7 @@ local schema = {
                     properties = {
                         add = {
                             type = "object",
+                            minProperties = 1,
                             patternProperties = {
                                 ["^[^:]+$"] = {
                                     oneOf = {
@@ -69,6 +70,7 @@ local schema = {
                         },
                         set = {
                             type = "object",
+                            minProperties = 1,
                             patternProperties = {
                                 ["^[^:]+$"] = {
                                     oneOf = {
@@ -80,6 +82,7 @@ local schema = {
                         },
                         remove = {
                             type = "array",
+                            minItems = 1,
                             items = {
                                 type = "string",
                                 -- "Referer"

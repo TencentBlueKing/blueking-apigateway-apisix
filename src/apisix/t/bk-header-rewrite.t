@@ -65,7 +65,6 @@ done
             local plugin = require("apisix.plugins.bk-header-rewrite")
             local ok, err = plugin.check_schema({
                 headers = {
-                    add = {},
                     set = {test = "test"},
                     remove = {"test"}
                 }
