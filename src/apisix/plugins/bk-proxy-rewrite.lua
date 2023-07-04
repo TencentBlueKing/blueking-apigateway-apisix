@@ -18,15 +18,14 @@
 
 -- bk-proxy-rewrite
 --
--- Rewrite the upstream, headers, uri, and method of a request using the plugin configuration.
--- Each route resource will use this plugin to rewrite upstream, headers, and request methods.
+-- Rewrite the upstream, uri, and method of a request using the plugin configuration.
+-- Each route resource will use this plugin to rewrite upstream, and request methods.
 --
 --     1. conf.uri used for rewriting the upstream uri.
 --     2. conf.method used for rewriting the upstream method.
 --     3. conf.host used for rewriting the upstream host.
---     4. conf.headers used for rewriting the request headers.
---     5. conf.use_real_request_uri_unsafe if true, use the original request uri, with a higher priority than conf.uri.
---     6. conf.match_subpath if true, match subpath of upstream uri.
+--     4. conf.use_real_request_uri_unsafe if true, use the original request uri, with a higher priority than conf.uri.
+--     5. conf.match_subpath if true, match subpath of upstream uri.
 --         if the upstream_uri ends with a slash and the original uri does not,
 --         then remove the trailing slash from the upstream_uri.
 
@@ -108,6 +107,7 @@ local schema = {
         --         "https",
         --     },
         -- },
+        -- remove headers from 1.14
         headers = {
             description = "new headers for request",
             type = "object",
@@ -249,29 +249,6 @@ do
             else
                 ctx.var.upstream_uri = upstream_uri
             end
-        end
-
-        -- rewrite headers
-        if conf.headers then
-            -- 把 conf.headers 放入 conf.headers_arr
-            if not conf.headers_arr then
-                conf.headers_arr = {}
-
-                for field, value in pairs(conf.headers) do
-                    core.table.insert_tail(conf.headers_arr, field, value)
-                end
-            end
-
-            -- 统一处理  headers_arr
-            local field_cnt = #conf.headers_arr
-            for i = 1, field_cnt, 2 do
-                core.request.set_header(
-                    ctx, conf.headers_arr[i], core.utils.resolve_var(conf.headers_arr[i + 1], ctx.var)
-                )
-            end
-
-            -- Q: 怎么处理的 set / delete
-            -- Q: 怎么保证的顺序? set -> delete
         end
 
         -- rewrite method
