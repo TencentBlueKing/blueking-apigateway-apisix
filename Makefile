@@ -68,12 +68,12 @@ init: apisix-dependencies apisix-core
 
 .PHONY: lint
 lint:
-	# license
-	find . -name "*.lua" -not -path "./src/apisix-core/*" -not -path "./.lua_modules/*" | xargs -n 1 grep -L 'TencentBlueKing is pleased to ' | wc -l | xargs -I {} bash -c '[[ {} -eq 0 ]] && exit 0 || exit 1'
+	cd src/apisix && make lint
 
 .PHONY: check-license
 check-license:
 	find . -name "*.lua" -not -path "./src/apisix-core/*" -not -path "./.lua_modules/*" | xargs -n 1 grep -L 'TencentBlueKing is pleased to '
+	find . -name "*.lua" -not -path "./src/apisix-core/*" -not -path "./.lua_modules/*" | xargs -n 1 grep -L 'TencentBlueKing is pleased to ' | wc -l | xargs -I {} bash -c '[[ {} -eq 0 ]] && exit 0 || exit 1'
 
 
 apisix-core: .gitmodules
