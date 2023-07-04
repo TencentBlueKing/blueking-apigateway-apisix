@@ -27,6 +27,6 @@ jobs:
     - name: Build test image
       run: cd src/apisix && make apisix-test-images
     - name: Lint
-      run: cd src/apisix && make lint
+      run: cd src/apisix && make lint RUN_WITH_IT=""
     - name: Test
       run: cd src/apisix && make test RUN_WITH_IT=""
