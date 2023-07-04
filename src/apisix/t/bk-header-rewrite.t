@@ -41,9 +41,8 @@ __DATA__
         content_by_lua_block {
             local plugin = require("apisix.plugins.bk-header-rewrite")
             local ok, err = plugin.check_schema({
-                headers = {
-                    host = "apisix.iresty.com"
-                }
+                set = {test = "test"},
+                remove = {"test"}
             })
             if not ok then
                 ngx.say(err)
@@ -57,31 +56,7 @@ GET /t
 --- response_body
 done
 
-
-=== TEST 2: sanity 2
---- config
-    location /t {
-        content_by_lua_block {
-            local plugin = require("apisix.plugins.bk-header-rewrite")
-            local ok, err = plugin.check_schema({
-                headers = {
-                    set = {test = "test"},
-                    remove = {"test"}
-                }
-            })
-            if not ok then
-                ngx.say(err)
-            end
-
-            ngx.say("done")
-        }
-    }
---- request
-GET /t
---- response_body
-done
-
-=== TEST 3: add plugin
+=== TEST 2: add plugin
 --- config
     location /t {
         content_by_lua_block {
@@ -91,46 +66,7 @@ done
                  [[{
                     "plugins": {
                         "bk-header-rewrite": {
-                            "headers": {
-                                "add": {
-                                    "X-Api-Version": "v2"
-                                }
-                            }
-                        }
-                    },
-                    "upstream": {
-                        "nodes": {
-                            "127.0.0.1:1980": 1
-                        },
-                        "type": "roundrobin"
-                    },
-                    "uri": "/hello"
-                }]]
-                )
-
-            if code >= 300 then
-                ngx.status = code
-            end
-            ngx.say(body)
-        }
-    }
---- request
-GET /t
---- response_body
-passed
-
-
-=== TEST 4: update plugin
---- config
-    location /t {
-        content_by_lua_block {
-            local t = require("lib.test_admin").test
-            local code, body = t('/apisix/admin/routes/1',
-                 ngx.HTTP_PUT,
-                 [[{
-                    "plugins": {
-                        "bk-header-rewrite": {
-                            "headers": {
+                            "add": {
                                 "X-Api-Version": "v2"
                             }
                         }
@@ -157,7 +93,44 @@ GET /t
 passed
 
 
-=== TEST 5: disable plugin
+=== TEST 3: update plugin
+--- config
+    location /t {
+        content_by_lua_block {
+            local t = require("lib.test_admin").test
+            local code, body = t('/apisix/admin/routes/1',
+                 ngx.HTTP_PUT,
+                 [[{
+                    "plugins": {
+                        "bk-header-rewrite": {
+                            "set": {
+                                "X-Api-Version": "v2"
+                            }
+                        }
+                    },
+                    "upstream": {
+                        "nodes": {
+                            "127.0.0.1:1980": 1
+                        },
+                        "type": "roundrobin"
+                    },
+                    "uri": "/hello"
+                }]]
+                )
+
+            if code >= 300 then
+                ngx.status = code
+            end
+            ngx.say(body)
+        }
+    }
+--- request
+GET /t
+--- response_body
+passed
+
+
+=== TEST 4: disable plugin
 --- config
     location /t {
         content_by_lua_block {
@@ -188,7 +161,7 @@ GET /t
 --- response_body
 passed
 
-=== TEST 6: set route(rewrite headers)
+=== TEST 5: set route(rewrite headers)
 --- config
     location /t {
         content_by_lua_block {
@@ -201,9 +174,7 @@ passed
                                 "uri": "/uri/plugin_proxy_rewrite"
                             },
                             "bk-header-rewrite": {
-                                "headers": {
-                                    "set": {"X-Api-Version": "v2"}
-                                }
+                                "set": {"X-Api-Version": "v2"}
                             }
                         },
                         "upstream": {
@@ -228,7 +199,7 @@ GET /t
 passed
 
 
-=== TEST 7: rewrite headers
+=== TEST 6: rewrite headers
 --- request
 GET /hello HTTP/1.1
 --- more_headers
@@ -239,7 +210,7 @@ host: localhost
 x-api-version: v2
 x-real-ip: 127.0.0.1
 
-=== TEST 8: set route(rewrite empty headers)
+=== TEST 7: set route(rewrite empty headers)
 --- config
     location /t {
         content_by_lua_block {
@@ -252,9 +223,7 @@ x-real-ip: 127.0.0.1
                                 "uri": "/uri/plugin_proxy_rewrite"
                             },
                             "bk-header-rewrite": {
-                                "headers": {
-                                    "set": {"X-Api-Test": "hello"}
-                                }
+                                "set": {"X-Api-Test": "hello"}
                             }
                         },
                         "upstream": {
@@ -278,7 +247,7 @@ GET /t
 --- response_body
 passed
 
-=== TEST 9: rewrite empty headers
+=== TEST 8: rewrite empty headers
 --- request
 GET /hello HTTP/1.1
 --- more_headers
@@ -290,7 +259,7 @@ x-api-test: hello
 x-real-ip: 127.0.0.1
 
 
-=== TEST 10: remove header
+=== TEST 9: remove header
 --- config
     location /t {
         content_by_lua_block {
@@ -303,10 +272,8 @@ x-real-ip: 127.0.0.1
                                 "uri": "/uri/plugin_proxy_rewrite"
                             },
                             "bk-header-rewrite": {
-                                "headers": {
-                                    "set": {"X-Api-Engine": "APISIX"},
-                                    "remove": ["X-Api-Test"]
-                                }
+                                "set": {"X-Api-Engine": "APISIX"},
+                                "remove": ["X-Api-Test"]
                             }
                         },
                         "upstream": {
@@ -330,7 +297,7 @@ GET /t
 --- response_body
 passed
 
-=== TEST 11: remove header
+=== TEST 10: remove header
 --- request
 GET /hello HTTP/1.1
 --- more_headers
@@ -342,85 +309,3 @@ host: localhost
 x-api-engine: APISIX
 x-real-ip: 127.0.0.1
 
-=== TEST 12: set route(invalid header field)
---- config
-    location /t {
-        content_by_lua_block {
-            local t = require("lib.test_admin").test
-            local code, body = t('/apisix/admin/routes/1',
-                 ngx.HTTP_PUT,
-                 [[{
-                        "plugins": {
-                            "bk-proxy-rewrite": {
-                                "uri": "/uri/plugin_proxy_rewrite"
-                            },
-                            "bk-header-rewrite": {
-                                "headers": {
-                                    "X-Api:Version": "v2"
-                                }
-                            }
-                        },
-                        "upstream": {
-                            "nodes": {
-                                "127.0.0.1:1980": 1
-                            },
-                            "type": "roundrobin"
-                        },
-                        "uri": "/hello"
-                }]]
-                )
-
-            if code >= 300 then
-                ngx.status = code
-            end
-            ngx.say(body)
-        }
-    }
---- request
-GET /t
---- error_code: 400
---- response_body eval
-qr/invalid field character/
---- error_log
-header field: X-Api:Version
-
-
-=== TEST 13: set route(invalid header value)
---- config
-    location /t {
-        content_by_lua_block {
-            local t = require("lib.test_admin").test
-            local code, body = t('/apisix/admin/routes/1',
-                 ngx.HTTP_PUT,
-                 [[{
-                        "plugins": {
-                            "bk-proxy-rewrite": {
-                                "uri": "/uri/plugin_proxy_rewrite"
-                            },
-                            "bk-header-rewrite": {
-                                "headers": {
-                                    "X-Api-Version": "v2\r\n"
-                                }
-                            }
-                        },
-                        "upstream": {
-                            "nodes": {
-                                "127.0.0.1:1980": 1
-                            },
-                            "type": "roundrobin"
-                        },
-                        "uri": "/hello"
-                }]]
-                )
-
-            if code >= 300 then
-                ngx.status = code
-            end
-            ngx.say(body)
-        }
-    }
---- request
-GET /t
---- error_code: 400
---- response_body eval
-qr/invalid value character/

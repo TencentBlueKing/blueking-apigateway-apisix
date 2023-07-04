@@ -251,6 +251,29 @@ do
             end
         end
 
+        -- rewrite headers
+        if conf.headers then
+            -- 把 conf.headers 放入 conf.headers_arr
+            if not conf.headers_arr then
+                conf.headers_arr = {}
+
+                for field, value in pairs(conf.headers) do
+                    core.table.insert_tail(conf.headers_arr, field, value)
+                end
+            end
+
+            -- 统一处理  headers_arr
+            local field_cnt = #conf.headers_arr
+            for i = 1, field_cnt, 2 do
+                core.request.set_header(
+                    ctx, conf.headers_arr[i], core.utils.resolve_var(conf.headers_arr[i + 1], ctx.var)
+                )
+            end
+
+            -- Q: 怎么处理的 set / delete
+            -- Q: 怎么保证的顺序? set -> delete
+        end
+
         -- rewrite method
         if conf.method then
             ngx.req.set_method(switch_map[conf.method])
