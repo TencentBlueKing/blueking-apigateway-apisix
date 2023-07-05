@@ -79,26 +79,22 @@ local _M = {
 }
 
 function _M.check_schema(conf)
-    local ok, err = core.schema.check(schema, conf)
-    if not ok then
-        return false, err
-    end
-
-    return true
+    return core.schema.check(schema, conf)
 end
 
 
-local function create_header_operation(hdr_conf)
+-- cache pairs processed data for subsequent JIT hit in calculations
+local function create_header_operation(header_conf)
     local set = {}
     local add = {}
 
-    if hdr_conf.add then
-        for field, value in pairs(hdr_conf.add) do
+    if header_conf.add then
+        for field, value in pairs(header_conf.add) do
             core.table.insert_tail(add, field, value)
         end
     end
-    if hdr_conf.set then
-        for field, value in pairs(hdr_conf.set) do
+    if header_conf.set then
+        for field, value in pairs(header_conf.set) do
             core.table.insert_tail(set, field, value)
         end
     end
@@ -106,34 +102,34 @@ local function create_header_operation(hdr_conf)
     return {
         add = add,
         set = set,
-        remove = hdr_conf.remove or {},
+        remove = header_conf.remove or {},
     }
 end
 
 function _M.rewrite(conf, ctx)
-    local hdr_op, err = core.lrucache.plugin_ctx(lrucache, ctx, nil,
+    local header_op, err = core.lrucache.plugin_ctx(lrucache, ctx, nil,
                                 create_header_operation, conf)
-    if not hdr_op then
+    if not header_op then
         core.log.error("failed to create header operation: ", err)
         return
     end
 
-    local field_cnt = #hdr_op.add
+    local field_cnt = #header_op.add
     for i = 1, field_cnt, 2 do
-        local val = core.utils.resolve_var(hdr_op.add[i + 1], ctx.var)
-        local header = hdr_op.add[i]
+        local val = core.utils.resolve_var(header_op.add[i + 1], ctx.var)
+        local header = header_op.add[i]
         core.request.add_header(ctx, header, val)
     end
 
-    local field_cnt = #hdr_op.set
+    local field_cnt = #header_op.set
     for i = 1, field_cnt, 2 do
-        local val = core.utils.resolve_var(hdr_op.set[i + 1], ctx.var)
-        core.request.set_header(ctx, hdr_op.set[i], val)
+        local val = core.utils.resolve_var(header_op.set[i + 1], ctx.var)
+        core.request.set_header(ctx, header_op.set[i], val)
     end
 
-    local field_cnt = #hdr_op.remove
+    local field_cnt = #header_op.remove
     for i = 1, field_cnt do
-        core.request.set_header(ctx, hdr_op.remove[i], nil)
+        core.request.set_header(ctx, header_op.remove[i], nil)
     end
 
 end
