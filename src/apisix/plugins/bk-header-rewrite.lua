@@ -24,8 +24,10 @@ local core        = require("apisix.core")
 local plugin_name = "bk-header-rewrite"
 local pairs       = pairs
 
+local HEADER_REWRITE_CACHE_COUNT = 1000
 local lrucache = core.lrucache.new({
     type = "plugin",
+    count = HEADER_REWRITE_CACHE_COUNT,
 })
 
 local schema = {
