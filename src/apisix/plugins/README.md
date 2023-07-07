@@ -57,6 +57,7 @@ proxy 预处理：17000 ~ 17500
 - bk-delete-sensitive                       # priority: 17450
 - bk-delete-cookie                          # priority: 17440
 - bk-proxy-rewrite                          # priority: 17430 # 该插件供 operator 进行后端地址转换使用
+- bk-header-rewrite                         # priority: 17420
 - bk-mock                                   # priority: 17150
 
 响应后处理:

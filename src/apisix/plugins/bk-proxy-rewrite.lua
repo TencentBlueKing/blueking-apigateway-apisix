@@ -18,15 +18,14 @@
 
 -- bk-proxy-rewrite
 --
--- Rewrite the upstream, headers, uri, and method of a request using the plugin configuration.
--- Each route resource will use this plugin to rewrite upstream, headers, and request methods.
+-- Rewrite the upstream, uri, and method of a request using the plugin configuration.
+-- Each route resource will use this plugin to rewrite upstream, and request methods.
 --
 --     1. conf.uri used for rewriting the upstream uri.
 --     2. conf.method used for rewriting the upstream method.
 --     3. conf.host used for rewriting the upstream host.
---     4. conf.headers used for rewriting the request headers.
---     5. conf.use_real_request_uri_unsafe if true, use the original request uri, with a higher priority than conf.uri.
---     6. conf.match_subpath if true, match subpath of upstream uri.
+--     4. conf.use_real_request_uri_unsafe if true, use the original request uri, with a higher priority than conf.uri.
+--     5. conf.match_subpath if true, match subpath of upstream uri.
 --         if the upstream_uri ends with a slash and the original uri does not,
 --         then remove the trailing slash from the upstream_uri.
 
@@ -108,6 +107,7 @@ local schema = {
         --         "https",
         --     },
         -- },
+        -- remove headers from 1.14
         headers = {
             description = "new headers for request",
             type = "object",
