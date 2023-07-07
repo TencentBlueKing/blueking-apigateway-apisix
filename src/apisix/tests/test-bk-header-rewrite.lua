@@ -55,8 +55,11 @@ describe(
                 before_each(
                     function()
                         conf = {
-                            set = {
+                            add = {
                                 toadd = "added"
+                            },
+                            set = {
+                                toset = "toset"
                             },
                             remove = {"todelete"}
                         }
@@ -82,6 +85,7 @@ describe(
                         -- assert.stub(ngx_req.set_header).was_called_with("todelete", "")
                         assert.is_equal(ctx.headers["todelete"], nil)
                         assert.is_equal(ctx.headers["toadd"], "added")
+                        assert.is_equal(ctx.headers["toset"], "toset")
                     end
                 )
             end

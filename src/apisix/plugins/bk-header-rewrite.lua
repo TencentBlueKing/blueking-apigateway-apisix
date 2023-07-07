@@ -21,8 +21,9 @@
 -- Rewrite the headers of a request using the plugin configuration.
 
 local core        = require("apisix.core")
-local plugin_name = "bk-header-rewrite"
 local pairs       = pairs
+
+local plugin_name = "bk-header-rewrite"
 
 local HEADER_REWRITE_CACHE_COUNT = 1000
 local lrucache = core.lrucache.new({
