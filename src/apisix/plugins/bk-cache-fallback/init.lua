@@ -120,17 +120,17 @@ function _M.get_with_fallback(self, ctx, key, version, create_obj_func, ...)
     -- 1.2 lrucache miss
 
     -- 2. retrieve the lock
-    local lock, err = resty_lock:new(lock_shdict_name)
+    local lock, create_lock_err = resty_lock:new(lock_shdict_name)
     if not lock then
-        return nil, "failed to create lock: " .. err
+        return nil, "failed to create lock: " .. create_lock_err
     end
 
     local key_s = cache_key
     log.info("try to lock with key ", key_s)
 
-    local elapsed, err = lock:lock(key_s)
+    local elapsed, lock_err = lock:lock(key_s)
     if not elapsed then
-        return nil, "failed to acquire the lock: " .. err
+        return nil, "failed to acquire the lock: " .. lock_err
     end
 
     -- TODO: 函数过长, 需要考虑拆分, 特别是unloct特别多, 也容易出问题

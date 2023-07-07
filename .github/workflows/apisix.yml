@@ -2,9 +2,11 @@ name: apisix ci
 
 on:
   push:
-    branches: [ master ]
+    branches: [ master, release/* ]
+    paths: ['src/apisix/**']
   pull_request:
-    branches: [ master ]
+    branches: [ master, release/* ]
+    paths: ['src/apisix/**']
 
 jobs:
 
@@ -24,5 +26,7 @@ jobs:
       run: make edition-ee
     - name: Build test image
       run: cd src/apisix && make apisix-test-images
+    - name: Lint
+      run: cd src/apisix && make lint RUN_WITH_IT=""
     - name: Test
       run: cd src/apisix && make test RUN_WITH_IT=""

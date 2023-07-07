@@ -40,7 +40,7 @@ lint:
 	-v ${ROOT_DIR}/plugins:/bkgateway/apisix/plugins \
 	-v ${ROOT_DIR}/tests:/bkgateway/tests/ \
 	-w /bkgateway/apisix \
-	apisix-test-image \
+	apisix-test-busted \
 	luacheck --config /bkgateway/.luacheckrc ./plugins
 
 .PHONY: edition
