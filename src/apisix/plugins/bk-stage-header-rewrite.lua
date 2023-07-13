@@ -16,14 +16,14 @@
 -- to the current version of the project delivered to anyone in the future.
 --
 
--- bk-header-rewrite
+-- bk-resource-header-rewrite
 --
 -- Rewrite the headers of a request using the plugin configuration.
 
 local core        = require("apisix.core")
 local pairs       = pairs
 
-local plugin_name = "bk-header-rewrite"
+local plugin_name = "bk-stage-header-rewrite"
 
 local HEADER_REWRITE_CACHE_COUNT = 1000
 local lrucache = core.lrucache.new({

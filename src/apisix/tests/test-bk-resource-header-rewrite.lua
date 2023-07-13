@@ -20,10 +20,10 @@ local core = require("apisix.core")
 local request = require("apisix.core.request")
 local response = require("apisix.core.response")
 local ngx_req = ngx.req
-local plugin = require("apisix.plugins.bk-header-rewrite")
+local plugin = require("apisix.plugins.bk-resource-header-rewrite")
 
 describe(
-    "bk-header-rewrite", function()
+    "bk-resource-header-rewrite", function()
 
         local ctx
         local conf
