@@ -70,31 +70,30 @@ local function redis_cli(conf)
 
     red:set_timeouts(timeout, timeout, timeout)
 
-    local ok, err = red:connect(conf.redis_host, conf.redis_port or 6379)
+    local ok, connect_err = red:connect(conf.redis_host, conf.redis_port or 6379)
     if not ok then
-        return false, err
+        return false, connect_err
     end
 
-    local count
-    count, err = red:get_reused_times()
+    local count, check_err = red:get_reused_times()
     if 0 == count then
         if conf.redis_password and conf.redis_password ~= '' then
-            local ok, err = red:auth(conf.redis_password)
-            if not ok then
-                return nil, err
+            local auth_ok, auth_err = red:auth(conf.redis_password)
+            if not auth_ok then
+                return nil, auth_err
             end
         end
 
         -- select db
         if conf.redis_database ~= 0 then
-            local ok, err = red:select(conf.redis_database)
-            if not ok then
-                return false, "failed to change redis db, err: " .. err
+            local select_ok, select_err = red:select(conf.redis_database)
+            if not select_ok then
+                return false, "failed to change redis db, err: " .. select_err
             end
         end
-    elseif err then
+    elseif check_err then
         -- core.log.info(" err: ", err)
-        return nil, err
+        return nil, check_err
     end
     return red, nil
 end
@@ -142,9 +141,9 @@ function _M.incoming(self, key, limit, window)
     local remaining = res[1]
     ttl = res[2]
 
-    local ok, err = red:set_keepalive(10000, 100)
+    local ok, set_err = red:set_keepalive(10000, 100)
     if not ok then
-        return nil, err, ttl
+        return nil, set_err, ttl
     end
 
     if remaining < 0 then

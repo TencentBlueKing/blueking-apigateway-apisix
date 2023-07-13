@@ -31,6 +31,8 @@ local _M = {
 ---@param conf any
 ---@param ctx apisix.Context
 function _M.access(conf, ctx)
+    -- ip matcher lrucache for: 300s, 512 items
+    -- make your own lrucache if necessarily
     local code, result = base.restrict(conf, ctx)
     if not code then
         return
