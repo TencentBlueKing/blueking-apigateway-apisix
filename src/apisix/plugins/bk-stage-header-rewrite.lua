@@ -117,21 +117,21 @@ function _M.rewrite(conf, ctx)
         return
     end
 
-    local field_cnt = #header_op.add
-    for i = 1, field_cnt, 2 do
+    local add_cnt = #header_op.add
+    for i = 1, add_cnt, 2 do
         local val = core.utils.resolve_var(header_op.add[i + 1], ctx.var)
         local header = header_op.add[i]
         core.request.add_header(ctx, header, val)
     end
 
-    local field_cnt = #header_op.set
-    for i = 1, field_cnt, 2 do
+    local set_cnt = #header_op.set
+    for i = 1, set_cnt, 2 do
         local val = core.utils.resolve_var(header_op.set[i + 1], ctx.var)
         core.request.set_header(ctx, header_op.set[i], val)
     end
 
-    local field_cnt = #header_op.remove
-    for i = 1, field_cnt do
+    local remove_cnt = #header_op.remove
+    for i = 1, remove_cnt do
         core.request.set_header(ctx, header_op.remove[i], nil)
     end
 
