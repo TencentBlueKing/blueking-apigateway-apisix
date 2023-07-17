@@ -16,7 +16,7 @@
 -- to the current version of the project delivered to anyone in the future.
 --
 
--- bk-resource-header-rewrite
+-- bk-stage-header-rewrite
 --
 -- Rewrite the headers of a request using the plugin configuration.
 
