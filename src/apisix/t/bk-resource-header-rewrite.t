@@ -39,7 +39,7 @@ __DATA__
 --- config
     location /t {
         content_by_lua_block {
-            local plugin = require("apisix.plugins.bk-header-rewrite")
+            local plugin = require("apisix.plugins.bk-resource-header-rewrite")
             local ok, err = plugin.check_schema({
                 set = {test = "test"},
                 remove = {"test"}
@@ -65,7 +65,7 @@ done
                  ngx.HTTP_PUT,
                  [[{
                     "plugins": {
-                        "bk-header-rewrite": {
+                        "bk-resource-header-rewrite": {
                             "add": {
                                 "X-Api-Version": "v2"
                             }
@@ -102,7 +102,7 @@ passed
                  ngx.HTTP_PUT,
                  [[{
                     "plugins": {
-                        "bk-header-rewrite": {
+                        "bk-resource-header-rewrite": {
                             "set": {
                                 "X-Api-Version": "v2"
                             }
@@ -173,7 +173,7 @@ passed
                             "bk-proxy-rewrite": {
                                 "uri": "/uri/plugin_proxy_rewrite"
                             },
-                            "bk-header-rewrite": {
+                            "bk-resource-header-rewrite": {
                                 "set": {"X-Api-Version": "v2"}
                             }
                         },
@@ -222,7 +222,7 @@ x-real-ip: 127.0.0.1
                             "bk-proxy-rewrite": {
                                 "uri": "/uri/plugin_proxy_rewrite"
                             },
-                            "bk-header-rewrite": {
+                            "bk-resource-header-rewrite": {
                                 "set": {"X-Api-Test": "hello"}
                             }
                         },
@@ -271,7 +271,7 @@ x-real-ip: 127.0.0.1
                             "bk-proxy-rewrite": {
                                 "uri": "/uri/plugin_proxy_rewrite"
                             },
-                            "bk-header-rewrite": {
+                            "bk-resource-header-rewrite": {
                                 "set": {"X-Api-Engine": "APISIX"},
                                 "remove": ["X-Api-Test"]
                             }
@@ -321,7 +321,7 @@ x-real-ip: 127.0.0.1
                             "bk-proxy-rewrite": {
                                 "uri": "/uri/plugin_proxy_rewrite"
                             },
-                            "bk-header-rewrite": {
+                            "bk-resource-header-rewrite": {
                                 "add": {"X-Api-Engine": "APISIX"}
                             }
                         },

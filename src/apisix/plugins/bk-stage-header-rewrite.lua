@@ -16,14 +16,14 @@
 -- to the current version of the project delivered to anyone in the future.
 --
 
--- bk-header-rewrite
+-- bk-stage-header-rewrite
 --
 -- Rewrite the headers of a request using the plugin configuration.
 
 local core        = require("apisix.core")
 local pairs       = pairs
 
-local plugin_name = "bk-header-rewrite"
+local plugin_name = "bk-stage-header-rewrite"
 
 local HEADER_REWRITE_CACHE_COUNT = 1000
 local lrucache = core.lrucache.new({
@@ -76,7 +76,7 @@ local schema = {
 
 local _M = {
     version  = 0.1,
-    priority = 17420,
+    priority = 17421,
     name     = plugin_name,
     schema   = schema,
 }
@@ -117,21 +117,21 @@ function _M.rewrite(conf, ctx)
         return
     end
 
-    local field_cnt = #header_op.add
-    for i = 1, field_cnt, 2 do
+    local add_cnt = #header_op.add
+    for i = 1, add_cnt, 2 do
         local val = core.utils.resolve_var(header_op.add[i + 1], ctx.var)
         local header = header_op.add[i]
         core.request.add_header(ctx, header, val)
     end
 
-    local field_cnt = #header_op.set
-    for i = 1, field_cnt, 2 do
+    local set_cnt = #header_op.set
+    for i = 1, set_cnt, 2 do
         local val = core.utils.resolve_var(header_op.set[i + 1], ctx.var)
         core.request.set_header(ctx, header_op.set[i], val)
     end
 
-    local field_cnt = #header_op.remove
-    for i = 1, field_cnt do
+    local remove_cnt = #header_op.remove
+    for i = 1, remove_cnt do
         core.request.set_header(ctx, header_op.remove[i], nil)
     end
 
