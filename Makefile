@@ -66,7 +66,7 @@ init: apisix-dependencies apisix-core
 	pip install -r ./src/apisix/requirements.txt
 	pip install pre-commit
 	pre-commit install
-	cd src/apisix && make test-busted
+	cd src/apisix && make apisix-test-busted
 
 
 .PHONY: lint
