@@ -64,6 +64,9 @@ edition-reset:
 init: apisix-dependencies apisix-core
 	# TODO: install lua rocks first https://luarocks.org/
 	pip install -r ./src/apisix/requirements.txt
+	cd src/apisix && make test-busted
+	pip install pre-commit
+	pre-commit install
 
 
 .PHONY: lint
