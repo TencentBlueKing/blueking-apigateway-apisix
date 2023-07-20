@@ -125,7 +125,7 @@ function _M.incoming(self, key, limit, window)
     -- TODO: why here make the cli every time? should we put it into the self.red_cli?
     local red, err = redis_cli(self.ratelimit_plugin_info)
     if not red then
-        return red, err, 0
+        return red, "new_redis_cli:" .. err, 0
     end
 
     local res
@@ -135,7 +135,7 @@ function _M.incoming(self, key, limit, window)
     res, err = red:eval(script, 1, key, limit, window)
 
     if err then
-        return nil, err, ttl
+        return nil, "redis_eval:" .. err, ttl
     end
 
     local remaining = res[1]
@@ -143,7 +143,7 @@ function _M.incoming(self, key, limit, window)
 
     local ok, set_err = red:set_keepalive(10000, 100)
     if not ok then
-        return nil, set_err, ttl
+        return nil, "set_keepalive:" .. set_err, ttl
     end
 
     if remaining < 0 then
