@@ -72,7 +72,7 @@ local function redis_cli(conf)
 
     local ok, connect_err = red:connect(conf.redis_host, conf.redis_port or 6379)
     if not ok then
-        return false, connect_err
+        return false, "failed to connect, err: " .. connect_err
     end
 
     local count, check_err = red:get_reused_times()
@@ -80,7 +80,7 @@ local function redis_cli(conf)
         if conf.redis_password and conf.redis_password ~= '' then
             local auth_ok, auth_err = red:auth(conf.redis_password)
             if not auth_ok then
-                return nil, auth_err
+                return nil, "failed to auth, err: " .. auth_err
             end
         end
 
@@ -125,7 +125,7 @@ function _M.incoming(self, key, limit, window)
     -- TODO: why here make the cli every time? should we put it into the self.red_cli?
     local red, err = redis_cli(self.ratelimit_plugin_info)
     if not red then
-        return red, "new_redis_cli:" .. err, 0
+        return red, "failed to new redis_cli, err: " .. err, 0
     end
 
     local res
@@ -135,7 +135,7 @@ function _M.incoming(self, key, limit, window)
     res, err = red:eval(script, 1, key, limit, window)
 
     if err then
-        return nil, "redis_eval:" .. err, ttl
+        return nil, "failed to eval script, err: " .. err, ttl
     end
 
     local remaining = res[1]
@@ -143,7 +143,7 @@ function _M.incoming(self, key, limit, window)
 
     local ok, set_err = red:set_keepalive(10000, 100)
     if not ok then
-        return nil, "set_keepalive:" .. set_err, ttl
+        return nil, "failed to set keepalive, err: " .. set_err, ttl
     end
 
     if remaining < 0 then

@@ -101,6 +101,7 @@ function _M.rate_limit(conf, ctx, plugin_name, key, count, time_window)
         end
 
         core.log.error("failed to limit count: ", err)
+        -- the default allow_degradation is true, so, if rate limit failed, will do nothing, the request will pass
         if conf.allow_degradation then
             return
         end
