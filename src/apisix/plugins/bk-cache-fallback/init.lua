@@ -155,7 +155,7 @@ function _M.get_with_fallback(self, ctx, key, version, create_obj_func, ...)
         lock:unlock()
         log.info("unlock with key ", key_s)
 
-        return nil, "failed to get shared_dict, err: " .. self.plugin_shared_dict_name
+        return nil, "failed to get shared_dict: " .. self.plugin_shared_dict_name
     end
 
     -- 4.2 call create_obj_func
