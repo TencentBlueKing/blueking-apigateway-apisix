@@ -98,7 +98,7 @@ function _M.get_with_fallback(self, ctx, key, version, create_obj_func, ...)
     local lru_obj, err = core.lrucache.plugin_ctx(lrucache, ctx, self.plugin_name,
                                                   create_lrucache_obj, self.plugin_name, self.lrucache_max_items)
     if not lru_obj then
-        core.log.error("failed to get bk-cache-fallback lrucache object: ", err)
+        core.log.error("failed to get bk-cache-fallback lrucache object, err: ", err)
         return nil, err
     end
 
@@ -122,7 +122,7 @@ function _M.get_with_fallback(self, ctx, key, version, create_obj_func, ...)
     -- 2. retrieve the lock
     local lock, create_lock_err = resty_lock:new(lock_shdict_name)
     if not lock then
-        return nil, "failed to create lock: " .. create_lock_err
+        return nil, "failed to create lock, err: " .. create_lock_err
     end
 
     local key_s = cache_key
@@ -130,7 +130,7 @@ function _M.get_with_fallback(self, ctx, key, version, create_obj_func, ...)
 
     local elapsed, lock_err = lock:lock(key_s)
     if not elapsed then
-        return nil, "failed to acquire the lock: " .. lock_err
+        return nil, "failed to acquire the bk-cache-fallback lock, err: " .. lock_err
     end
 
     -- TODO: 函数过长, 需要考虑拆分, 特别是unloct特别多, 也容易出问题

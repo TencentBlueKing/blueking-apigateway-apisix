@@ -58,7 +58,7 @@ local function bk_apigateway_core_do_get(instance_id, instance_secret, host, pat
     )
 
     if not res then
-        err = "request failed, error: " .. err
+        err = "request failed, err: " .. err
         return nil, err
     end
 
@@ -75,7 +75,7 @@ local function bk_apigateway_core_do_get(instance_id, instance_secret, host, pat
     local body, json_err = core.json.decode(res.body)
     -- if json_err ~= nil then
     if not body then
-        err = "response body is not a valid json, error: " ..  json_err .. ", body: " .. res.body
+        err = "response body is not a valid json, err: " ..  json_err .. ", body: " .. res.body
         return nil, err
     end
 
