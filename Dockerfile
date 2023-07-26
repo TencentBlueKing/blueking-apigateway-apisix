@@ -1,4 +1,4 @@
-ARG APISIX_VERSION="3.2.1"
+ARG APISIX_VERSION="3.2.2"
 FROM apache/apisix:$APISIX_VERSION-centos
 
 WORKDIR /usr/local/apisix
