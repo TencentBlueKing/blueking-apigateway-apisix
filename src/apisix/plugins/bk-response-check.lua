@@ -40,9 +40,8 @@ local _M = {
     schema = schema,
 }
 
-function _M.init()
-    prometheus_registry = exporter.get_prometheus()
-
+-- Initializes and registers the plugin metrics.
+local function init_metrics()
     metric_api_requests_total = prometheus_registry:counter(
         "apigateway_api_requests_total",
         "How many HTTP requests processed, partitioned by status code, method and HTTP path.", {
@@ -87,6 +86,14 @@ function _M.init()
             "service_name",
         }
     )
+end
+
+
+
+-- Initializes the plugin and its metrics.
+function _M.init()
+    prometheus_registry = exporter.get_prometheus()
+    init_metrics()
 end
 
 ---@param conf any

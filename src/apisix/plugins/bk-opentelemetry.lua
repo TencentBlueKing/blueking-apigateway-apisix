@@ -47,6 +47,8 @@ local _M = {
     attr_schema = attr_schema,
 }
 
+---@param conf table configuration data
+---@param schema_type string Type of schema to check
 function _M.check_schema(conf, schema_type)
     if schema_type == core.schema.TYPE_METADATA then
         return core.schema.check(metadata_schema, conf)
@@ -58,6 +60,7 @@ end
 local plugin_info
 
 function _M.init()
+    -- get the plugin attribute and validate it
     plugin_info = plugin.plugin_attr(plugin_name) or {}
     local ok, err = core.schema.check(attr_schema, plugin_info)
     if not ok then
@@ -78,18 +81,22 @@ function _M.init()
         _M.log = nil
         return
     end
-
+    
+    -- Initialize OpenTelemetry
     opentelemetry.init()
 end
 
+---@param conf table configuration data
+---@param ctx  apisix.Context
 function _M.rewrite(conf, ctx)
     ---@type apisix.PluginMetadata
     local metadata = plugin.plugin_metadata(plugin_name)
-
+    
+    -- check if the metadata is valid and call opentelemetry.rewrite
     if not (metadata and metadata.value) then
         return
     end
-
+    
     opentelemetry.rewrite(metadata.value, ctx)
 end
 
@@ -120,6 +127,8 @@ local function inject_span(ctx)
     end
 end
 
+---@param conf table configuration data
+---@param ctx  apisix.Context
 function _M.delayed_body_filter(conf, ctx)
     ---@type apisix.PluginMetadata
     local metadata = plugin.plugin_metadata(plugin_name)
@@ -135,6 +144,8 @@ function _M.delayed_body_filter(conf, ctx)
     opentelemetry.delayed_body_filter(metadata.value, ctx)
 end
 
+---@param conf table configuration data
+---@param ctx  apisix.Context
 function _M.log(conf, ctx)
     ---@type apisix.PluginMetadata
     local metadata = plugin.plugin_metadata(plugin_name)

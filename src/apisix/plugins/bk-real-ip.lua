@@ -40,6 +40,11 @@ local _M = {
     metadata_schema = core.table.deepcopy(real_ip.schema),
 }
 
+-- Check configuration schema
+-- If schema type is metadata, validate against real-ip plugin schema 
+-- Otherwise, always return true
+---@param conf table
+---@param schema_type int
 function _M.check_schema(conf, schema_type)
     if schema_type == core.schema.TYPE_METADATA then
         return real_ip.check_schema(conf)
@@ -48,17 +53,27 @@ function _M.check_schema(conf, schema_type)
     return true
 end
 
+
+
+-- Rewrite function that processes the client's request to obtain the real IP address
+-- using metadata configurations. The function leverages the official real-ip plugin
+-- to handle the IP extraction and passes the necessary configuration and context.
+---@param conf any
+---@param ctx apisix.Context
 function _M.rewrite(conf, ctx)
-    ---@type apisix.PluginMetadata
+    -- Obtain plugin metadata configured for the plugin_name
     local metadata = plugin.plugin_metadata(plugin_name)
 
+    -- Assign default_metadata to real_conf to be used as a fallback
     local real_conf = default_metadata
+
+    -- Check if custom metadata exists and use its value as the real configuration
     if metadata and metadata.value then
         real_conf = metadata.value
     end
 
-    -- apisix handle the XFF header in nginx configuration,
-    -- so we don't need to handle it here.
+    -- APISIX handles the XFF (X-Forwarded-For) header in the nginx configuration,
+    -- so there is no need to handle it in this Lua script.
     return real_ip.rewrite(real_conf, ctx)
 end
 

@@ -60,6 +60,7 @@ local _M = {
     schema = schema,
 }
 
+---@param conf table: the plugin configuration
 function _M.check_schema(conf)
     local ok, err = core.schema.check(schema, conf)
     if not ok then
@@ -70,8 +71,10 @@ function _M.check_schema(conf)
     return true
 end
 
+---@param conf table: the plugin configuration
+---@param ctx  apisix.Context
 function _M.rewrite(conf, ctx)
-    -- 为上下文注入资源信息
+    -- Inject  bk_resource(id,name,auth) information into the context
     ctx.var.bk_resource_id = conf.bk_resource_id
     ctx.var.bk_resource_name = conf.bk_resource_name
     ctx.var.bk_resource_auth = conf.bk_resource_auth_obj
