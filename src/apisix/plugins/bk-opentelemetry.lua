@@ -81,7 +81,7 @@ function _M.init()
         _M.log = nil
         return
     end
-    
+
     -- Initialize OpenTelemetry
     opentelemetry.init()
 end
@@ -91,12 +91,11 @@ end
 function _M.rewrite(conf, ctx)
     ---@type apisix.PluginMetadata
     local metadata = plugin.plugin_metadata(plugin_name)
-    
+
     -- check if the metadata is valid and call opentelemetry.rewrite
     if not (metadata and metadata.value) then
         return
     end
-    
     opentelemetry.rewrite(metadata.value, ctx)
 end
 

@@ -41,7 +41,7 @@ local _M = {
 }
 
 -- Check configuration schema
--- If schema type is metadata, validate against real-ip plugin schema 
+-- If schema type is metadata,validate against real-ip plugin schema
 -- Otherwise, always return true
 ---@param conf table
 ---@param schema_type int
