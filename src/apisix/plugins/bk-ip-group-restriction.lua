@@ -25,7 +25,8 @@
 -- Configurations:
 -- allow: Array of IP groups to be allowed.
 -- deny: Array of IP groups to be denied.
-
+--
+-- Note: It is about to be abandoned and will be deleted in the future version
 
 local core = require("apisix.core")
 local stringx = require("pl.stringx")
