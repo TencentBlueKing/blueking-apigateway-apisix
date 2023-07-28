@@ -16,6 +16,22 @@
 -- to the current version of the project delivered to anyone in the future.
 --
 
+
+-- bk-resource-context
+--
+-- This is a custom Apache APISIX plugin that is responsible
+-- for injecting resource ID, resource name, and resource authorization information
+-- into the context.
+--
+-- Configurations:
+-- bk_resource_id: The ID of the resource.
+-- bk_resource_name: The name of the resource.
+-- bk_resource_auth: The resource authorization-related configurations, including
+--                   verified_app_required, verified_user_required, resource_perm_required,
+--                   and skip_user_verification.
+
+
+
 local core = require("apisix.core")
 local context_resource_bkauth = require("apisix.plugins.bk-define.context-resource-bkauth")
 

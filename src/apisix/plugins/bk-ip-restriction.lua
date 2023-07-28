@@ -16,6 +16,20 @@
 -- to the current version of the project delivered to anyone in the future.
 --
 
+
+
+-- bk-ip-restriction
+--
+-- An extension of the ip-restriction plugin for Apache APISIX that adds a custom
+-- error object. This plugin inherits the functionality of the original ip-restriction
+-- plugin and tailors the error handling to be more appropriate for the specific
+-- gateway implementation.
+--
+-- Configurations:
+--    whitelist: array[string]  List of IPs or CIDR ranges to whitelist.
+--    blacklist: array[string]  List of IPs or CIDR ranges to blacklist.
+
+
 local core = require("apisix.core")
 local base = require("apisix.plugins.ip-restriction.init")
 local errorx = require("apisix.plugins.bk-core.errorx")

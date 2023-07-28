@@ -16,6 +16,17 @@
 -- to the current version of the project delivered to anyone in the future.
 --
 
+-- bk-ip-group-restriction
+--
+-- The plugin provides the following functionalities:
+-- 1. Creates an IP matcher to check if the user's IP address matches the specified IP groups.
+-- 2. Determines whether to allow or deny access based on the plugin configuration.
+--
+-- Configurations:
+-- allow: Array of IP groups to be allowed.
+-- deny: Array of IP groups to be denied.
+
+
 local core = require("apisix.core")
 local stringx = require("pl.stringx")
 local pl_types = require("pl.types")

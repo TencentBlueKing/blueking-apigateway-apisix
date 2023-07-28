@@ -16,9 +16,19 @@
 -- to the current version of the project delivered to anyone in the future.
 --
 
--- This plugin is use to get the real ip from the request.
--- Unlike apisix real-ip plugin, this plugin is not depend on plugin configuration,
--- instead, it use the metadata as the configuration.
+
+-- bk-real-ip
+--
+-- This is a custom Apache APISIX plugin named "bk-real-ip" that is responsible
+-- for obtaining the real IP address of the client.
+--
+-- The plugin leverages the official "real-ip" plugin to handle IP extraction
+-- and passes the necessary configuration and context.
+--
+-- configuration:
+-- source: The default source is "http_x_forwarded_for".
+-- recursive: By default, recursion is disabled.
+
 local core = require("apisix.core")
 local plugin = require("apisix.plugin")
 local real_ip = require("apisix.plugins.real-ip")

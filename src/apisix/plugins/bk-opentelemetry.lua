@@ -16,6 +16,24 @@
 -- to the current version of the project delivered to anyone in the future.
 --
 
+
+-- bk-opentelemetry
+--
+-- A plugin for Apache APISIX that integrates OpenTelemetry API for observability.
+-- This plugin measures the performance and provides distributed tracing capabilities
+-- within the API Gateway. It collects various attributes from the request context,
+-- such as instance ID, app code, gateway name, stage name, etc., and injects them
+-- into the OpenTelemetry spans for better insights into the API Gateway's performance
+-- and operation.
+--
+-- Configurations:
+--   enabled: enable or disable the plugin, from dashboard publish
+-- other attr:
+--   sampler.name
+--   sampler.options
+--   .... from plugin_metadata
+
+
 local core = require("apisix.core")
 local opentelemetry = require("apisix.plugins.opentelemetry")
 local plugin = require("apisix.plugin")

@@ -16,6 +16,19 @@
 -- to the current version of the project delivered to anyone in the future.
 --
 
+-- bk-response-check
+--
+-- This is a custom Apache APISIX plugin  that is responsible
+-- for recording Prometheus metrics related to API requests and responses.
+--
+-- The plugin defines the following metrics:
+-- 1. metric_api_requests_total: Records the number of processed HTTP requests,
+--    partitioned by status code, method, and HTTP path.
+-- 2. metric_api_request_duration: Records the time taken to process the requests,
+--    partitioned by status code, method, and HTTP path.
+-- 3. metric_app_requests_total: Records the number of HTTP requests per app_code/api/resource.
+
+
 local core = require("apisix.core")
 local exporter = require("apisix.plugins.prometheus.exporter")
 
@@ -40,8 +53,12 @@ local _M = {
     schema = schema,
 }
 
--- Initializes and registers the plugin metrics.
-local function init_metrics()
+
+-- Initializes the plugin and its metrics.
+function _M.init()
+    prometheus_registry = exporter.get_prometheus()
+
+    -- registers  metrics.
     metric_api_requests_total = prometheus_registry:counter(
         "apigateway_api_requests_total",
         "How many HTTP requests processed, partitioned by status code, method and HTTP path.", {
@@ -86,14 +103,6 @@ local function init_metrics()
             "service_name",
         }
     )
-end
-
-
-
--- Initializes the plugin and its metrics.
-function _M.init()
-    prometheus_registry = exporter.get_prometheus()
-    init_metrics()
 end
 
 ---@param conf any
