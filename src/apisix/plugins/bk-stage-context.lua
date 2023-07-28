@@ -132,6 +132,9 @@ local _M = {
     schema = schema,
 }
 
+
+---@param jwt_private_key string: JWT private key (encoded in Base64)
+---@return string|nil, string: The decoded JWT private key, or nil and error message if the decoding fails
 local function decode_jwt_private_key(jwt_private_key)
     local decoded_private_key = ngx_decode_base64(jwt_private_key)
     if not decoded_private_key then
@@ -141,6 +144,10 @@ local function decode_jwt_private_key(jwt_private_key)
     return decoded_private_key
 end
 
+
+
+---@param conf table: The user-provided configuration for the plugin instance
+---@return boolean, string|nil: true and nil if the configuration is valid, false and error message if not
 function _M.check_schema(conf)
     local ok, err = core.schema.check(schema, conf)
     if not ok then
@@ -158,8 +165,11 @@ function _M.check_schema(conf)
     return true
 end
 
+
+---@param conf table: The user-provided configuration for the plugin instance
+---@param ctx  api.Context: The request context
 function _M.rewrite(conf, ctx)
-    -- 为上下文注入网关信息
+    -- Inject gateway information into the context
     ctx.var.instance_id = conf.instance_id
     ctx.var.bk_gateway_name = conf.bk_gateway_name
     ctx.var.bk_gateway_id = conf.bk_gateway_id
@@ -167,7 +177,7 @@ function _M.rewrite(conf, ctx)
     ctx.var.jwt_private_key = conf.decoded_jwt_private_key
     ctx.var.bk_api_auth = conf.bk_api_auth_obj
 
-    -- 为上下文注入 ctx 信息
+    -- Inject context variables related to resource and service
     -- https://apisix.apache.org/zh/docs/apisix/apisix-variable
     ctx.var.bk_resource_name = ctx.route_name
     ctx.var.bk_service_name = ctx.service_name

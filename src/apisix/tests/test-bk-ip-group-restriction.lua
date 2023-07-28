@@ -114,17 +114,17 @@ describe(
                     "should parse mixed address", function()
                         local matcher = plugin._create_ip_matcher(
                             [[
-# ipv4
-10.0.0.1
+                                # ipv4
+                                10.0.0.1
 
-# ipv4 cidr
-10.0.0.0/24
+                                # ipv4 cidr
+                                10.0.0.0/24
 
-# ipv6
-2017::8888
+                                # ipv6
+                                2017::8888
 
-# ipv6 cidr
-2017::8888/32
+                                # ipv6 cidr
+                                2017::8888/32
                             ]]
                         )
 
