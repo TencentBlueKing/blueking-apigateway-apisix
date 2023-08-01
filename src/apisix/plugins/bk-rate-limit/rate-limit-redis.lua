@@ -15,7 +15,8 @@
 -- We undertake not to change the open source license (MIT license) applicable
 -- to the current version of the project delivered to anyone in the future.
 --
--- # rate-limit-redis
+-- rate-limit-redis
+--
 -- Connect to redis and provide redis-based rate-limit function.
 --
 -- It gets redis configuration via plugin_attr bk-rate-limit, e.g.

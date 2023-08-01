@@ -18,7 +18,7 @@
 -- bk-stage-rate-limit
 --
 -- rate limit of app to the specified stage, with app dimension.
--- note: there is a special key `__default` in the rate-limit configuration,
+-- note: There is a special key `__default` in the rate-limit configuration,
 --       it indicates the default rate-limit config of an app, and it should exist.
 --
 -- This plugin depends on:

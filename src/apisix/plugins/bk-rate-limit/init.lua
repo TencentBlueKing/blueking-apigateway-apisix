@@ -15,7 +15,8 @@
 -- We undertake not to change the open source license (MIT license) applicable
 -- to the current version of the project delivered to anyone in the future.
 --
--- # bk-rate-limit
+-- bk-rate-limit
+--
 -- Provide rate-limit funciton based on redis. It does not directly provide plugin function,
 -- but provides basic functions for specific plugins, such as bk-resource-rate-limit.
 --
@@ -100,7 +101,7 @@ function _M.rate_limit(conf, ctx, plugin_name, key, count, time_window)
     local lim, err = core.lrucache.plugin_ctx(lrucache, ctx, plugin_name, create_limit_obj, plugin_name)
 
     if not lim then
-        core.log.error("failed to fetch bk-limit-ratelimit object: ", err)
+        core.log.error("failed to fetch rate-limit-redis object: ", err)
         if conf.allow_degradation then
             return
         end
