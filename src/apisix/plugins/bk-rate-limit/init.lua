@@ -15,12 +15,33 @@
 -- We undertake not to change the open source license (MIT license) applicable
 -- to the current version of the project delivered to anyone in the future.
 --
-
+-- # bk-rate-limit
+-- Provide rate-limit funciton based on redis. It does not directly provide plugin function,
+-- but provides basic functions for specific plugins, such as bk-resource-rate-limit.
+--
+-- If the limit is exceeded, it will return code 429. If there is an error, it will return code 500,
+-- but you set conf.allow_degradation to true, it will ignore the error.
+-- And you can set conf.show_limit_quota_header to true, it will set some response headers X-Bkapi-RateLimit-Limit,
+-- X-Bkapi-RateLimit-Remaining, X-Bkapi-RateLimit-Reset, X-Bkapi-RateLimit-Plugin to tell the request user
+-- the rate-limit data.
+--
+-- It gets redis configuration via plugin_attr bk-rate-limit, e.g.
+-- plugin_attr:
+--   bk-rate-limit:
+--     redis_host: 127.0.0.1
+--     redis_port: 6380
+--     redis_password: blueking
+--     redis_database: 0
+--     redis_timeout: 1001
+--
 local core = require("apisix.core")
-local limit_redis_new = require("apisix.plugins.bk-rate-limit.rate-limit-redis").new
-local lrucache = core.lrucache.new({
-    type = 'plugin', serial_creating = true,
-})
+local rate_limit_redis = require("apisix.plugins.bk-rate-limit.rate-limit-redis")
+local lrucache = core.lrucache.new(
+    {
+        type = "plugin",
+        serial_creating = true,
+    }
+)
 
 local _M = {
     app_limiter_schema = {
@@ -45,29 +66,32 @@ local _M = {
             },
             allow_degradation = {
                 type = "boolean",
-                default = true
+                default = true,
             },
             show_limit_quota_header = {
                 type = "boolean",
-                default = true
+                default = true,
             },
         },
     },
 }
 
-
+---Create rate-limit-redis object
+---@param plugin_name string @apisix plugin name
+---@return table @rate-limit-redis object
 local function create_limit_obj(plugin_name)
     core.log.info("create new limit-count plugin instance")
+
     -- maybe we can use https://github.com/ledgetech/lua-resty-redis-connector to support redis-sentinel
-    return limit_redis_new("plugin-" .. plugin_name)
+    return rate_limit_redis.new("plugin-" .. plugin_name)
 end
 
 ---@param conf table @apisix plugin configuration
 ---@param ctx table @apisix context
 ---@param plugin_name string @apisix plugin name
 ---@param key string @ratelimit key
----@param count string @ratelimit count, an integer
----@param time_window string @ratelimit time window, in seconds
+---@param count integer @ratelimit count, an integer
+---@param time_window integer @ratelimit time window, in seconds
 function _M.rate_limit(conf, ctx, plugin_name, key, count, time_window)
     -- TODO: should all rate-limit plugin share the same redis connection pool? remove the plugin_name here?
 
@@ -91,10 +115,10 @@ function _M.rate_limit(conf, ctx, plugin_name, key, count, time_window)
         if err == "rejected" then
             -- show count limit header when rejected
             if conf.show_limit_quota_header then
-                core.response.set_header("X-Bkapi-RateLimit-Limit", count,
-                    "X-Bkapi-RateLimit-Remaining", 0,
-                    "X-Bkapi-RateLimit-Reset", reset,
-                    "X-Bkapi-RateLimit-Plugin", plugin_name)
+                core.response.set_header(
+                    "X-Bkapi-RateLimit-Limit", count, "X-Bkapi-RateLimit-Remaining", 0, "X-Bkapi-RateLimit-Reset",
+                    reset, "X-Bkapi-RateLimit-Plugin", plugin_name
+                )
             end
 
             return 429
@@ -109,12 +133,11 @@ function _M.rate_limit(conf, ctx, plugin_name, key, count, time_window)
     end
 
     if conf.show_limit_quota_header then
-        core.response.set_header("X-Bkapi-RateLimit-Limit", count,
-            "X-Bkapi-RateLimit-Remaining", remaining,
-            "X-Bkapi-RateLimit-Reset", reset,
-            "X-Bkapi-RateLimit-Plugin", plugin_name)
+        core.response.set_header(
+            "X-Bkapi-RateLimit-Limit", count, "X-Bkapi-RateLimit-Remaining", remaining, "X-Bkapi-RateLimit-Reset",
+            reset, "X-Bkapi-RateLimit-Plugin", plugin_name
+        )
     end
 end
-
 
 return _M

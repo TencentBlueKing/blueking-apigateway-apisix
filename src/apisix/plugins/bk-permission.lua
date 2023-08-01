@@ -15,6 +15,18 @@
 -- We undertake not to change the open source license (MIT license) applicable
 -- to the current version of the project delivered to anyone in the future.
 --
+-- bk-permission
+--
+-- Check the permission of the app to access the gateway resource.
+--
+-- Fetch the app permisson data for resource throuth the api of the core-api service.
+-- The permission has two dimensions:
+-- - by gateway: The app has permissions to all resources under the gateway
+-- - by resource: The app has permission to the specified resource
+--
+-- This plugin depends on:
+--    * bk-auth-verify: Get the verified bk_app_code
+--
 local core = require("apisix.core")
 local errorx = require("apisix.plugins.bk-core.errorx")
 local cache_fallback = require("apisix.plugins.bk-cache-fallback.init")

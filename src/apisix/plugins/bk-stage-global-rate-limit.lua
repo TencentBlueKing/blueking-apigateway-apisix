@@ -15,13 +15,11 @@
 -- We undertake not to change the open source license (MIT license) applicable
 -- to the current version of the project delivered to anyone in the future.
 --
-
 -- bk-stage-global-rate-limit
 --
 -- rate limit for stage, without app_code dimension, global for all apps
 -- note: this is a replacement for bk-global-rate-limit, which is deprecated
-
-
+--
 local core = require("apisix.core")
 local errorx = require("apisix.plugins.bk-core.errorx")
 local ratelimit = require("apisix.plugins.bk-rate-limit.init")
@@ -51,11 +49,11 @@ local _M = {
             },
             allow_degradation = {
                 type = "boolean",
-                default = true
+                default = true,
             },
             show_limit_quota_header = {
                 type = "boolean",
-                default = true
+                default = true,
             },
         },
     },
@@ -71,10 +69,12 @@ function _M.access(conf, ctx)
     end
 
     -- TODO: make it lazy, share the key with other plugins
-    local key = table_concat({
-        ctx.var.bk_gateway_name,
-        ctx.var.bk_stage_name,
-    }, ":")
+    local key = table_concat(
+        {
+            ctx.var.bk_gateway_name,
+            ctx.var.bk_stage_name,
+        }, ":"
+    )
 
     local code = ratelimit.rate_limit(conf, ctx, plugin_name, key, conf.rate.tokens, conf.rate.period)
     if not code then
