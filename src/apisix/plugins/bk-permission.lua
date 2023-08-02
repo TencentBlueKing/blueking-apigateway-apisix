@@ -15,6 +15,36 @@
 -- We undertake not to change the open source license (MIT license) applicable
 -- to the current version of the project delivered to anyone in the future.
 --
+-- bk-permission
+--
+-- Check the permission of the app to access the gateway resource.
+--
+-- Fetch the app permisson data for resource throuth the api of the core-api service.
+-- The permission has two dimensions:
+-- - by gateway: The app has permissions to all resources under the gateway
+-- - by resource: The app has permission to the specified resource
+--
+-- core-api service api:
+-- GET http://bk-apigateway-core-api/api/v1/micro-gateway/{micro_instance_id}/permissions/
+-- request params:
+--   bk_gateway_name={bk_gateway_name}
+--   bk_resource_name={bk_resource_name}
+--   bk_stage_name={bk_stage_name}
+--   bk_app_code={bk_app_code}
+-- request headers:
+--   X-Bk-Micro-Gateway-Instance-Id: {micro_instance_id}
+--   X-Bk-Micro-Gateway-Instance-Secret: {micro_instance_secret}
+-- response body:
+--     {
+--         "data": {
+--             "{bk_gateway_name}:-:{bk_app_code}": 1683523681,                  # 按网关的权限
+--             "{bk_gateway_name}:{bk_resource_name}:{bk_app_code}": 1658546464  # 按资源的权限
+--         }
+--     }
+--
+-- This plugin depends on:
+--    * bk-auth-verify: Get the verified bk_app_code
+--
 local core = require("apisix.core")
 local errorx = require("apisix.plugins.bk-core.errorx")
 local cache_fallback = require("apisix.plugins.bk-cache-fallback.init")

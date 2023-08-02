@@ -15,21 +15,21 @@
 -- We undertake not to change the open source license (MIT license) applicable
 -- to the current version of the project delivered to anyone in the future.
 --
-
 local plugin = require("apisix.plugins.bk-stage-global-rate-limit")
 local ratelimit = require("apisix.plugins.bk-rate-limit.init")
 
 describe(
     "bk-stage-global-rate-limit", function()
-        ---@type apisix.Context
         local ctx
         local conf
 
         before_each(
             function()
-                stub(ratelimit, "rate_limit", function ()
-                    return nil
-                end)
+                stub(
+                    ratelimit, "rate_limit", function()
+                        return nil
+                    end
+                )
 
                 ctx = {
                     var = {
@@ -78,12 +78,13 @@ describe(
             end
         )
 
-
         it(
             "should do ratelimit, reach the limit", function()
-                stub(ratelimit, "rate_limit", function ()
-                    return 500
-                end)
+                stub(
+                    ratelimit, "rate_limit", function()
+                        return 500
+                    end
+                )
                 local code = plugin.access(conf, ctx)
                 assert.is_not_nil(code)
                 assert.stub(ratelimit.rate_limit).was_called(1)

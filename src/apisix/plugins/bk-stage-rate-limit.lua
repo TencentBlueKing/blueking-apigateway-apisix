@@ -15,7 +15,16 @@
 -- We undertake not to change the open source license (MIT license) applicable
 -- to the current version of the project delivered to anyone in the future.
 --
-
+-- bk-stage-rate-limit
+--
+-- rate limit of app to the specified stage, with app dimension.
+-- note: There is a special key `__default` in the rate-limit configuration,
+--       it indicates the default rate-limit config of an app, and it should exist.
+--
+-- This plugin depends on:
+--    * bk-rate-limit: The real logic for handling rate-limit
+--    * bk-auth-verify: Get the verified bk_app_code
+--
 local core = require("apisix.core")
 local errorx = require("apisix.plugins.bk-core.errorx")
 local ratelimit = require("apisix.plugins.bk-rate-limit.init")
@@ -35,6 +44,8 @@ function _M.check_schema(conf)
     return core.schema.check(_M.schema, conf)
 end
 
+---@param conf table @apisix plugin configuration
+---@param ctx table @apisix context
 function _M.access(conf, ctx)
     if types.is_empty(conf) then
         return
@@ -50,12 +61,14 @@ function _M.access(conf, ctx)
     end
 
     -- TODO: make it lazy, share the key with other plugins
-    local key = table_concat({
-        bk_app_code,
-        ctx.var.bk_gateway_name,
-        ctx.var.bk_stage_name,
-        "-",
-    }, ":")
+    local key = table_concat(
+        {
+            bk_app_code,
+            ctx.var.bk_gateway_name,
+            ctx.var.bk_stage_name,
+            "-",
+        }, ":"
+    )
 
     local rates = conf.rates[bk_app_code] or conf.rates["__default"]
 
