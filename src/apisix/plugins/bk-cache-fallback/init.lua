@@ -15,16 +15,17 @@
 -- We undertake not to change the open source license (MIT license) applicable
 -- to the current version of the project delivered to anyone in the future.
 --
-
+-- bk-cache-fallback
 --
 -- 这个模块主要逻辑:
--- 1. 使用lrucache做第一级缓存, lrucache中不存在, 则调用后台接口, 获取数据
--- 2. 如果调用后台接口成功, 写lrucache, ttl=60s, 会写一份数据到shared_dict中, ttl=1h
--- 3. 如果调用后台接口失败, 会尝试从shared_dict中获取数据(相当于 1 个小时内的快照)
+-- 1. 使用 lrucache 做第一级缓存, lrucache 中不存在, 则调用后台接口, 获取数据
+-- 2. 如果调用后台接口成功, 写 lrucache, ttl=60s, 会写一份数据到 shared_dict 中, ttl=1h
+-- 3. 如果调用后台接口失败, 会尝试从 shared_dict 中获取数据(相当于 1 个小时内的快照)
 -- 这么做的目的是:
 -- 1. 提升整体的可用率, 避免因为依赖的核心服务出问题影响到正常代理的流量
 -- 其他:
 -- 1. 这是从官方lrucache模块代码修改而来
+--
 local core = require("apisix.core")
 local resty_lock = require("resty.lock")
 local log = require("apisix.core.log")
@@ -33,7 +34,7 @@ local tostring = tostring
 local ngx = ngx
 local ngx_shared = ngx.shared
 
-local fallback_missing_err =  "create_obj_funcs failed and got no data in the shared_dict for fallback"
+local fallback_missing_err = "create_obj_funcs failed and got no data in the shared_dict for fallback"
 
 -- NOTE: here we use the same shared_dict as apisix lrucache-lock
 --       if this become a problem in the future, we should apply and use our own bk-lrucache-lock
@@ -43,13 +44,12 @@ if ngx.config.subsystem == "stream" then
 end
 
 local GLOBAL_LRUCACHE_MAX_ITEMS = 1024
-local GLOBAL_LRUCACHE_TTL = 60           -- 1 min
-local GLOBAL_LRUCACHE_SHORT_TTL = 10     -- 10 seconds
+local GLOBAL_LRUCACHE_TTL = 60 -- 1 min
+local GLOBAL_LRUCACHE_SHORT_TTL = 10 -- 10 seconds
 local GLOBAL_FALLBACK_CACHE_TTL = 60 * 60 -- 1 hour
 
-
 local _M = {
-    name = "bk-cache-fallback"
+    name = "bk-cache-fallback",
 }
 
 local mt = {
@@ -74,15 +74,17 @@ function _M.new(conf, plugin_name)
     )
 end
 
-local lrucache = core.lrucache.new({
-    type = 'plugin', serial_creating = true,
-})
+local lrucache = core.lrucache.new(
+    {
+        type = "plugin",
+        serial_creating = true,
+    }
+)
 
 local function create_lrucache_obj(plugin_name, max_items)
     core.log.info("create new lrucache for bk-cache-fallback plugin instance: " .. plugin_name)
     return lru_new(max_items)
 end
-
 
 --- get_with_fallback will get the key from lrucache first, if not found, will try to call create_obj_func to retrieve
 --- the data, if create_obj_func successed, will set into both lrucache and shared_dict,
@@ -95,8 +97,9 @@ end
 ---                                 the return value type should be table
 function _M.get_with_fallback(self, ctx, key, version, create_obj_func, ...)
     -- debugger()
-    local lru_obj, err = core.lrucache.plugin_ctx(lrucache, ctx, self.plugin_name,
-                                                  create_lrucache_obj, self.plugin_name, self.lrucache_max_items)
+    local lru_obj, err = core.lrucache.plugin_ctx(
+        lrucache, ctx, self.plugin_name, create_lrucache_obj, self.plugin_name, self.lrucache_max_items
+    )
     if not lru_obj then
         core.log.error("failed to get bk-cache-fallback lrucache object, err: ", err)
         return nil, err
@@ -133,7 +136,7 @@ function _M.get_with_fallback(self, ctx, key, version, create_obj_func, ...)
         return nil, "failed to acquire the bk-cache-fallback lock, err: " .. lock_err
     end
 
-    -- TODO: 函数过长, 需要考虑拆分, 特别是unloct特别多, 也容易出问题
+    -- TODO: 函数过长, 需要考虑拆分, 特别是 unlock 特别多, 也容易出问题
     -- like: local ok, obj = pcall(foo) ...  lock.unlock()
 
     -- NOTE: from here, should release the lock before return
@@ -163,8 +166,13 @@ function _M.get_with_fallback(self, ctx, key, version, create_obj_func, ...)
 
     -- call create_obj_func success
     if create_obj_err == nil then
+        lru_obj:set(
+            cache_key, {
+                val = obj,
+                ver = version,
+            }, self.lrucache_ttl
+        )
 
-        lru_obj:set(cache_key, {val = obj, ver = version}, self.lrucache_ttl)
         -- TODO: set failed: bad value type
         local obj_str, json_err = core.json.encode(obj)
         if json_err == nil then
@@ -173,14 +181,9 @@ function _M.get_with_fallback(self, ctx, key, version, create_obj_func, ...)
                 core.log.error("shared_data_dict:set failed: ", set_err)
             end
         else
-            core.log.error(
-                "shared_data_dict:set failed: the obj can not be encoded to json: ",
-                json_err,
-                ", obj: ",
-                obj
-            )
+            core.log
+                .error("shared_data_dict:set failed: the obj can not be encoded to json: ", json_err, ", obj: ", obj)
         end
-
 
         lock:unlock()
         log.info("unlock with key ", key_s)
@@ -189,9 +192,7 @@ function _M.get_with_fallback(self, ctx, key, version, create_obj_func, ...)
         -- NOTE: we should not expose the real create_obj_err to the user
         --       it may contains some sensitive information
         core.log.error(
-            self.plugin_name_with_colon,
-            "call create_obj_func failed: ",
-            create_obj_err,
+            self.plugin_name_with_colon, "call create_obj_func failed: ", create_obj_err,
             ", will fallback into getting the data from shared_dict"
         )
     end
@@ -205,7 +206,12 @@ function _M.get_with_fallback(self, ctx, key, version, create_obj_func, ...)
     if sd ~= nil then
         local obj_decoded, json_err = core.json.decode(sd)
         if json_err == nil then
-            lru_obj:set(cache_key, {val = obj_decoded, ver = version}, self.lrucache_ttl)
+            lru_obj:set(
+                cache_key, {
+                    val = obj_decoded,
+                    ver = version,
+                }, self.lrucache_ttl
+            )
 
             lock:unlock()
             log.info("unlock with key ", key_s)
@@ -221,7 +227,12 @@ function _M.get_with_fallback(self, ctx, key, version, create_obj_func, ...)
         err = fallback_missing_err,
     }
     -- set into ttl with a short ttl, guard for call the create_obj_func in the next request
-    lru_obj:set(cache_key, {val = err_data, ver = version}, self.lrucache_short_ttl)
+    lru_obj:set(
+        cache_key, {
+            val = err_data,
+            ver = version,
+        }, self.lrucache_short_ttl
+    )
 
     lock:unlock()
     log.info("unlock with key ", key_s)

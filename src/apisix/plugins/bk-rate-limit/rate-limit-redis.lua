@@ -15,7 +15,19 @@
 -- We undertake not to change the open source license (MIT license) applicable
 -- to the current version of the project delivered to anyone in the future.
 --
-
+-- rate-limit-redis
+--
+-- Connect to redis and provide redis-based rate-limit function.
+--
+-- It gets redis configuration via plugin_attr bk-rate-limit, e.g.
+-- plugin_attr:
+--   bk-rate-limit:
+--     redis_host: 127.0.0.1
+--     redis_port: 6380
+--     redis_password: blueking
+--     redis_database: 0
+--     redis_timeout: 1001
+--
 local pl_types = require("pl.types")
 local redis_new = require("resty.redis").new
 local core = require("apisix.core")
@@ -24,55 +36,66 @@ local assert = assert
 local setmetatable = setmetatable
 local tostring = tostring
 
-
-local _M = {version = 0.1}
+local _M = {
+    version = 0.1,
+}
 
 local attr_schema = {
     type = "object",
     properties = {
         redis_host = {
-            type = "string", minLength = 2
+            type = "string",
+            minLength = 2,
         },
         redis_port = {
-            type = "integer", minimum = 1, default = 6379,
+            type = "integer",
+            minimum = 1,
+            default = 6379,
         },
         redis_password = {
-            type = "string", minLength = 0,
+            type = "string",
+            minLength = 0,
         },
         redis_database = {
-            type = "integer", minimum = 0, default = 0,
+            type = "integer",
+            minimum = 0,
+            default = 0,
         },
         redis_timeout = {
-            type = "integer", minimum = 1, default = 1000,
+            type = "integer",
+            minimum = 1,
+            default = 1000,
         },
-    }
+    },
 }
 
 local mt = {
-    __index = _M
+    __index = _M,
 }
 
-
-local script = core.string.compress_script([=[
+local script = core.string.compress_script(
+    [=[
     local ttl = redis.call('ttl', KEYS[1])
     if ttl < 0 then
         redis.call('set', KEYS[1], ARGV[1] - 1, 'EX', ARGV[2])
         return {ARGV[1] - 1, ARGV[2]}
     end
     return {redis.call('incrby', KEYS[1], -1), ttl}
-]=])
+]=]
+)
 
 -- maybe we can use https://github.com/go-redis/redis_rate/blob/v10/lua.go to support leaky-bucket
 
+---@param conf table @plugin-attr configuration
 local function redis_cli(conf)
     local red = redis_new()
-    local timeout = conf.redis_timeout or 1000    -- 1sec
+    local timeout = conf.redis_timeout or 1000 -- 1sec
 
     red:set_timeouts(timeout, timeout, timeout)
 
     local ok, connect_err = red:connect(conf.redis_host, conf.redis_port or 6379)
     if not ok then
-        return false, "failed to connect, err: " .. connect_err
+        return false, "failed to connect to redis, err: " .. connect_err
     end
 
     local count, check_err = red:get_reused_times()
@@ -80,7 +103,7 @@ local function redis_cli(conf)
         if conf.redis_password and conf.redis_password ~= '' then
             local auth_ok, auth_err = red:auth(conf.redis_password)
             if not auth_ok then
-                return nil, "failed to auth, err: " .. auth_err
+                return nil, "failed to auth redis, err: " .. auth_err
             end
         end
 
@@ -92,18 +115,20 @@ local function redis_cli(conf)
             end
         end
     elseif check_err then
-        -- core.log.info(" err: ", err)
         return nil, check_err
     end
     return red, nil
 end
 
+---@param plugin_name string @apisix plugin name
 function _M.new(plugin_name)
     local ratelimit_plugin_info = plugin.plugin_attr("bk-rate-limit") or {}
     local ok, err = core.schema.check(attr_schema, ratelimit_plugin_info)
     if not ok then
-        core.log.error("failed to check the plugin_attr[bk-rate-limit]", ": ", err,
-                       "plugin: bk-rate-limit will not work, please check config.yaml: plugin_attr.bk-rate-limit")
+        core.log.error(
+            "failed to check the plugin_attr[bk-rate-limit], err: ", err,
+            "plugin: bk-rate-limit will not work, please check config.yaml: plugin_attr.bk-rate-limit"
+        )
         ratelimit_plugin_info = {}
     end
 
@@ -115,6 +140,9 @@ function _M.new(plugin_name)
     return setmetatable(self, mt)
 end
 
+---@param key string @ratelimit key
+---@param limit integer @ratelimit limit, an integer
+---@param window integer @ratelimit time window, in seconds
 function _M.incoming(self, key, limit, window)
     assert(limit > 0 and window > 0)
 
@@ -125,7 +153,7 @@ function _M.incoming(self, key, limit, window)
     -- TODO: why here make the cli every time? should we put it into the self.red_cli?
     local red, err = redis_cli(self.ratelimit_plugin_info)
     if not red then
-        return red, "failed to new redis_cli, err: " .. err, 0
+        return nil, "failed to new redis_cli, err: " .. err, 0
     end
 
     local res
