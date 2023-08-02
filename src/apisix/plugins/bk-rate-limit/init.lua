@@ -117,8 +117,10 @@ function _M.rate_limit(conf, ctx, plugin_name, key, count, time_window)
             -- show count limit header when rejected
             if conf.show_limit_quota_header then
                 core.response.set_header(
-                    "X-Bkapi-RateLimit-Limit", count, "X-Bkapi-RateLimit-Remaining", 0, "X-Bkapi-RateLimit-Reset",
-                    reset, "X-Bkapi-RateLimit-Plugin", plugin_name
+                    "X-Bkapi-RateLimit-Limit", count,
+                    "X-Bkapi-RateLimit-Remaining", 0,
+                    "X-Bkapi-RateLimit-Reset", reset,
+                    "X-Bkapi-RateLimit-Plugin", plugin_name
                 )
             end
 
@@ -135,8 +137,10 @@ function _M.rate_limit(conf, ctx, plugin_name, key, count, time_window)
 
     if conf.show_limit_quota_header then
         core.response.set_header(
-            "X-Bkapi-RateLimit-Limit", count, "X-Bkapi-RateLimit-Remaining", remaining, "X-Bkapi-RateLimit-Reset",
-            reset, "X-Bkapi-RateLimit-Plugin", plugin_name
+            "X-Bkapi-RateLimit-Limit", count,
+            "X-Bkapi-RateLimit-Remaining", remaining,
+            "X-Bkapi-RateLimit-Reset", reset,
+            "X-Bkapi-RateLimit-Plugin", plugin_name
         )
     end
 end
