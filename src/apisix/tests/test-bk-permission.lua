@@ -26,10 +26,6 @@ describe(
 
         before_each(
             function()
-                -- stub(bk_apigateway_core_component, "query_permission", function ()
-                --     return {}, nil
-                -- end)
-
                 ctx = {
                     var = {
                         bk_gateway_name = "bk-gateway",
@@ -57,7 +53,6 @@ describe(
 
         after_each(
             function()
-                -- bk_apigateway_core_component.query_permission:revert()
                 cache_fallback.get_with_fallback:revert()
             end
         )
@@ -85,245 +80,221 @@ describe(
             end
         )
 
-        it(
+        context(
             "query_permission", function()
-                local permission = {
-                    ["hello"] = "world",
-                }
-                stub(
-                    bk_apigateway_core_component, "query_permission", function()
-                        return permission, nil
+                it(
+                    "query_permission", function()
+                        local permission = {
+                            ["hello"] = "world",
+                        }
+                        stub(
+                            bk_apigateway_core_component, "query_permission", function()
+                                return permission, nil
+                            end
+                        )
+
+                        local data, err = plugin._query_permission(
+                            "bk-gateway", "bk-stage", "bk-resource", "bk-app-code"
+                        )
+                        assert.is_nil(err)
+                        assert.is_equal(permission, data)
+
+                        assert.stub(bk_apigateway_core_component.query_permission).was_called(1)
+
+                        bk_apigateway_core_component.query_permission:revert()
                     end
                 )
-
-                local data, err = plugin._query_permission("bk-gateway", "bk-resource", "bk-app-code")
-                assert.is_nil(err)
-                assert.is_equal(permission, data)
-
-                assert.stub(bk_apigateway_core_component.query_permission).was_called(1)
-
-                bk_apigateway_core_component.query_permission:revert()
             end
         )
 
-        it(
-            "no resource_perm_required", function()
-                stub(
-                    cache_fallback, "get_with_fallback", function()
-                        return {}, nil
-                    end
-                )
-                ctx.var.bk_resource_auth.resource_perm_required = false
-                plugin.init()
-                local code = plugin.access(conf, ctx)
-                assert.is_nil(code)
-                assert.stub(cache_fallback.get_with_fallback).was_called(0)
-                -- ctx.var.bk_resource_auth.resource_perm_required = true
-            end
-        )
+        context(
+            "access", function()
+                local fallback_data
+                local fallback_err
 
-        it(
-            "resource_perm_required = true, but app_code is empty", function()
-                stub(
-                    cache_fallback, "get_with_fallback", function()
-                        return {}, nil
-                    end
-                )
-                ctx.var.bk_resource_auth.resource_perm_required = true
-                ctx.var.bk_app_code = ""
-                plugin.init()
-                local code = plugin.access(conf, ctx)
-                assert.is_equal(code, 403)
-                assert.stub(cache_fallback.get_with_fallback).was_called(0)
-            end
-        )
+                before_each(
+                    function()
+                        fallback_data = {}
+                        fallback_err = nil
 
-        -- the main logical
-
-        it(
-            "get_with_fallback fail", function()
-                stub(
-                    cache_fallback, "get_with_fallback", function()
-                        return nil, "this is an error"
+                        stub(
+                            cache_fallback, "get_with_fallback", function()
+                                return fallback_data, fallback_err
+                            end
+                        )
                     end
                 )
 
-                plugin.init()
-                local code = plugin.access(conf, ctx)
-                assert.is_not_nil(code)
-                assert.stub(cache_fallback.get_with_fallback).was_called(1)
-
-                assert.is_equal(500, code)
-            end
-        )
-
-        -- 2. get_with_fallback success, data is empty
-        it(
-            "get_with_fallback success, no data", function()
-                stub(
-                    cache_fallback, "get_with_fallback", function()
-                        return {}, nil
+                after_each(
+                    function()
+                        cache_fallback.get_with_fallback:revert()
                     end
                 )
 
-                local code = plugin.access(conf, ctx)
-                assert.is_not_nil(code)
-                assert.stub(cache_fallback.get_with_fallback).was_called(1)
+                it(
+                    "no resource_perm_required", function()
+                        ctx.var.bk_resource_auth.resource_perm_required = false
+                        local code = plugin.access(conf, ctx)
+                        assert.is_nil(code)
+                        assert.stub(cache_fallback.get_with_fallback).was_called(0)
+                    end
+                )
 
-                assert.is_equal(403, code)
-            end
-        )
+                it(
+                    "resource_perm_required = true, but app_code is empty", function()
+                        ctx.var.bk_resource_auth.resource_perm_required = true
+                        ctx.var.bk_app_code = ""
+                        local code = plugin.access(conf, ctx)
+                        assert.is_equal(code, 403)
+                        assert.stub(cache_fallback.get_with_fallback).was_called(0)
+                    end
+                )
 
-        it(
-            "get_with_fallback success, has data, no hit", function()
-                stub(
-                    cache_fallback, "get_with_fallback", function()
-                        return {
+                -- the main logical
+
+                it(
+                    "get_with_fallback fail", function()
+                        fallback_data = nil
+                        fallback_err = "this is an error"
+
+                        local code = plugin.access(conf, ctx)
+                        assert.is_equal(500, code)
+                        assert.stub(cache_fallback.get_with_fallback).was_called(1)
+                    end
+                )
+
+                -- 2. get_with_fallback success, data is empty
+                it(
+                    "get_with_fallback success, no data", function()
+                        fallback_data = {}
+                        fallback_err = nil
+
+                        local code = plugin.access(conf, ctx)
+                        assert.is_equal(403, code)
+                        assert.stub(cache_fallback.get_with_fallback).was_called(1)
+                    end
+                )
+
+                it(
+                    "get_with_fallback success, has data, no hit", function()
+                        fallback_data = {
                             ["hello"] = 1,
-                        }, nil
+                        }
+                        fallback_err = nil
+
+                        local code = plugin.access(conf, ctx)
+                        assert.is_equal(403, code)
+                        assert.stub(cache_fallback.get_with_fallback).was_called(1)
                     end
                 )
 
-                local code = plugin.access(conf, ctx)
-                assert.is_not_nil(code)
-                assert.stub(cache_fallback.get_with_fallback).was_called(1)
-
-                assert.is_equal(403, code)
-            end
-        )
-
-        it(
-            "hit gateway_permission, expired", function()
-                stub(
-                    cache_fallback, "get_with_fallback", function()
-                        return {
+                it(
+                    "hit gateway_permission, expired", function()
+                        fallback_data = {
                             ["bk-gateway:-:bk-app-code"] = 1,
-                        }, nil
+                        }
+                        fallback_err = nil
+
+                        local code = plugin.access(conf, ctx)
+                        assert.is_equal(403, code)
+                        assert.stub(cache_fallback.get_with_fallback).was_called(1)
                     end
                 )
 
-                local code = plugin.access(conf, ctx)
-                assert.is_not_nil(code)
-                assert.stub(cache_fallback.get_with_fallback).was_called(1)
-
-                assert.is_equal(403, code)
-            end
-        )
-
-        it(
-            "hit gateway_permission, not expired", function()
-                stub(
-                    cache_fallback, "get_with_fallback", function()
-                        return {
+                it(
+                    "hit gateway_permission, not expired", function()
+                        fallback_data = {
                             ["bk-gateway:-:bk-app-code"] = 1782070327,
-                        }, nil
+                        }
+                        fallback_err = nil
+
+                        local code = plugin.access(conf, ctx)
+                        assert.is_nil(code)
+                        assert.stub(cache_fallback.get_with_fallback).was_called(1)
                     end
                 )
 
-                local code = plugin.access(conf, ctx)
-                assert.is_nil(code)
-                assert.stub(cache_fallback.get_with_fallback).was_called(1)
-            end
-        )
-
-        it(
-            "hit resource_permission, expired", function()
-                stub(
-                    cache_fallback, "get_with_fallback", function()
-                        return {
+                it(
+                    "hit resource_permission, expired", function()
+                        fallback_data = {
                             ["bk-gateway:bk-resource:bk-app-code"] = 1,
-                        }, nil
+                        }
+                        fallback_err = nil
+
+                        local code = plugin.access(conf, ctx)
+                        assert.is_equal(403, code)
+                        assert.stub(cache_fallback.get_with_fallback).was_called(1)
                     end
                 )
 
-                local code = plugin.access(conf, ctx)
-                assert.is_not_nil(code)
-                assert.stub(cache_fallback.get_with_fallback).was_called(1)
-
-                assert.is_equal(403, code)
-            end
-        )
-
-        it(
-            "hit resource_permission, not expired", function()
-                stub(
-                    cache_fallback, "get_with_fallback", function()
-                        return {
+                it(
+                    "hit resource_permission, not expired", function()
+                        fallback_data = {
                             ["bk-gateway:bk-resource:bk-app-code"] = 1782070327,
-                        }, nil
+                        }
+                        fallback_err = nil
+
+                        local code = plugin.access(conf, ctx)
+                        assert.is_nil(code)
+                        assert.stub(cache_fallback.get_with_fallback).was_called(1)
                     end
                 )
 
-                local code = plugin.access(conf, ctx)
-                assert.is_nil(code)
-                assert.stub(cache_fallback.get_with_fallback).was_called(1)
-            end
-        )
-
-        it(
-            "hit both, gateway permission effect", function()
-                stub(
-                    cache_fallback, "get_with_fallback", function()
-                        return {
+                it(
+                    "hit both, gateway permission effect", function()
+                        fallback_data = {
                             ["bk-gateway:-:bk-app-code"] = 1782070327,
                             ["bk-gateway:bk-resource:bk-app-code"] = 1,
-                        }, nil
+                        }
+                        fallback_err = nil
+
+                        local code = plugin.access(conf, ctx)
+                        assert.is_nil(code)
+                        assert.stub(cache_fallback.get_with_fallback).was_called(1)
                     end
                 )
-
-                local code = plugin.access(conf, ctx)
-                assert.is_nil(code)
-                assert.stub(cache_fallback.get_with_fallback).was_called(1)
-            end
-        )
-        it(
-            "hit both, resource permission effect", function()
-                stub(
-                    cache_fallback, "get_with_fallback", function()
-                        return {
+                it(
+                    "hit both, resource permission effect", function()
+                        fallback_data = {
                             ["bk-gateway:-:bk-app-code"] = 1,
                             ["bk-gateway:bk-resource:bk-app-code"] = 1782070327,
-                        }, nil
+                        }
+                        fallback_err = nil
+
+                        local code = plugin.access(conf, ctx)
+                        assert.is_nil(code)
+                        assert.stub(cache_fallback.get_with_fallback).was_called(1)
                     end
                 )
-
-                local code = plugin.access(conf, ctx)
-                assert.is_nil(code)
-                assert.stub(cache_fallback.get_with_fallback).was_called(1)
-            end
-        )
-        it(
-            "hit both, both permission effect", function()
-                stub(
-                    cache_fallback, "get_with_fallback", function()
-                        return {
+                it(
+                    "hit both, both permission effect", function()
+                        fallback_data = {
                             ["bk-gateway:-:bk-app-code"] = 1782070327,
                             ["bk-gateway:bk-resource:bk-app-code"] = 1782070327,
-                        }, nil
+
+                        }
+                        fallback_err = nil
+
+                        local code = plugin.access(conf, ctx)
+                        assert.is_nil(code)
+                        assert.stub(cache_fallback.get_with_fallback).was_called(1)
                     end
                 )
-
-                local code = plugin.access(conf, ctx)
-                assert.is_nil(code)
-                assert.stub(cache_fallback.get_with_fallback).was_called(1)
-            end
-        )
-        it(
-            "hit both, both expired", function()
-                stub(
-                    cache_fallback, "get_with_fallback", function()
-                        return {
+                it(
+                    "hit both, both expired", function()
+                        fallback_data = {
                             ["bk-gateway:-:bk-app-code"] = 1,
                             ["bk-gateway:bk-resource:bk-app-code"] = 1,
-                        }, nil
+
+                        }
+                        fallback_err = nil
+
+                        local code = plugin.access(conf, ctx)
+                        assert.is_equals(403, code)
+                        assert.stub(cache_fallback.get_with_fallback).was_called(1)
                     end
                 )
-
-                local code = plugin.access(conf, ctx)
-                assert.is_equals(403, code)
-                assert.stub(cache_fallback.get_with_fallback).was_called(1)
             end
         )
-
     end
 )

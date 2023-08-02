@@ -15,7 +15,16 @@
 -- We undertake not to change the open source license (MIT license) applicable
 -- to the current version of the project delivered to anyone in the future.
 --
-
+-- bk-resource-rate-limit
+--
+-- rate limit of app to the specified resource, with app dimension.
+-- note: There is a special key `__default` in the rate-limit configuration,
+--       it indicates the default rate-limit config of an app, and it should exist.
+--
+-- This plugin depends on:
+--    * bk-rate-limit: The real logic for handling rate-limit
+--    * bk-auth-verify: Get the verified bk_app_code
+--
 local core = require("apisix.core")
 local errorx = require("apisix.plugins.bk-core.errorx")
 local ratelimit = require("apisix.plugins.bk-rate-limit.init")
@@ -36,6 +45,8 @@ function _M.check_schema(conf)
     return core.schema.check(_M.schema, conf)
 end
 
+---@param conf table @apisix plugin configuration
+---@param ctx table @apisix context
 function _M.access(conf, ctx)
     if types.is_empty(conf) then
         return
@@ -50,14 +61,15 @@ function _M.access(conf, ctx)
         return
     end
 
-
     -- TODO: make it lazy, share the key with other plugins
-    local key = table_concat({
-        bk_app_code,
-        ctx.var.bk_gateway_name,
-        ctx.var.bk_stage_name,
-        ctx.var.bk_resource_name,
-    }, ":")
+    local key = table_concat(
+        {
+            bk_app_code,
+            ctx.var.bk_gateway_name,
+            ctx.var.bk_stage_name,
+            ctx.var.bk_resource_name,
+        }, ":"
+    )
 
     local rates = conf.rates[bk_app_code] or conf.rates["__default"]
 
@@ -68,9 +80,9 @@ function _M.access(conf, ctx)
         local code = ratelimit.rate_limit(conf, ctx, plugin_name, key, rate.tokens, rate.period)
         if code then
             return errorx.exit_with_apigw_err(ctx, errorx.new_resource_strategy_rate_limit_restriction(), _M)
-        else
-            return
         end
+
+        return
     else
         for i, rate in ipairs(rates) do
             -- here we should add the rate index into key, otherwise the rate limit will be shared(will be wrong)
