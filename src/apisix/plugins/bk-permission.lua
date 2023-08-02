@@ -24,6 +24,18 @@
 -- - by gateway: The app has permissions to all resources under the gateway
 -- - by resource: The app has permission to the specified resource
 --
+-- core-api service api:
+-- curl 'http://bk-apigateway-core-api/api/v1/micro-gateway/{micro_instance_id}/permissions/?bk_gateway_name={bk_gateway_name}&bk_resource_name={bk_resource_name}&bk_stage_name={bk_stage_name}&bk_app_code={bk_app_code}' \
+--      -H 'X-Bk-Micro-Gateway-Instance-Id: {micro_instance_id}' \
+--      -H 'X-Bk-Micro-Gateway-Instance-Secret: {micro_instance_secret}'
+-- response body:
+--     {
+--         "data": {
+--             "{bk_gateway_name}:-:{bk_app_code}": 1683523681,                  # 按网关的权限
+--             "{bk_gateway_name}:{bk_resource_name}:{bk_app_code}": 1658546464  # 按资源的权限
+--         }
+--     }
+--
 -- This plugin depends on:
 --    * bk-auth-verify: Get the verified bk_app_code
 --
