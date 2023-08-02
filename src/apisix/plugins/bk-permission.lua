@@ -25,9 +25,15 @@
 -- - by resource: The app has permission to the specified resource
 --
 -- core-api service api:
--- curl 'http://bk-apigateway-core-api/api/v1/micro-gateway/{micro_instance_id}/permissions/?bk_gateway_name={bk_gateway_name}&bk_resource_name={bk_resource_name}&bk_stage_name={bk_stage_name}&bk_app_code={bk_app_code}' \
---      -H 'X-Bk-Micro-Gateway-Instance-Id: {micro_instance_id}' \
---      -H 'X-Bk-Micro-Gateway-Instance-Secret: {micro_instance_secret}'
+-- GET http://bk-apigateway-core-api/api/v1/micro-gateway/{micro_instance_id}/permissions/
+-- request params:
+--   bk_gateway_name={bk_gateway_name}
+--   bk_resource_name={bk_resource_name}
+--   bk_stage_name={bk_stage_name}
+--   bk_app_code={bk_app_code}
+-- request headers:
+--   X-Bk-Micro-Gateway-Instance-Id: {micro_instance_id}
+--   X-Bk-Micro-Gateway-Instance-Secret: {micro_instance_secret}
 -- response body:
 --     {
 --         "data": {
