@@ -81,13 +81,12 @@ check-license:
 
 apisix-core: .gitmodules
 	git submodule update --init --recursive
-	git submodule update --recursive --remote
 
 .PHONY: apisix-dependencies
 apisix-dependencies: apisix-core
 	# yum install -y openresty-openssl-devel
 	luarocks install --tree .lua_modules --only-deps --keep \
-	${WORKSPACE}/src/apisix-core/rockspec/apisix-3.2.2-0.rockspec --server https://luarocks.cn
+	${WORKSPACE}/src/apisix-core/rockspec/apisix-3.2.0-0.rockspec --server https://luarocks.cn
 
 .PHONY: apisix-dev-image
 apisix-dev-image: build edition-ee

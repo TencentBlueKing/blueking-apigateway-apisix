@@ -1,4 +1,4 @@
-ARG APISIX_VERSION="3.2.2"
+ARG APISIX_VERSION="3.2.1"
 FROM apache/apisix:$APISIX_VERSION-centos
 
 # in github action, change the source of yum is not ok

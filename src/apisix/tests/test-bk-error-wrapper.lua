@@ -447,7 +447,6 @@ describe(
                             var = {
                                 bk_apigw_error = errorx.new_api_not_found(),
                             },
-                            _plugin_name = "test",
                         }
                     end
                 )
