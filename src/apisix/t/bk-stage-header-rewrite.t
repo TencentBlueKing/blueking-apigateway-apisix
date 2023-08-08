@@ -105,7 +105,8 @@ passed
                         "bk-stage-header-rewrite": {
                             "set": {
                                 "X-Api-Version": "v2"
-                            }
+                            },
+                            "remove": []
                         }
                     },
                     "upstream": {
