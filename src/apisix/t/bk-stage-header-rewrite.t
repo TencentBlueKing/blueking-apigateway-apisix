@@ -394,3 +394,15 @@ x-real-ip: 127.0.0.1
 GET /t
 --- response_body
 passed
+
+=== TEST 14: remove header set empty ok
+--- request
+GET /hello HTTP/1.1
+--- more_headers
+X-Api-Test: foo
+X-Api-Engine: bar
+--- response_body
+uri: /uri/plugin_proxy_rewrite
+host: localhost
+x-api-engine: bar
+x-real-ip: 127.0.0.1
