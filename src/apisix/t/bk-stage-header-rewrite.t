@@ -355,3 +355,42 @@ uri: /uri/plugin_proxy_rewrite
 host: localhost
 x-api-engine: APISIX
 x-real-ip: 127.0.0.1
+
+=== TEST 13: remove header set empty
+--- config
+    location /t {
+        content_by_lua_block {
+            local t = require("lib.test_admin").test
+            local code, body = t('/apisix/admin/routes/1',
+                 ngx.HTTP_PUT,
+                 [[{
+                        "plugins": {
+                            "bk-proxy-rewrite": {
+                                "uri": "/uri/plugin_proxy_rewrite"
+                            },
+                            "bk-stage-header-rewrite": {
+                                "add": {},
+                                "set": {},
+                                "remove": ["X-Api-Test"]
+                            }
+                        },
+                        "upstream": {
+                            "nodes": {
+                                "127.0.0.1:1980": 1
+                            },
+                            "type": "roundrobin"
+                        },
+                        "uri": "/hello"
+                }]]
+                )
+
+            if code >= 300 then
+                ngx.status = code
+            end
+            ngx.say(body)
+        }
+    }
+--- request
+GET /t
+--- response_body
+passed
