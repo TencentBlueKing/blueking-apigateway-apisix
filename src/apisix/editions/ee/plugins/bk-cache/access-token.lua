@@ -15,7 +15,6 @@
 -- We undertake not to change the open source license (MIT license) applicable
 -- to the current version of the project delivered to anyone in the future.
 --
-
 local core = require("apisix.core")
 local access_token_define = require("apisix.plugins.bk-define.access-token")
 local bkauth_component = require("apisix.plugins.bk-components.bkauth")
@@ -34,33 +33,44 @@ local access_token_lrucache = core.lrucache.new(
 
 local _M = {}
 
+---@param access_token string
+---@return table|nil May has key `token`, `error_message`
+---@return string|nil err Request error
 local function get_access_token(access_token)
-    local bkauth_token, err = bkauth_component.verify_access_token(access_token)
-    if bkauth_token ~= nil then
+    local auth_result, err = bkauth_component.verify_access_token(access_token)
+    local error_message = auth_result and auth_result.error_message
+    if auth_result ~= nil and auth_result.bk_app_code ~= nil then
         return {
-            token = access_token_define.new(bkauth_token.bk_app_code, bkauth_token.username, bkauth_token.expires_in),
+            token = access_token_define.new(auth_result.bk_app_code, auth_result.username, auth_result.expires_in),
         }
     end
 
     if ssm_component.is_configured() then
-        local ssm_token
-        ssm_token, err = ssm_component.verify_access_token(access_token)
-        if ssm_token ~= nil then
+        local ssm_result
+        ssm_result, err = ssm_component.verify_access_token(access_token)
+        error_message = ssm_result and ssm_result.error_message
+        if ssm_result ~= nil and ssm_result.bk_app_code ~= nil then
             return {
-                token = access_token_define.new(ssm_token.bk_app_code, ssm_token.username, ssm_token.expires_in),
+                token = access_token_define.new(ssm_result.bk_app_code, ssm_result.username, ssm_result.expires_in),
             }
         end
     end
 
-    return {
-        err = err,
-    }
+    if error_message ~= nil then
+        return {
+            error_message = error_message,
+        }
+    end
+
+    return nil, err
 end
 
+---@param access_token string
+---@return table May has key `token`, `error_message`
+---@return string|nil err Request error
 function _M.get_access_token(access_token)
     local key = access_token
-    local result = access_token_lrucache(key, nil, get_access_token, access_token)
-    return result.token, result.err
+    return access_token_lrucache(key, nil, get_access_token, access_token)
 end
 
 if _TEST then -- luacheck: ignore

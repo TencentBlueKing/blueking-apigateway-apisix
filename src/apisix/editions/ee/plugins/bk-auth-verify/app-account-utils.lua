@@ -15,7 +15,6 @@
 -- We undertake not to change the open source license (MIT license) applicable
 -- to the current version of the project delivered to anyone in the future.
 --
-
 local pl_types = require("pl.types")
 local core = require("apisix.core")
 local bk_core = require("apisix.plugins.bk-core.init")
@@ -23,7 +22,9 @@ local signature_mod = require("apisix.plugins.bk-auth-verify.signature")
 
 local _M = {}
 
-function _M.get_signature_verifier()
+---@param auth_params table Auth params from request
+---@return table|nil signature_verifier
+function _M.get_signature_verifier(auth_params)
     local req_uri_args = core.request.get_uri_args()
     if (not pl_types.is_empty(bk_core.url.get_value(req_uri_args, "bk_signature")) or
         not pl_types.is_empty(bk_core.url.get_value(req_uri_args, "signature"))) then

@@ -15,8 +15,8 @@
 -- We undertake not to change the open source license (MIT license) applicable
 -- to the current version of the project delivered to anyone in the future.
 --
-
 local access_token_utils = require("apisix.plugins.bk-auth-verify.access-token-utils")
+local app_account_verifier = require("apisix.plugins.bk-auth-verify.app-account-verifier")
 local bk_app_define = require("apisix.plugins.bk-define.app")
 local bk_user_define = require("apisix.plugins.bk-define.user")
 local setmetatable = setmetatable
@@ -29,17 +29,19 @@ local mt = {
     __index = _M,
 }
 
-function _M.new(access_token, bk_app)
+function _M.new(access_token, auth_params)
     return setmetatable(
         {
             access_token = access_token,
-            bk_app = bk_app,
+            auth_params = auth_params,
         }, mt
     )
 end
 
+---@return table app
+---@return boolean has_server_error There is an internal server error.
 function _M.verify_app(self)
-    local token, err = access_token_utils.verify_access_token(self.access_token)
+    local token, err, is_server_error = access_token_utils.verify_access_token(self.access_token)
     if token ~= nil then
         return bk_app_define.new_app(
             {
@@ -47,25 +49,30 @@ function _M.verify_app(self)
                 exists = true,
                 verified = true,
             }
-        )
+        ), false
     end
 
     -- 兼容 app_code + app_secret 校验
-    if self.bk_app:is_verified() then
-        return self.bk_app
+    local app = app_account_verifier.new(self.auth_params):verify_app()
+    if app ~= nil and app:is_verified() then
+        return app, false
     end
 
-    return nil, err
+    return bk_app_define.new_anonymous_app(err), is_server_error or false
 end
 
+---@return table user
+---@return boolean has_server_error There is an internal server error.
 function _M.verify_user(self)
-    local token, err = access_token_utils.verify_access_token(self.access_token)
+    local token, err, is_server_error = access_token_utils.verify_access_token(self.access_token)
     if token == nil then
-        return nil, err
+        return bk_user_define.new_anonymous_user(err), is_server_error or false
     end
 
     if not token:is_user_token() then
-        return nil, "the access_token is the application type and cannot indicate the user"
+        return
+            bk_user_define.new_anonymous_user("the access_token is the application type and cannot indicate the user"),
+            false
     end
 
     return bk_user_define.new_user(
@@ -74,7 +81,7 @@ function _M.verify_user(self)
             verified = true,
             source_type = "access_token",
         }
-    )
+    ), false
 end
 
 return _M

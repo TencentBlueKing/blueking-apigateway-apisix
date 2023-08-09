@@ -15,7 +15,6 @@
 -- We undertake not to change the open source license (MIT license) applicable
 -- to the current version of the project delivered to anyone in the future.
 --
-
 local core = require("apisix.core")
 local bklogin_component = require("apisix.plugins.bk-components.bklogin")
 
@@ -34,8 +33,7 @@ local _M = {}
 
 function _M.get_username_by_bk_token(bk_token)
     local key = bk_token
-    local result = bk_token_lrucache(key, nil, bklogin_component.get_username_by_bk_token, bk_token)
-    return result.username, result.err
+    return bk_token_lrucache(key, nil, bklogin_component.get_username_by_bk_token, bk_token)
 end
 
 return _M

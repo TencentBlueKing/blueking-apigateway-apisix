@@ -15,7 +15,6 @@
 -- We undertake not to change the open source license (MIT license) applicable
 -- to the current version of the project delivered to anyone in the future.
 --
-
 local pl_types = require("pl.types")
 local access_token_verifier = require("apisix.plugins.bk-auth-verify.access-token-verifier")
 local jwt_verifier = require("apisix.plugins.bk-auth-verify.jwt-verifier")
@@ -29,32 +28,32 @@ local mt = {
     __index = _M,
 }
 
-function _M.new(auth_params, bk_api_auth, bk_resource_auth, bk_app)
+function _M.new(auth_params, bk_api_auth, bk_resource_auth)
     return setmetatable(
         {
             auth_params = auth_params,
             bk_api_auth = bk_api_auth,
             bk_resource_auth = bk_resource_auth,
-            bk_app = bk_app,
         }, mt
     )
 end
 
+---@return table app
+---@return boolean has_server_error There is an internal server error.
 function _M.verify_app(self)
     local verifier = self:get_real_verifier()
     return verifier:verify_app()
 end
 
+---@return table user
+---@return boolean has_server_error There is an internal server error.
 function _M.verify_user(self)
     if self.bk_resource_auth:get_skip_user_verification() then
-        return bk_user_define.new_anonymous_user("")
+        return bk_user_define.new_anonymous_user(""), false
     end
 
     local verifier = self:get_real_verifier()
-    local user, err = verifier:verify_user()
-    if user == nil then
-        return nil, err
-    end
+    local user, has_server_error = verifier:verify_user()
 
     -- complete rtx for uin user
     local uin_conf = self.bk_api_auth:get_uin_conf()
@@ -63,7 +62,7 @@ function _M.verify_user(self)
         user:set_searched_rtx(uin_conf.search_rtx_source)
     end
 
-    return user
+    return user, has_server_error
 end
 
 function _M.get_real_verifier(self)
@@ -74,10 +73,10 @@ function _M.get_real_verifier(self)
         return jwt_verifier.new(jwt_token, access_token)
 
     elseif not pl_types.is_empty(access_token) then
-        return access_token_verifier.new(access_token, self.bk_app)
+        return access_token_verifier.new(access_token, self.auth_params)
 
     else
-        return legacy_verifier.new(self.bk_app, self.bk_api_auth, self.auth_params)
+        return legacy_verifier.new(self.bk_api_auth, self.auth_params)
 
     end
 end

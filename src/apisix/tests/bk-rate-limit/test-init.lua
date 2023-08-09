@@ -93,7 +93,9 @@ describe(
                             "allow_degradation=true", function()
                                 conf.allow_degradation = true
 
-                                local code = ratelimit.rate_limit(conf, ctx, "rate_limit", "key", 1, 60)
+                                local code = ratelimit.rate_limit(
+                                    conf, ctx, "rate_limit_with_create_limit_obj_error", "key-1", 1, 60
+                                )
                                 assert.is_nil(code)
                             end
                         )
@@ -102,7 +104,9 @@ describe(
                             "allow_degradation=false", function()
                                 conf.allow_degradation = false
 
-                                local code = ratelimit.rate_limit(conf, ctx, "rate_limit", "key", 1, 60)
+                                local code = ratelimit.rate_limit(
+                                    conf, ctx, "rate_limit_with_create_limit_obj_error", "key-2", 1, 60
+                                )
                                 assert.is_equal(code, 500)
                             end
                         )

@@ -15,7 +15,6 @@
 -- We undertake not to change the open source license (MIT license) applicable
 -- to the current version of the project delivered to anyone in the future.
 --
-
 local pl_types = require("pl.types")
 local app_account_utils = require("apisix.plugins.bk-auth-verify.app-account-utils")
 local bk_app_define = require("apisix.plugins.bk-define.app")
@@ -28,6 +27,7 @@ local mt = {
     __index = _M,
 }
 
+---@param auth_params table Auth params from request
 function _M.new(auth_params)
     local app_code = auth_params:get_first_no_nil_string_from_two_keys("bk_app_code", "app_code")
     local app_secret = auth_params:get_first_no_nil_string_from_two_keys("bk_app_secret", "app_secret")
@@ -41,9 +41,11 @@ function _M.new(auth_params)
     )
 end
 
+---@return table app
+---@return boolean has_server_error There is an internal server error.
 function _M.verify_app(self)
     if pl_types.is_empty(self.app_code) then
-        return bk_app_define.new_anonymous_app("app code cannot be empty")
+        return bk_app_define.new_anonymous_app("app code cannot be empty"), false
     end
 
     if not pl_types.is_empty(self.app_secret) then
@@ -65,17 +67,30 @@ function _M.verify_app(self)
             valid_signature = false,
             valid_error_message = "please provide bk_app_secret or bk_signature to verify app",
         }
-    )
+    ), false
 end
 
+---@param signature_verifier table
+---@return table app
+---@return boolean has_server_error There is an internal server error.
 function _M.verify_by_signature(self, signature_verifier)
+    local result, err = bk_cache.list_app_secrets(self.app_code)
+    if err ~= nil then
+        local app = bk_app_define.new_anonymous_app(err)
+        app.app_code = self.app_code
+        return app, true
+    end
+
+    if result.error_message ~= nil then
+        local app = bk_app_define.new_anonymous_app(result.error_message)
+        app.app_code = self.app_code
+        return app, false
+    end
+
     local verified
-
-    local expected_secrets, err = bk_cache.list_app_secrets(self.app_code)
-    local exists = (err == nil and not pl_types.is_empty(expected_secrets))
-
+    local exists = not pl_types.is_empty(result.app_secrets)
     if exists then
-        verified, err = signature_verifier:verify(expected_secrets, self.auth_params)
+        verified, err = signature_verifier:verify(result.app_secrets, self.auth_params)
     end
 
     local error_message = ""
@@ -96,16 +111,27 @@ function _M.verify_by_signature(self, signature_verifier)
             valid_signature = verified,
             valid_error_message = error_message,
         }
-    )
+    ), false
 end
 
+---@return table app
+---@return boolean has_server_error There is an internal server error.
 function _M.verify_by_app_secret(self)
-    local result = bk_cache.verify_app_secret(self.app_code, self.app_secret)
+    local result, err = bk_cache.verify_app_secret(self.app_code, self.app_secret)
+    if err ~= nil then
+        local app = bk_app_define.new_anonymous_app(err)
+        app.app_code = self.app_code
+        return app, true
+    end
+
+    if result.error_message ~= nil then
+        local app = bk_app_define.new_anonymous_app(result.error_message)
+        app.app_code = self.app_code
+        return app, false
+    end
 
     local error_message = ""
-    if result.err ~= nil then
-        error_message = result.err
-    elseif not result.existed then
+    if not result.existed then
         error_message = "app not found"
     elseif not result.verified then
         error_message = "bk_app_code or bk_app_secret is incorrect"
@@ -120,7 +146,7 @@ function _M.verify_by_app_secret(self)
             valid_signature = false,
             valid_error_message = error_message,
         }
-    )
+    ), false
 end
 
 return _M

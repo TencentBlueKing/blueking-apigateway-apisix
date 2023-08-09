@@ -15,13 +15,9 @@
 -- We undertake not to change the open source license (MIT license) applicable
 -- to the current version of the project delivered to anyone in the future.
 --
-
 local bk_auth_verify_mod = require("apisix.plugins.bk-auth-verify.init")
 local auth_params_mod = require("apisix.plugins.bk-auth-verify.auth-params")
-local bk_core = require("apisix.plugins.bk-core.init")
 local access_token_verifier = require("apisix.plugins.bk-auth-verify.access-token-verifier")
-local jwt_verifier = require("apisix.plugins.bk-auth-verify.jwt-verifier")
-local legacy_verifier = require("apisix.plugins.bk-auth-verify.legacy-verifier")
 local bk_user_define = require("apisix.plugins.bk-define.user")
 local bk_app_define = require("apisix.plugins.bk-define.app")
 local context_api_bkauth = require("apisix.plugins.bk-define.context-api-bkauth")
@@ -34,6 +30,7 @@ describe(
         local bk_api_auth
         local bk_resource_auth
         local bk_app
+        local bk_auth_verify
 
         before_each(
             function()
@@ -41,7 +38,10 @@ describe(
                 bk_api_auth = context_api_bkauth.new(
                     {
                         api_type = 10,
-                        unfiltered_sensitive_keys = {"a", "b"},
+                        unfiltered_sensitive_keys = {
+                            "a",
+                            "b",
+                        },
                         rtx_conf = {},
                         uin_conf = {},
                         user_conf = {},
@@ -72,11 +72,17 @@ describe(
                 it(
                     "ok", function()
                         local verifier = access_token_verifier.new("fake-token", bk_app)
-                        stub(bk_auth_verify, "get_real_verifier", verifier)
-                        stub(verifier, "verify_app", bk_app)
 
-                        local app = bk_auth_verify:verify_app()
+                        stub(bk_auth_verify, "get_real_verifier", verifier)
+                        stub(
+                            verifier, "verify_app", function()
+                                return bk_app, false
+                            end
+                        )
+
+                        local app, has_server_error = bk_auth_verify:verify_app()
                         assert.is_equal(app.app_code, "my-app")
+                        assert.is_false(has_server_error)
 
                         bk_auth_verify.get_real_verifier:revert()
                         verifier.verify_app:revert()
@@ -91,11 +97,11 @@ describe(
                     "skip user verification", function()
                         bk_resource_auth.skip_user_verification = true
 
-                        local user, err = bk_auth_verify:verify_user()
-                        assert.is_nil(err)
+                        local user, has_server_error = bk_auth_verify:verify_user()
                         assert.is_equal(user.username, "")
                         assert.is_false(user.verified)
                         assert.is_equal(user.valid_error_message, "")
+                        assert.is_false(has_server_error)
                     end
                 )
 
@@ -105,13 +111,15 @@ describe(
                         stub(bk_auth_verify, "get_real_verifier", verifier)
                         stub(
                             verifier, "verify_user", function()
-                                return nil, "error"
+                                return bk_user_define.new_anonymous_user("error"), false
                             end
                         )
 
-                        local user, err = bk_auth_verify:verify_user()
-                        assert.is_equal(err, "error")
-                        assert.is_nil(user)
+                        local user, has_server_error = bk_auth_verify:verify_user()
+                        assert.is_equal(user.username, "")
+                        assert.is_false(user.verified)
+                        assert.is_equal(user.valid_error_message, "error")
+                        assert.is_false(has_server_error)
 
                         bk_auth_verify.get_real_verifier:revert()
                         verifier.verify_user:revert()
@@ -129,11 +137,15 @@ describe(
                                 verified = true,
                             }
                         )
-                        stub(verifier, "verify_user", mock_user)
+                        stub(
+                            verifier, "verify_user", function()
+                                return mock_user, false
+                            end
+                        )
 
-                        local user, err = bk_auth_verify:verify_user()
-                        assert.is_nil(err)
+                        local user, has_server_error = bk_auth_verify:verify_user()
                         assert.is_equal(user.username, "mock-admin")
+                        assert.is_false(has_server_error)
 
                         bk_auth_verify.get_real_verifier:revert()
                         verifier.verify_user:revert()

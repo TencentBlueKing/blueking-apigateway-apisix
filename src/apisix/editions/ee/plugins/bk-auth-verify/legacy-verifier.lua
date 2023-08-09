@@ -15,10 +15,12 @@
 -- We undertake not to change the open source license (MIT license) applicable
 -- to the current version of the project delivered to anyone in the future.
 --
-
 local pl_types = require("pl.types")
 local bk_core = require("apisix.plugins.bk-core.init")
 local legacy_utils = require("apisix.plugins.bk-auth-verify.legacy-utils")
+local app_account_verifier = require("apisix.plugins.bk-auth-verify.app-account-verifier")
+local bk_app_define = require("apisix.plugins.bk-define.app")
+local bk_user_define = require("apisix.plugins.bk-define.user")
 local setmetatable = setmetatable
 
 local _M = {
@@ -29,32 +31,42 @@ local mt = {
     __index = _M,
 }
 
-function _M.new(bk_app, bk_api_auth, auth_params)
+function _M.new(bk_api_auth, auth_params)
     return setmetatable(
         {
-            bk_app = bk_app,
             bk_api_auth = bk_api_auth,
             auth_params = auth_params,
         }, mt
     )
 end
 
+---@return table app
+---@return boolean has_server_error There is an internal server error.
 function _M.verify_app(self)
     if self.bk_api_auth:no_user_type() then
-        return nil, "the gateway configuration error, please contact the API Gateway developer to handle"
+        return bk_app_define.new_anonymous_app(
+            "the gateway configuration error, please contact the API Gateway developer to handle"
+        ), true
     end
 
-    return self.bk_app
+    return app_account_verifier.new(self.auth_params):verify_app()
 end
 
+---@return table user
+---@return boolean has_server_error There is an internal server error.
 function _M.verify_user(self)
     if self.bk_api_auth:no_user_type() then
-        return nil, "the gateway configuration error, please contact the API Gateway developer to handle"
+        return bk_user_define.new_anonymous_user(
+            "the gateway configuration error, please contact the API Gateway developer to handle"
+        ), true
     end
 
     return self:verify_bk_user(self.bk_api_auth.user_conf)
 end
 
+---@param user_conf table
+---@return table user
+---@return boolean has_server_error There is an internal server error.
 function _M.verify_bk_user(self, user_conf)
     if user_conf.from_bk_token then
         local bk_token = self.auth_params:get_string("bk_token")
@@ -76,8 +88,9 @@ function _M.verify_bk_user(self, user_conf)
         end
     end
 
-    return nil,
-           "user authentication failed, please provide a valid user identity, such as bk_username, bk_token, access_token" -- luacheck: ignore
+    return bk_user_define.new_anonymous_user(
+        "user authentication failed, please provide a valid user identity, such as bk_username, bk_token, access_token"
+    ), false
 end
 
 return _M

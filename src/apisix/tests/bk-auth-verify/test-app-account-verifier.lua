@@ -15,7 +15,6 @@
 -- We undertake not to change the open source license (MIT license) applicable
 -- to the current version of the project delivered to anyone in the future.
 --
-
 local auth_params_mod = require("apisix.plugins.bk-auth-verify.auth-params")
 local app_account_verifier_mod = require("apisix.plugins.bk-auth-verify.app-account-verifier")
 local app_account_utils = require("apisix.plugins.bk-auth-verify.app-account-utils")
@@ -77,16 +76,17 @@ describe(
                         local auth_params = auth_params_mod.new({})
                         local verifier = app_account_verifier_mod.new(auth_params)
 
-                        local app = verifier:verify_app()
+                        local app, has_server_error = verifier:verify_app()
                         assert.is_equal(app.app_code, "")
                         assert.is_false(app.verified)
                         assert.is_equal(app.valid_error_message, "app code cannot be empty")
+                        assert.is_false(has_server_error)
                     end
                 )
 
                 it(
                     "app secret is not empty", function()
-                        auth_params = auth_params_mod.new(
+                        local auth_params = auth_params_mod.new(
                             {
                                 bk_app_code = "my-app",
                                 bk_app_secret = "my-secret",
@@ -101,12 +101,17 @@ describe(
                                 valid_error_message = "foo",
                             }
                         )
-                        stub(verifier, "verify_by_app_secret", mock_app)
+                        stub(
+                            verifier, "verify_by_app_secret", function()
+                                return mock_app, false
+                            end
+                        )
 
-                        local app = verifier:verify_app()
+                        local app, has_server_error = verifier:verify_app()
                         assert.is_equal(app.app_code, "mock-app")
                         assert.is_false(app.verified)
                         assert.is_equal(app.valid_error_message, "foo")
+                        assert.is_false(has_server_error)
                     end
                 )
 
@@ -128,12 +133,17 @@ describe(
                                 valid_error_message = "foo",
                             }
                         )
-                        stub(verifier, "verify_by_signature", mock_app)
+                        stub(
+                            verifier, "verify_by_signature", function()
+                                return mock_app, false
+                            end
+                        )
 
-                        local app = verifier:verify_app()
+                        local app, has_server_error = verifier:verify_app()
                         assert.is_equal(app.app_code, "mock-app")
                         assert.is_false(app.verified)
                         assert.is_equal(app.valid_error_message, "foo")
+                        assert.is_false(has_server_error)
                     end
                 )
 
@@ -147,12 +157,13 @@ describe(
                             }
                         )
                         local verifier = app_account_verifier_mod.new(auth_params)
-                        local app = verifier:verify_app()
+                        local app, has_server_error = verifier:verify_app()
                         assert.is_equal(app.app_code, "my-app")
                         assert.is_false(app.verified)
                         assert.is_equal(
                             app.valid_error_message, "please provide bk_app_secret or bk_signature to verify app"
                         )
+                        assert.is_false(has_server_error)
                     end
                 )
             end
@@ -191,31 +202,54 @@ describe(
                         list_app_secrets_result = nil
                         list_app_secrets_err = "error"
 
-                        local app = verifier:verify_by_signature({})
+                        local app, has_server_error = verifier:verify_by_signature({})
                         assert.is_equal(app.app_code, "my-app")
                         assert.is_false(app.verified)
                         assert.is_equal(app.valid_error_message, "error")
+                        assert.is_true(has_server_error)
+                    end
+                )
+
+                it(
+                    "has error_message", function()
+                        list_app_secrets_result = {
+                            error_message = "error",
+                        }
+                        list_app_secrets_err = nil
+
+                        local app, has_server_error = verifier:verify_by_signature({})
+                        assert.is_equal(app.app_code, "my-app")
+                        assert.is_false(app.verified)
+                        assert.is_equal(app.valid_error_message, "error")
+                        assert.is_false(has_server_error)
                     end
                 )
 
                 it(
                     "app not exist", function()
-                        list_app_secrets_result = {}
+                        list_app_secrets_result = {
+                            app_secrets = {},
+                        }
                         list_app_secrets_err = nil
 
-                        local app = verifier:verify_by_signature({})
+                        local app, has_server_error = verifier:verify_by_signature({})
                         assert.is_equal(app.app_code, "my-app")
                         assert.is_false(app.verified)
                         assert.is_equal(app.valid_error_message, "app not found")
+                        assert.is_false(has_server_error)
                     end
                 )
 
                 it(
                     "signature verify error", function()
-                        list_app_secrets_result = {"secret"}
+                        list_app_secrets_result = {
+                            app_secrets = {
+                                "secret",
+                            },
+                        }
                         list_app_secrets_err = nil
 
-                        local app = verifier:verify_by_signature(
+                        local app, has_server_error = verifier:verify_by_signature(
                             {
                                 verify = function(self)
                                     return false, "verify error"
@@ -225,15 +259,20 @@ describe(
                         assert.is_equal(app.app_code, "my-app")
                         assert.is_false(app.verified)
                         assert.is_equal(app.valid_error_message, "verify error")
+                        assert.is_false(has_server_error)
                     end
                 )
 
                 it(
                     "signature verify error", function()
-                        list_app_secrets_result = {"secret"}
+                        list_app_secrets_result = {
+                            app_secrets = {
+                                "secret",
+                            },
+                        }
                         list_app_secrets_err = nil
 
-                        local app = verifier:verify_by_signature(
+                        local app, has_server_error = verifier:verify_by_signature(
                             {
                                 verify = function(self)
                                     return false
@@ -246,15 +285,20 @@ describe(
                             app.valid_error_message,
                             "signature [bk_signature] verification failed, please provide valid bk_signature"
                         )
+                        assert.is_false(has_server_error)
                     end
                 )
 
                 it(
                     "ok", function()
-                        list_app_secrets_result = {"secret"}
+                        list_app_secrets_result = {
+                            app_secrets = {
+                                "secret",
+                            },
+                        }
                         list_app_secrets_err = nil
 
-                        local app = verifier:verify_by_signature(
+                        local app, has_server_error = verifier:verify_by_signature(
                             {
                                 verify = function(self)
                                     return true
@@ -264,6 +308,7 @@ describe(
                         assert.is_equal(app.app_code, "my-app")
                         assert.is_true(app.verified)
                         assert.is_equal(app.valid_error_message, "")
+                        assert.is_false(has_server_error)
                     end
                 )
             end
@@ -272,13 +317,14 @@ describe(
         context(
             "verify_by_app_secret", function()
                 local verify_app_secret_result
+                local verify_app_secret_err
                 local verifier
 
                 before_each(
                     function()
                         stub(
                             bk_cache, "verify_app_secret", function()
-                                return verify_app_secret_result
+                                return verify_app_secret_result, verify_app_secret_err
                             end
                         )
 
@@ -300,16 +346,29 @@ describe(
 
                 it(
                     "verify app secret error", function()
-                        verify_app_secret_result = {
-                            existed = false,
-                            verified = false,
-                            err = "error",
-                        }
+                        verify_app_secret_result = nil
+                        verify_app_secret_err = "error"
 
-                        local app = verifier:verify_by_app_secret()
+                        local app, has_server_error = verifier:verify_by_app_secret()
                         assert.is_equal(app.app_code, "my-app")
                         assert.is_false(app.verified)
                         assert.is_equal(app.valid_error_message, "error")
+                        assert.is_true(has_server_error)
+                    end
+                )
+
+                it(
+                    "has error_message", function()
+                        verify_app_secret_result = {
+                            error_message = "error",
+                        }
+                        verify_app_secret_err = nil
+
+                        local app, has_server_error = verifier:verify_by_app_secret()
+                        assert.is_equal(app.app_code, "my-app")
+                        assert.is_false(app.verified)
+                        assert.is_equal(app.valid_error_message, "error")
+                        assert.is_false(has_server_error)
                     end
                 )
 
@@ -319,11 +378,13 @@ describe(
                             existed = false,
                             verified = false,
                         }
+                        verify_app_secret_err = nil
 
-                        local app = verifier:verify_by_app_secret()
+                        local app, has_server_error = verifier:verify_by_app_secret()
                         assert.is_equal(app.app_code, "my-app")
                         assert.is_false(app.verified)
                         assert.is_equal(app.valid_error_message, "app not found")
+                        assert.is_false(has_server_error)
                     end
                 )
 
@@ -333,11 +394,13 @@ describe(
                             existed = true,
                             verified = false,
                         }
+                        verify_app_secret_err = nil
 
-                        local app = verifier:verify_by_app_secret()
+                        local app, has_server_error = verifier:verify_by_app_secret()
                         assert.is_equal(app.app_code, "my-app")
                         assert.is_false(app.verified)
                         assert.is_equal(app.valid_error_message, "bk_app_code or bk_app_secret is incorrect")
+                        assert.is_false(has_server_error)
                     end
                 )
 
@@ -347,11 +410,13 @@ describe(
                             existed = true,
                             verified = true,
                         }
+                        verify_app_secret_err = nil
 
-                        local app = verifier:verify_by_app_secret()
+                        local app, has_server_error = verifier:verify_by_app_secret()
                         assert.is_equal(app.app_code, "my-app")
                         assert.is_true(app.verified)
                         assert.is_equal(app.valid_error_message, "")
+                        assert.is_false(has_server_error)
                     end
                 )
             end

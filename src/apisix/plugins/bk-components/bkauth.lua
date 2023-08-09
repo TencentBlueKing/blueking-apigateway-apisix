@@ -15,7 +15,6 @@
 -- We undertake not to change the open source license (MIT license) applicable
 -- to the current version of the project delivered to anyone in the future.
 --
-
 local pl_types = require("pl.types")
 local http = require("resty.http")
 local core = require("apisix.core")
@@ -37,16 +36,19 @@ local _M = {
     host = bk_core.config.get_bkauth_addr(),
     app_code = bkapp.bk_app_code,
     app_secret = bkapp.bk_app_secret,
-    -- bkauth_access_token = bkapp.bkauth_access_token,
 }
 
+---@param app_code string
+---@param app_secret string
+---@return table|nil result Request result, if there is a request error, it should be nil. e.g.
+---        {
+---            "existed": true,
+---            "verified": true
+---        }
+---@return string|nil err Request error
 function _M.verify_app_secret(app_code, app_secret)
     if pl_types.is_empty(_M.host) then
-        return {
-            existed = false,
-            verified = false,
-            err = "bkauth host is not configured.",
-        }
+        return nil, "bkauth host is not configured."
     end
 
     local url = bk_core.url.url_single_joining_slash(_M.host, string_format(VERIFY_APP_SECRET_URL, app_code))
@@ -72,11 +74,7 @@ function _M.verify_app_secret(app_code, app_secret)
 
     if not (res and res.body) then
         core.log.error(string_format("failed to request %s, err: %s", url, err))
-        return {
-            existed = false,
-            verified = false,
-            err = string_format("failed to request %s, %s", url, err),
-        }
+        return nil, string_format("failed to request %s, %s", url, err)
     end
 
     -- 响应格式正常，错误码 404，表示应用不存在
@@ -89,18 +87,14 @@ function _M.verify_app_secret(app_code, app_secret)
 
     local result = core.json.decode(res.body)
     if result == nil then
-        return {
-            existed = false,
-            verified = false,
-            err = string_format("failed to request %s, response is not valid json", url),
-        }
+        return nil, string_format("failed to request %s, response is not valid json", url)
     end
 
     if result.code ~= 0 or res.status ~= 200 then
         return {
             existed = false,
             verified = false,
-            err = result.message,
+            error_message = result.message,
         }
     end
 
@@ -110,11 +104,15 @@ function _M.verify_app_secret(app_code, app_secret)
     }
 end
 
+---@param app_code string
+---@return table|nil result Request result, if there is a request error, it should be nil. e.g.
+---        {
+---            "app_secrets": ["secret1", "secret2"]
+---        }
+---@return string|nil err Request error
 function _M.list_app_secrets(app_code)
     if pl_types.is_empty(_M.host) then
-        return {
-            err = "bkauth host is not configured.",
-        }
+        return nil, "bkauth host is not configured."
     end
 
     local url = bk_core.url.url_single_joining_slash(_M.host, string_format(LIST_APP_SECRETS_URL, app_code))
@@ -135,9 +133,7 @@ function _M.list_app_secrets(app_code)
 
     if not (res and res.body) then
         core.log.error(string_format("failed to request %s, err: %s", url, err))
-        return {
-            err = string_format("failed to request %s, %s", url, err),
-        }
+        return nil, string_format("failed to request %s, %s", url, err)
     end
 
     -- 响应格式正常，错误码 404，表示应用不存在
@@ -149,14 +145,12 @@ function _M.list_app_secrets(app_code)
 
     local result = core.json.decode(res.body)
     if result == nil then
-        return {
-            err = string_format("failed to request %s, response is not valid json", url),
-        }
+        return nil, string_format("failed to request %s, response is not valid json", url)
     end
 
     if result.code ~= 0 or res.status ~= 200 then
         return {
-            err = result.message,
+            error_message = result.message,
         }
     end
 
@@ -170,6 +164,9 @@ function _M.list_app_secrets(app_code)
     }
 end
 
+---@param access_token string
+---@return table|nil result Request result, if there is a request error, it should be nil
+---@return string|nil err Request error
 function _M.verify_access_token(access_token)
     if pl_types.is_empty(_M.host) then
         return nil, "bkauth host is not configured."
@@ -191,7 +188,6 @@ function _M.verify_access_token(access_token)
             headers = {
                 ["X-Bk-App-Code"] = _M.app_code,
                 ["X-Bk-App-Secret"] = _M.app_secret,
-                -- ["Authorization"] = "Bearer " .. self.bkauth_access_token
                 ["Content-Type"] = "application/json",
             },
         }
@@ -208,7 +204,9 @@ function _M.verify_access_token(access_token)
     end
 
     if result.code ~= 0 or res.status ~= 200 then
-        return nil, string_format("bkauth error message: %s", result.message)
+        return {
+            error_message = string_format("bkauth error message: %s", result.message),
+        }
     end
 
     -- data example

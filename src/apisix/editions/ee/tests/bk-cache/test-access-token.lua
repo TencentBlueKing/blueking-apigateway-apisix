@@ -15,7 +15,6 @@
 -- We undertake not to change the open source license (MIT license) applicable
 -- to the current version of the project delivered to anyone in the future.
 --
-
 local access_token_cache = require("apisix.plugins.bk-cache.access-token")
 local bkauth_component = require("apisix.plugins.bk-components.bkauth")
 local ssm_component = require("apisix.plugins.bk-components.ssm")
@@ -77,15 +76,17 @@ describe(
                         }
                         bkauth_verify_access_token_err = nil
 
-                        local result = access_token_cache._get_access_token("fake-access-token")
+                        local result, err = access_token_cache._get_access_token("fake-access-token")
                         assert.is_same(
-                            result.token, {
-                                app_code = "my-app",
-                                user_id = "admin",
-                                expires_in = 10,
+                            result, {
+                                token = {
+                                    app_code = "my-app",
+                                    user_id = "admin",
+                                    expires_in = 10,
+                                },
                             }
                         )
-                        assert.is_nil(result.err)
+                        assert.is_nil(err)
                     end
                 )
 
@@ -101,15 +102,17 @@ describe(
                         ssm_verify_access_token_err = nil
                         ssm_is_configured = true
 
-                        local result = access_token_cache._get_access_token("fake-access-token")
+                        local result, err = access_token_cache._get_access_token("fake-access-token")
                         assert.is_same(
-                            result.token, {
-                                app_code = "my-foo",
-                                user_id = "kitty",
-                                expires_in = 30,
+                            result, {
+                                token = {
+                                    app_code = "my-foo",
+                                    user_id = "kitty",
+                                    expires_in = 30,
+                                },
                             }
                         )
-                        assert.is_nil(result.err)
+                        assert.is_nil(err)
                     end
                 )
 
@@ -121,9 +124,9 @@ describe(
                         ssm_verify_access_token_err = "ssm error"
                         ssm_is_configured = true
 
-                        local result = access_token_cache._get_access_token("fake-access-token")
-                        assert.is_nil(result.token)
-                        assert.is_equal(result.err, "ssm error")
+                        local result, err = access_token_cache._get_access_token("fake-access-token")
+                        assert.is_nil(result)
+                        assert.is_equal(err, "ssm error")
                     end
                 )
 
@@ -135,9 +138,9 @@ describe(
                         ssm_verify_access_token_err = "ssm error"
                         ssm_is_configured = nil
 
-                        local result = access_token_cache._get_access_token("fake-access-token")
-                        assert.is_nil(result.token)
-                        assert.is_equal(result.err, "bkauth error")
+                        local result, err = access_token_cache._get_access_token("fake-access-token")
+                        assert.is_nil(result)
+                        assert.is_equal(err, "bkauth error")
                     end
                 )
 
@@ -153,11 +156,50 @@ describe(
                         ssm_verify_access_token_err = nil
                         ssm_is_configured = nil
 
-                        local result = access_token_cache._get_access_token("fake-access-token")
-                        assert.is_nil(result.token)
-                        assert.is_equal(result.err, "bkauth error")
+                        local result, err = access_token_cache._get_access_token("fake-access-token")
+                        assert.is_nil(result)
+                        assert.is_equal(err, "bkauth error")
                     end
                 )
+
+                it(
+                    "bkauth has error_message", function()
+                        bkauth_verify_access_token_result = {
+                            error_message = "error",
+                        }
+                        bkauth_verify_access_token_err = nil
+                        ssm_is_configured = nil
+
+                        local result, err = access_token_cache._get_access_token("fake-token")
+                        assert.is_same(
+                            result, {
+                                error_message = "error",
+                            }
+                        )
+                        assert.is_nil(err)
+                    end
+                )
+
+                it(
+                    "ssm has error_message", function()
+                        bkauth_verify_access_token_result = nil
+                        bkauth_verify_access_token_err = "bkauth error"
+                        ssm_verify_access_token_result = {
+                            error_message = "error",
+                        }
+                        ssm_verify_access_token_err = nil
+                        ssm_is_configured = true
+
+                        local result, err = access_token_cache._get_access_token("fake-token")
+                        assert.is_same(
+                            result, {
+                                error_message = "error",
+                            }
+                        )
+                        assert.is_nil(err)
+                    end
+                )
+
             end
         )
 
@@ -175,9 +217,11 @@ describe(
                         local result, err = access_token_cache.get_access_token(access_token)
                         assert.is_same(
                             result, {
-                                app_code = "my-app",
-                                user_id = "admin",
-                                expires_in = 100,
+                                token = {
+                                    app_code = "my-app",
+                                    user_id = "admin",
+                                    expires_in = 100,
+                                },
                             }
                         )
                         assert.is_nil(err)
@@ -206,13 +250,13 @@ describe(
                         assert.is_nil(result)
                         assert.is_equal(err, "bkauth error")
 
-                        -- get from cache
+                        -- has err, no cache
                         access_token_cache.get_access_token(access_token)
-                        assert.stub(bkauth_component.verify_access_token).was_called(1)
+                        assert.stub(bkauth_component.verify_access_token).was_called(2)
 
                         -- get from func
                         access_token_cache.get_access_token(uuid.generate_v4())
-                        assert.stub(bkauth_component.verify_access_token).was_called(2)
+                        assert.stub(bkauth_component.verify_access_token).was_called(3)
                     end
                 )
             end

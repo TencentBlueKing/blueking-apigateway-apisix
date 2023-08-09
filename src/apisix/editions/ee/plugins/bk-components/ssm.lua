@@ -15,7 +15,6 @@
 -- We undertake not to change the open source license (MIT license) applicable
 -- to the current version of the project delivered to anyone in the future.
 --
-
 local pl_types = require("pl.types")
 local http = require("resty.http")
 local core = require("apisix.core")
@@ -40,6 +39,14 @@ function _M.is_configured()
     return not pl_types.is_empty(_M.host)
 end
 
+---@param access_token string
+---@return table|nil result Request result, if there is a request error, it should be nil. e.g.
+---        {
+---            "bk_app_code": "test",
+---            "username": "admin",
+---            "expires_in": 600
+---        }
+---@return string|nil err Request error
 function _M.verify_access_token(access_token)
     if pl_types.is_empty(_M.host) then
         return nil, "ssm host is not configured."
@@ -73,7 +80,9 @@ function _M.verify_access_token(access_token)
     end
 
     if result.code ~= 0 then
-        return nil, string_format("ssm error message: %s", result.message)
+        return {
+            error_message = string_format("ssm error message: %s", result.message),
+        }
     end
 
     return {

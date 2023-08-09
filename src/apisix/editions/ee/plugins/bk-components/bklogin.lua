@@ -15,7 +15,6 @@
 -- We undertake not to change the open source license (MIT license) applicable
 -- to the current version of the project delivered to anyone in the future.
 --
-
 local pl_types = require("pl.types")
 local http = require("resty.http")
 local core = require("apisix.core")
@@ -33,11 +32,15 @@ local _M = {
     host = bk_core.config.get_login_addr(),
 }
 
+---@param bk_token string
+---@return table|nil result Request result, if there is a request error, it should be nil. e.g.
+---        {
+---            "username": "admin"
+---        }
+---@return string|nil err Request error
 function _M.get_username_by_bk_token(bk_token)
     if pl_types.is_empty(_M.host) then
-        return {
-            err = "login host is not configured.",
-        }
+        return nil, "login host is not configured."
     end
 
     local url = bk_core.url.url_single_joining_slash(_M.host, IS_LOGIN_URL)
@@ -62,14 +65,12 @@ function _M.get_username_by_bk_token(bk_token)
     local result, _err = bk_components_utils.parse_response(res, err, true)
     if result == nil then
         core.log.error(string_format("failed to request %s, err: %s", url, _err))
-        return {
-            err = string_format("failed to request %s, %s", url, _err),
-        }
+        return nil, string_format("failed to request %s, %s", url, _err)
     end
 
     if result.bk_error_code ~= 0 then
         return {
-            err = "bk_token is invalid",
+            error_message = "bk_token is invalid",
         }
     end
 

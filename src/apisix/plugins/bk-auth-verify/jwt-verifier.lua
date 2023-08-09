@@ -15,7 +15,6 @@
 -- We undertake not to change the open source license (MIT license) applicable
 -- to the current version of the project delivered to anyone in the future.
 --
-
 local access_token_utils = require("apisix.plugins.bk-auth-verify.access-token-utils")
 local bk_app_define = require("apisix.plugins.bk-define.app")
 local bk_user_define = require("apisix.plugins.bk-define.user")
@@ -40,10 +39,12 @@ function _M.new(jwt_token, access_token)
     )
 end
 
+---@return table app
+---@return boolean has_server_error There is an internal server error.
 function _M.verify_app(self)
-    local token, err = access_token_utils.verify_access_token(self.access_token)
+    local token, err, is_server_error = access_token_utils.verify_access_token(self.access_token)
     if token == nil then
-        return nil, err
+        return bk_app_define.new_anonymous_app(err), is_server_error or false
     end
 
     return bk_app_define.new_app(
@@ -52,22 +53,24 @@ function _M.verify_app(self)
             exists = true,
             verified = true,
         }
-    )
+    ), false
 end
 
+---@return table user
+---@return boolean has_server_error There is an internal server error.
 function _M.verify_user(self)
     local jwt_obj, err = jwt_utils.parse_bk_jwt_token(self.jwt_token)
     if jwt_obj == nil then
-        return nil, string_format("parameter jwt is invalid: %s", err)
+        return bk_user_define.new_anonymous_user(string_format("parameter jwt is invalid: %s", err)), false
     end
 
     local user_info = jwt_obj.payload.user
     if user_info == nil then
-        return nil, "parameter jwt does not indicate user information"
+        return bk_user_define.new_anonymous_user("parameter jwt does not indicate user information"), false
     end
 
     if user_info.verified ~= true then
-        return nil, "the user indicated by jwt is not verified"
+        return bk_user_define.new_anonymous_user("the user indicated by jwt is not verified"), false
     end
 
     return bk_user_define.new_user(
@@ -76,7 +79,7 @@ function _M.verify_user(self)
             verified = true,
             source_type = "jwt",
         }
-    )
+    ), false
 end
 
 return _M

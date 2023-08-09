@@ -15,7 +15,6 @@
 -- We undertake not to change the open source license (MIT license) applicable
 -- to the current version of the project delivered to anyone in the future.
 --
-
 local app_account_cache = require("apisix.plugins.bk-cache.app-account")
 local bkauth_component = require("apisix.plugins.bk-components.bkauth")
 local uuid = require("resty.jit-uuid")
@@ -24,22 +23,27 @@ describe(
     "app-account cache", function()
 
         local verify_app_secret_result
+        local verify_app_secret_err
         local list_app_secrets_result
+        local list_app_secrets_err
 
         before_each(
             function()
                 verify_app_secret_result = nil
+                verify_app_secret_err = nil
+
                 list_app_secrets_result = nil
+                list_app_secrets_err = nil
 
                 stub(
                     bkauth_component, "verify_app_secret", function()
-                        return verify_app_secret_result
+                        return verify_app_secret_result, verify_app_secret_err
                     end
                 )
 
                 stub(
                     bkauth_component, "list_app_secrets", function()
-                        return list_app_secrets_result
+                        return list_app_secrets_result, list_app_secrets_err
                     end
                 )
             end
@@ -60,15 +64,17 @@ describe(
                             existed = true,
                             verified = true,
                         }
+                        verify_app_secret_err = nil
 
                         local app_code = uuid.generate_v4()
-                        local result = app_account_cache.verify_app_secret(app_code, "fake-app-secret")
+                        local result, err = app_account_cache.verify_app_secret(app_code, "fake-app-secret")
                         assert.is_same(
                             result, {
                                 existed = true,
                                 verified = true,
                             }
                         )
+                        assert.is_nil(err)
                         assert.stub(bkauth_component.verify_app_secret).was_called_with(app_code, "fake-app-secret")
 
                         -- get from cache
@@ -82,27 +88,23 @@ describe(
                 )
 
                 it(
-                    "get from cache, result has err", function()
-                        verify_app_secret_result = {
-                            err = "error",
-                        }
+                    "get from cache, has err", function()
+                        verify_app_secret_result = nil
+                        verify_app_secret_err = "error"
 
                         local app_code = uuid.generate_v4()
-                        local result = app_account_cache.verify_app_secret(app_code, "fake-app-secret")
-                        assert.is_same(
-                            result, {
-                                err = "error",
-                            }
-                        )
+                        local result, err = app_account_cache.verify_app_secret(app_code, "fake-app-secret")
+                        assert.is_nil(result)
+                        assert.is_equal(err, "error")
                         assert.stub(bkauth_component.verify_app_secret).was_called_with(app_code, "fake-app-secret")
 
-                        -- get from cache
+                        -- has err, no cache
                         app_account_cache.verify_app_secret(app_code, "fake-app-secret")
-                        assert.stub(bkauth_component.verify_app_secret).was_called(1)
+                        assert.stub(bkauth_component.verify_app_secret).was_called(2)
 
                         -- get from func
                         app_account_cache.verify_app_secret(uuid.generate_v4(), "fake-app-secret")
-                        assert.stub(bkauth_component.verify_app_secret).was_called(2)
+                        assert.stub(bkauth_component.verify_app_secret).was_called(3)
                     end
                 )
             end
@@ -117,12 +119,15 @@ describe(
                                 "valid-secret",
                             },
                         }
+                        list_app_secrets_err = nil
 
                         local app_code = uuid.generate_v4()
                         local result, err = app_account_cache.list_app_secrets(app_code)
                         assert.is_same(
                             result, {
-                                "valid-secret",
+                                app_secrets = {
+                                    "valid-secret",
+                                },
                             }
                         )
                         assert.is_nil(err)
@@ -139,10 +144,9 @@ describe(
                 )
 
                 it(
-                    "get from cache, result has err", function()
-                        list_app_secrets_result = {
-                            err = "error",
-                        }
+                    "get from cache, has err", function()
+                        list_app_secrets_result = nil
+                        list_app_secrets_err = "error"
 
                         local app_code = uuid.generate_v4()
                         local result, err = app_account_cache.list_app_secrets(app_code)
@@ -150,13 +154,13 @@ describe(
                         assert.is_equal(err, "error")
                         assert.stub(bkauth_component.list_app_secrets).was_called_with(app_code)
 
-                        -- get from cache
+                        -- has err, no cache
                         app_account_cache.list_app_secrets(app_code)
-                        assert.stub(bkauth_component.list_app_secrets).was_called(1)
+                        assert.stub(bkauth_component.list_app_secrets).was_called(2)
 
                         -- get from func
                         app_account_cache.list_app_secrets(uuid.generate_v4())
-                        assert.stub(bkauth_component.list_app_secrets).was_called(2)
+                        assert.stub(bkauth_component.list_app_secrets).was_called(3)
                     end
                 )
             end
