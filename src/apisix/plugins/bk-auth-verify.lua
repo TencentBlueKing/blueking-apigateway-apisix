@@ -15,7 +15,6 @@
 -- We undertake not to change the open source license (MIT license) applicable
 -- to the current version of the project delivered to anyone in the future.
 --
-
 -- # bk-auth-verify
 --
 -- This plugin sets the authentication-related properties to the current context, including
@@ -27,7 +26,7 @@
 -- the plugin use anonymous application and user objects.
 --
 -- This plugin depends on:
---     * bk-resource-auth: To determine whether the user verification should be skipped.
+--     * bk-resource-context: To determine whether the user verification should be skipped.
 --
 local pl_types = require("pl.types")
 local core = require("apisix.core")

@@ -15,7 +15,6 @@
 -- We undertake not to change the open source license (MIT license) applicable
 -- to the current version of the project delivered to anyone in the future.
 --
-
 local response = require("apisix.core.response")
 local bk_app_define = require("apisix.plugins.bk-define.app")
 local bk_user_define = require("apisix.plugins.bk-define.user")
@@ -316,6 +315,39 @@ describe(
         )
 
         context(
+            "is_server_error", function()
+                it(
+                    "is server error", function()
+                        local errs = {
+                            "server error: not host",
+                            "failed to request third-party api, error",
+                            "error, please contact the API Gateway developer to handle",
+                        }
+                        for _, err in ipairs(errs) do
+                            local result = plugin._is_server_error(err)
+                            assert.is_true(result)
+                        end
+                    end
+                )
+
+                it(
+                    "not server error", function()
+                        local errs = {
+                            "no host",
+                            "failed to request",
+                            "error, please contact the API Gateway developer",
+                        }
+                        for _, err in ipairs(errs) do
+                            local result = plugin._is_server_error(err)
+                            assert.is_false(result)
+                        end
+                    end
+                )
+            end
+
+        )
+
+        context(
             "rewrite", function()
                 before_each(
                     function()
@@ -387,6 +419,11 @@ describe(
                         local status = plugin.rewrite({}, ctx)
                         assert.is_equal(status, 400)
                         assert.is_equal(ctx.var.bk_apigw_error.error.code, 1640001)
+
+                        ctx.var.bk_app.valid_error_message = "server error: error"
+                        status = plugin.rewrite({}, ctx)
+                        assert.is_equal(status, 500)
+                        assert.is_equal(ctx.var.bk_apigw_error.error.code, 1650001)
                     end
                 )
 
@@ -448,13 +485,24 @@ describe(
                         local status = plugin.rewrite({}, ctx)
                         assert.is_equal(status, 400)
                         assert.is_equal(ctx.var.bk_apigw_error.error.code, 1640001)
+
+                        ctx.var.bk_user.valid_error_message = "server error: error"
+                        status = plugin.rewrite({}, ctx)
+                        assert.is_equal(status, 500)
+                        assert.is_equal(ctx.var.bk_apigw_error.error.code, 1650001)
                     end
                 )
 
                 it(
                     "dependencies not provided", function()
                         -- Given an empty context object, the function should still works
-                        assert.is_nil(plugin.rewrite({}, { var = {} }))
+                        assert.is_nil(
+                            plugin.rewrite(
+                                {}, {
+                                    var = {},
+                                }
+                            )
+                        )
                     end
                 )
             end

@@ -15,7 +15,6 @@
 -- We undertake not to change the open source license (MIT license) applicable
 -- to the current version of the project delivered to anyone in the future.
 --
-
 local pl_types = require("pl.types")
 local http = require("resty.http")
 local core = require("apisix.core")
@@ -45,7 +44,7 @@ function _M.verify_app_secret(app_code, app_secret)
         return {
             existed = false,
             verified = false,
-            err = "bkauth host is not configured.",
+            err = "server error: bkauth host is not configured.",
         }
     end
 
@@ -75,7 +74,7 @@ function _M.verify_app_secret(app_code, app_secret)
         return {
             existed = false,
             verified = false,
-            err = string_format("failed to request %s, %s", url, err),
+            err = string_format("failed to request third-party api, url: %s, err: %s", url, err),
         }
     end
 
@@ -92,7 +91,7 @@ function _M.verify_app_secret(app_code, app_secret)
         return {
             existed = false,
             verified = false,
-            err = string_format("failed to request %s, response is not valid json", url),
+            err = string_format("failed to request third-party api, response is not valid json, url: %s", url),
         }
     end
 
@@ -113,7 +112,7 @@ end
 function _M.list_app_secrets(app_code)
     if pl_types.is_empty(_M.host) then
         return {
-            err = "bkauth host is not configured.",
+            err = "server error: bkauth host is not configured.",
         }
     end
 
@@ -136,7 +135,7 @@ function _M.list_app_secrets(app_code)
     if not (res and res.body) then
         core.log.error(string_format("failed to request %s, err: %s", url, err))
         return {
-            err = string_format("failed to request %s, %s", url, err),
+            err = string_format("failed to request third-party api, url: %s, err: %s", url, err),
         }
     end
 
@@ -150,7 +149,7 @@ function _M.list_app_secrets(app_code)
     local result = core.json.decode(res.body)
     if result == nil then
         return {
-            err = string_format("failed to request %s, response is not valid json", url),
+            err = string_format("failed to request third-party api, response is not valid json, url: %s", url),
         }
     end
 
@@ -172,7 +171,7 @@ end
 
 function _M.verify_access_token(access_token)
     if pl_types.is_empty(_M.host) then
-        return nil, "bkauth host is not configured."
+        return nil, "server error: bkauth host is not configured."
     end
 
     local url = bk_core.url.url_single_joining_slash(_M.host, VERIFY_ACCESS_TOKEN_URL)
@@ -199,12 +198,12 @@ function _M.verify_access_token(access_token)
 
     if not (res and res.body) then
         core.log.error(string_format("failed to request %s, err: %s", url, err))
-        return nil, string_format("failed to request %s, %s", url, err)
+        return nil, string_format("failed to request third-party api, url: %s, err: %s", url, err)
     end
 
     local result = core.json.decode(res.body)
     if result == nil then
-        return nil, string_format("failed to request %s, response is not valid json", url)
+        return nil, string_format("failed to request third-party api, response is not valid json, url: %s", url)
     end
 
     if result.code ~= 0 or res.status ~= 200 then
