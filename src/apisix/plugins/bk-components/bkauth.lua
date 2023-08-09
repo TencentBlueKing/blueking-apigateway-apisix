@@ -78,7 +78,6 @@ function _M.verify_app_secret(app_code, app_secret)
         }
     end
 
-    core.log.error(string_format("failed to request %s, response is not valid json, response: %s", url, res.body))
     local result = core.json.decode(res.body)
     if result == nil then
         core.log.error(string_format("failed to request %s, response is not valid json, response: %s", url, res.body))
