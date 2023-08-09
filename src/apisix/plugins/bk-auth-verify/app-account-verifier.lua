@@ -103,6 +103,10 @@ function _M.verify_by_app_secret(self)
 
     local error_message = ""
     if result == nil then
+        result = {
+            existed = false,
+            verified = false,
+        }
         error_message = err
     elseif not result.existed then
         error_message = "app not found"
@@ -113,9 +117,9 @@ function _M.verify_by_app_secret(self)
     return bk_app_define.new_app(
         {
             app_code = self.app_code,
-            exists = result and result.existed or false,
-            verified = result and result.verified or false,
-            valid_secret = result and result.verified or false,
+            exists = result.existed,
+            verified = result.verified,
+            valid_secret = result.verified,
             valid_signature = false,
             valid_error_message = error_message,
         }
