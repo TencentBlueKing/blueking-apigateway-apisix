@@ -50,7 +50,7 @@ describe(
                             }, nil, true
                         )
                         assert.is_nil(result)
-                        assert.is_true(core.string.has_prefix(err, "failed to request third-party api, status code is"))
+                        assert.is_true(core.string.has_prefix(err, "status code is"))
                     end
                 )
 
@@ -80,7 +80,7 @@ describe(
                             }, true
                         )
                         assert.is_nil(result)
-                        assert.is_equal(err, "failed to request third-party api, response is not valid json")
+                        assert.is_equal(err, "response is not valid json")
                     end
                 )
 

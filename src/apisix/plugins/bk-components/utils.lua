@@ -23,12 +23,12 @@ local function parse_response(res, err, raise_for_status)
     end
 
     if raise_for_status and res.status ~= 200 then
-        return nil, "failed to request third-party api, status code is " .. res.status
+        return nil, "status code is " .. res.status
     end
 
     local result, _err = core.json.decode(res.body)
     if _err ~= nil then
-        return nil, "failed to request third-party api, response is not valid json"
+        return nil, "response is not valid json"
     end
 
     return result
