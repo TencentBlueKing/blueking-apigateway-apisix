@@ -66,8 +66,8 @@ function _M.verify_app_secret(app_code, app_secret)
     )
 
     if not (res and res.body) then
-        core.log.error(string_format("failed to request %s, err: %s", url, err))
-        return nil, string_format("failed to request third-party api, url: %s, err: %s", url, err)
+        core.log.error(string_format("failed to request %s, err: %s, response: nil", url, err))
+        return nil, string_format("failed to request third-party api, url: %s, err: %s, response: nil", url, err)
     end
 
     -- 响应格式正常，错误码 404，表示应用不存在
@@ -80,13 +80,22 @@ function _M.verify_app_secret(app_code, app_secret)
 
     local result = core.json.decode(res.body)
     if result == nil then
-        core.log.error(string_format("failed to request %s, response is not valid json, response: %s", url, res.body))
-        return nil, string_format("failed to request third-party api, response is not valid json, url: %s", url)
+        core.log.error(
+            string_format(
+                "failed to request %s, response is not valid json, status: %s, response: %s", url, res.status, res.body
+            )
+        )
+        return nil, string_format(
+            "failed to request third-party api, response is not valid json, url: %s, status: %s", url, res.status
+        )
     end
 
     if result.code ~= 0 or res.status ~= 200 then
-        core.log.error(string_format("failed to request %s, response: %s", url, res.body))
-        return nil, string_format("failed to request third-party api, bkauth error message: %s", result.message)
+        core.log.error(string_format("failed to request %s, status: %s, response: %s", url, res.status, res.body))
+        return nil, string_format(
+            "failed to request third-party api, bkauth error message: %s, status: %s, code: %s", result.message,
+            res.status, result.code
+        )
     end
 
     return {
@@ -117,8 +126,8 @@ function _M.list_app_secrets(app_code)
     )
 
     if not (res and res.body) then
-        core.log.error(string_format("failed to request %s, err: %s", url, err))
-        return nil, string_format("failed to request third-party api, url: %s, err: %s", url, err)
+        core.log.error(string_format("failed to request %s, err: %s, response: nil", url, err))
+        return nil, string_format("failed to request third-party api, url: %s, err: %s, response: nil", url, err)
     end
 
     -- 响应格式正常，错误码 404，表示应用不存在
@@ -130,13 +139,22 @@ function _M.list_app_secrets(app_code)
 
     local result = core.json.decode(res.body)
     if result == nil then
-        core.log.error(string_format("failed to request %s, response is not valid json, response: %s", url, res.body))
-        return nil, string_format("failed to request third-party api, response is not valid json, url: %s", url)
+        core.log.error(
+            string_format(
+                "failed to request %s, response is not valid json, status: %s, response: %s", url, res.status, res.body
+            )
+        )
+        return nil, string_format(
+            "failed to request third-party api, response is not valid json, url: %s, status: %s", url, res.status
+        )
     end
 
     if result.code ~= 0 or res.status ~= 200 then
-        core.log.error(string_format("failed to request %s, response: %s", url, res.body))
-        return nil, string_format("failed to request third-party api, bkauth error message: %s", result.message)
+        core.log.error(string_format("failed to request %s, status: %s, response: %s", url, res.status, res.body))
+        return nil, string_format(
+            "failed to request third-party api, bkauth error message: %s, status: %s, code: %s", result.message,
+            res.status, result.code
+        )
     end
 
     local app_secrets = {}
@@ -177,18 +195,25 @@ function _M.verify_access_token(access_token)
     )
 
     if not (res and res.body) then
-        core.log.error(string_format("failed to request %s, err: %s", url, err))
-        return nil, string_format("failed to request third-party api, url: %s, err: %s", url, err)
+        core.log.error(string_format("failed to request %s, err: %s, response: nil", url, err))
+        return nil, string_format("failed to request third-party api, url: %s, err: %s, response: nil", url, err)
     end
 
     local result = core.json.decode(res.body)
     if result == nil then
-        core.log.error(string_format("failed to request %s, response is not valid json, response: %s", url, res.body))
-        return nil, string_format("failed to request third-party api, response is not valid json, url: %s", url)
+        core.log.error(
+            string_format(
+                "failed to request %s, response is not valid json, status: %s, response: %s", url, res.status, res.body
+            )
+        )
+        return nil, string_format(
+            "failed to request third-party api, response is not valid json, url: %s, status: %s", url, res.status
+        )
     end
 
     if result.code ~= 0 or res.status ~= 200 then
-        return nil, string_format("bkauth error message: %s", result.message)
+        return nil,
+               string_format("bkauth error message: %s, status: %s, code: %s", result.message, res.status, result.code)
     end
 
     -- data example

@@ -67,12 +67,17 @@ function _M.verify_access_token(access_token)
 
     local result, _err = bk_components_utils.parse_response(res, err, true)
     if result == nil then
-        core.log.error(string_format("failed to request %s, err: %s", url, _err))
+        core.log.error(
+            string_format(
+                "failed to request %s, err: %s, status: %s, response: %s", url, _err, res and res.status,
+                res and res.body
+            )
+        )
         return nil, string_format("failed to request third-party api, url: %s, err: %s", url, _err)
     end
 
     if result.code ~= 0 then
-        return nil, string_format("ssm error message: %s", result.message)
+        return nil, string_format("ssm error message: %s, code: %s", result.message, result.code)
     end
 
     return {

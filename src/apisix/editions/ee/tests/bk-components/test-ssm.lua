@@ -15,7 +15,6 @@
 -- We undertake not to change the open source license (MIT license) applicable
 -- to the current version of the project delivered to anyone in the future.
 --
-
 local core = require("apisix.core")
 local http = require("resty.http")
 local ssm = require("apisix.plugins.bk-components.ssm")
@@ -79,7 +78,7 @@ describe(
 
                         local result, err = ssm.verify_access_token("fake-access-token")
                         assert.is_nil(result)
-                        assert.is_equal(err, "ssm error message: error")
+                        assert.is_equal(err, "ssm error message: error, code: 1")
                     end
                 )
 
