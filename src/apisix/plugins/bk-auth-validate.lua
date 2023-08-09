@@ -15,7 +15,6 @@
 -- We undertake not to change the open source license (MIT license) applicable
 -- to the current version of the project delivered to anyone in the future.
 --
-
 -- # bk-auth-validate
 --
 -- Validate current request and return an error response if the validation is required
@@ -29,7 +28,7 @@
 -- be skipped.
 --
 -- This plugin depends on:
---     * bk-resource-auth: To determine whether a verified data is necessary.
+--     * bk-resource-context: To determine whether a verified data is necessary.
 --     * bk-auth-verify: Get the verified bk_app and bk_user objects.
 --     * bk-verified-user-exempted-apps: Get the whitelist configurations of current gateway.
 --
@@ -94,8 +93,8 @@ end
 
 local function validate_user(bk_resource_id, bk_resource_auth, user, app, verified_user_exempted_apps)
     if (not bk_resource_auth:get_verified_user_required() or
-            is_app_exempted_from_verified_user(app:get_app_code(), bk_resource_id, verified_user_exempted_apps) or
-            bk_resource_auth:get_skip_user_verification()) then
+        is_app_exempted_from_verified_user(app:get_app_code(), bk_resource_id, verified_user_exempted_apps) or
+        bk_resource_auth:get_skip_user_verification()) then
         return nil
     end
 
@@ -106,6 +105,14 @@ local function validate_user(bk_resource_id, bk_resource_auth, user, app, verifi
     return user.valid_error_message
 end
 
+---@param err string
+---@return boolean
+local function is_server_error(err)
+    return core.string.has_prefix(err, "server error: ") or
+               core.string.has_prefix(err, "failed to request third-party api") or
+               core.string.has_suffix(err, "please contact the API Gateway developer to handle")
+end
+
 function _M.rewrite(conf, ctx) -- luacheck: no unused
     -- Return directly if "bk-resource-auth" is not loaded by checking "bk_resource_auth"
     if ctx.var.bk_resource_auth == nil then
@@ -114,7 +121,11 @@ function _M.rewrite(conf, ctx) -- luacheck: no unused
 
     local err = validate_app(ctx.var.bk_resource_auth, ctx.var.bk_app)
     if err ~= nil then
-        return errorx.exit_with_apigw_err(ctx, errorx.new_invalid_args():with_field("reason", err), _M)
+        if is_server_error(err) then
+            return errorx.exit_with_apigw_err(ctx, errorx.new_internal_server_error():with_field("reason", err), _M)
+        else
+            return errorx.exit_with_apigw_err(ctx, errorx.new_invalid_args():with_field("reason", err), _M)
+        end
     end
 
     err = validate_user(
@@ -122,7 +133,11 @@ function _M.rewrite(conf, ctx) -- luacheck: no unused
         ctx.var.verified_user_exempted_apps
     )
     if err ~= nil then
-        return errorx.exit_with_apigw_err(ctx, errorx.new_invalid_args():with_field("reason", err), _M)
+        if is_server_error(err) then
+            return errorx.exit_with_apigw_err(ctx, errorx.new_internal_server_error():with_field("reason", err), _M)
+        else
+            return errorx.exit_with_apigw_err(ctx, errorx.new_invalid_args():with_field("reason", err), _M)
+        end
     end
 end
 
@@ -130,6 +145,7 @@ if _TEST then -- luacheck: ignore
     _M._is_app_exempted_from_verified_user = is_app_exempted_from_verified_user
     _M._validate_app = validate_app
     _M._validate_user = validate_user
+    _M._is_server_error = is_server_error
 end
 
 return _M

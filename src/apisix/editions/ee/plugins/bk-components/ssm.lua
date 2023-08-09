@@ -15,7 +15,6 @@
 -- We undertake not to change the open source license (MIT license) applicable
 -- to the current version of the project delivered to anyone in the future.
 --
-
 local pl_types = require("pl.types")
 local http = require("resty.http")
 local core = require("apisix.core")
@@ -42,7 +41,7 @@ end
 
 function _M.verify_access_token(access_token)
     if pl_types.is_empty(_M.host) then
-        return nil, "ssm host is not configured."
+        return nil, "server error: ssm host is not configured."
     end
 
     local url = bk_core.url.url_single_joining_slash(_M.host, VERIFY_ACCESS_TOKEN_URL)
@@ -69,7 +68,7 @@ function _M.verify_access_token(access_token)
     local result, _err = bk_components_utils.parse_response(res, err, true)
     if result == nil then
         core.log.error(string_format("failed to request %s, err: %s", url, _err))
-        return nil, string_format("failed to request %s, %s", url, _err)
+        return nil, string_format("failed to request third-party api, url: %s, err: %s", url, _err)
     end
 
     if result.code ~= 0 then

@@ -15,7 +15,6 @@
 -- We undertake not to change the open source license (MIT license) applicable
 -- to the current version of the project delivered to anyone in the future.
 --
-
 local core = require("apisix.core")
 
 local function parse_response(res, err, raise_for_status)
@@ -24,12 +23,12 @@ local function parse_response(res, err, raise_for_status)
     end
 
     if raise_for_status and res.status ~= 200 then
-        return nil, "status code is " .. res.status
+        return nil, "failed to request third-party api, status code is " .. res.status
     end
 
     local result, _err = core.json.decode(res.body)
     if _err ~= nil then
-        return nil, "response is not valid json"
+        return nil, "failed to request third-party api, response is not valid json"
     end
 
     return result
