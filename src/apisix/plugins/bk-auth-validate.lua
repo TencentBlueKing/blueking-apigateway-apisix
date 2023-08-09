@@ -108,8 +108,8 @@ end
 ---@param err string
 ---@return boolean
 local function is_server_error(err)
-    return core.string.has_prefix(err, "server error: ") or
-               core.string.has_prefix(err, "failed to request third-party api") or
+    return core.string.has_prefix(err, "failed to request third-party api") or
+               core.string.has_prefix(err, "server error: ") or
                core.string.has_suffix(err, "please contact the API Gateway developer to handle")
 end
 
