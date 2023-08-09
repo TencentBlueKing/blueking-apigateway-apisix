@@ -69,7 +69,7 @@ function _M.get_username_by_bk_token(bk_token)
 
     if result.bk_error_code ~= 0 then
         return {
-            error_message = "bk_token is invalid",
+            error_message = string_format("bk_token is invalid, code: %s", result.bk_error_code),
         }
     end
 
