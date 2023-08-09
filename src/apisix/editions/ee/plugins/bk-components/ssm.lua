@@ -77,7 +77,7 @@ function _M.verify_access_token(access_token)
     end
 
     if result.code ~= 0 then
-        return nil, string_format("ssm error message: %s, code: %s", result.message, result.code)
+        return nil, string_format("ssm error message: %s, url: %s, code: %s", result.message, url, result.code)
     end
 
     return {

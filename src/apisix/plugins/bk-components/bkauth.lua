@@ -93,8 +93,8 @@ function _M.verify_app_secret(app_code, app_secret)
     if result.code ~= 0 or res.status ~= 200 then
         core.log.error(string_format("failed to request %s, status: %s, response: %s", url, res.status, res.body))
         return nil, string_format(
-            "failed to request third-party api, bkauth error message: %s, status: %s, code: %s", result.message,
-            res.status, result.code
+            "failed to request third-party api, bkauth error message: %s, url: %s, status: %s, code: %s",
+            result.message, url, res.status, result.code
         )
     end
 
@@ -152,8 +152,8 @@ function _M.list_app_secrets(app_code)
     if result.code ~= 0 or res.status ~= 200 then
         core.log.error(string_format("failed to request %s, status: %s, response: %s", url, res.status, res.body))
         return nil, string_format(
-            "failed to request third-party api, bkauth error message: %s, status: %s, code: %s", result.message,
-            res.status, result.code
+            "failed to request third-party api, bkauth error message: %s, url: %s, status: %s, code: %s",
+            result.message, url, res.status, result.code
         )
     end
 
@@ -212,8 +212,9 @@ function _M.verify_access_token(access_token)
     end
 
     if result.code ~= 0 or res.status ~= 200 then
-        return nil,
-               string_format("bkauth error message: %s, status: %s, code: %s", result.message, res.status, result.code)
+        return nil, string_format(
+            "bkauth error message: %s, url: %s, status: %s, code: %s", result.message, url, res.status, result.code
+        )
     end
 
     -- data example

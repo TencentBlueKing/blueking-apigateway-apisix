@@ -327,7 +327,7 @@ describe(
 
                         local result, err = bkauth.verify_access_token("fake-token")
                         assert.is_nil(result)
-                        assert.is_equal(err, "bkauth error message: error, status: 200, code: 1")
+                        assert.is_true(core.string.has_prefix(err, "bkauth error message: error"))
                     end
                 )
 
@@ -346,7 +346,7 @@ describe(
 
                         local result, err = bkauth.verify_access_token("fake-token")
                         assert.is_nil(result)
-                        assert.is_equal(err, "bkauth error message: error, status: 500, code: 0")
+                        assert.is_true(core.string.has_prefix(err, "bkauth error message: error"))
                     end
                 )
 

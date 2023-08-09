@@ -78,7 +78,7 @@ describe(
 
                         local result, err = bklogin.get_username_by_bk_token("fake-bk-token")
                         assert.is_nil(result.username)
-                        assert.is_equal(result.error_message, "bk_token is invalid, code: 1")
+                        assert.is_true(core.string.has_prefix(result.error_message, "bk_token is invalid"))
                         assert.is_nil(err)
                     end
                 )

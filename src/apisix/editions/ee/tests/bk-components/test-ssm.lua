@@ -78,7 +78,7 @@ describe(
 
                         local result, err = ssm.verify_access_token("fake-access-token")
                         assert.is_nil(result)
-                        assert.is_equal(err, "ssm error message: error, code: 1")
+                        assert.is_true(core.string.has_prefix(err, "ssm error message: error"))
                     end
                 )
 
