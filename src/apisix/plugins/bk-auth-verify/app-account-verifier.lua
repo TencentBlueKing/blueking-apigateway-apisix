@@ -15,7 +15,6 @@
 -- We undertake not to change the open source license (MIT license) applicable
 -- to the current version of the project delivered to anyone in the future.
 --
-
 local pl_types = require("pl.types")
 local app_account_utils = require("apisix.plugins.bk-auth-verify.app-account-utils")
 local bk_app_define = require("apisix.plugins.bk-define.app")
@@ -71,11 +70,11 @@ end
 function _M.verify_by_signature(self, signature_verifier)
     local verified
 
-    local expected_secrets, err = bk_cache.list_app_secrets(self.app_code)
-    local exists = (err == nil and not pl_types.is_empty(expected_secrets))
+    local result, err = bk_cache.list_app_secrets(self.app_code)
+    local exists = not pl_types.is_empty(result and result.app_secrets)
 
     if exists then
-        verified, err = signature_verifier:verify(expected_secrets, self.auth_params)
+        verified, err = signature_verifier:verify(result.app_secrets, self.auth_params)
     end
 
     local error_message = ""
@@ -100,11 +99,11 @@ function _M.verify_by_signature(self, signature_verifier)
 end
 
 function _M.verify_by_app_secret(self)
-    local result = bk_cache.verify_app_secret(self.app_code, self.app_secret)
+    local result, err = bk_cache.verify_app_secret(self.app_code, self.app_secret)
 
     local error_message = ""
-    if result.err ~= nil then
-        error_message = result.err
+    if result == nil then
+        error_message = err
     elseif not result.existed then
         error_message = "app not found"
     elseif not result.verified then
@@ -114,9 +113,9 @@ function _M.verify_by_app_secret(self)
     return bk_app_define.new_app(
         {
             app_code = self.app_code,
-            exists = result.existed,
-            verified = result.verified,
-            valid_secret = result.verified,
+            exists = result and result.existed or false,
+            verified = result and result.verified or false,
+            valid_secret = result and result.verified or false,
             valid_signature = false,
             valid_error_message = error_message,
         }

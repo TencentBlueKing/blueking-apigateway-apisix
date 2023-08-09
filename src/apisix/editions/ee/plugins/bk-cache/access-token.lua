@@ -15,7 +15,6 @@
 -- We undertake not to change the open source license (MIT license) applicable
 -- to the current version of the project delivered to anyone in the future.
 --
-
 local core = require("apisix.core")
 local access_token_define = require("apisix.plugins.bk-define.access-token")
 local bkauth_component = require("apisix.plugins.bk-components.bkauth")

@@ -41,11 +41,7 @@ local _M = {
 
 function _M.verify_app_secret(app_code, app_secret)
     if pl_types.is_empty(_M.host) then
-        return {
-            existed = false,
-            verified = false,
-            err = "server error: bkauth host is not configured.",
-        }
+        return nil, "server error: bkauth host is not configured."
     end
 
     local url = bk_core.url.url_single_joining_slash(_M.host, string_format(VERIFY_APP_SECRET_URL, app_code))
@@ -71,11 +67,7 @@ function _M.verify_app_secret(app_code, app_secret)
 
     if not (res and res.body) then
         core.log.error(string_format("failed to request %s, err: %s", url, err))
-        return {
-            existed = false,
-            verified = false,
-            err = string_format("failed to request third-party api, url: %s, err: %s", url, err),
-        }
+        return nil, string_format("failed to request third-party api, url: %s, err: %s", url, err)
     end
 
     -- 响应格式正常，错误码 404，表示应用不存在
@@ -88,19 +80,13 @@ function _M.verify_app_secret(app_code, app_secret)
 
     local result = core.json.decode(res.body)
     if result == nil then
-        return {
-            existed = false,
-            verified = false,
-            err = string_format("failed to request third-party api, response is not valid json, url: %s", url),
-        }
+        core.log.error(string_format("failed to request %s, response is not valid json, respones: %s", url, res.body))
+        return nil, string_format("failed to request third-party api, response is not valid json, url: %s", url)
     end
 
     if result.code ~= 0 or res.status ~= 200 then
-        return {
-            existed = false,
-            verified = false,
-            err = result.message,
-        }
+        core.log.error(string_format("failed to request %s, response: %s", url, res.body))
+        return nil, string_format("failed to request third-party api, bkauth error message: %s", result.message)
     end
 
     return {
@@ -111,9 +97,7 @@ end
 
 function _M.list_app_secrets(app_code)
     if pl_types.is_empty(_M.host) then
-        return {
-            err = "server error: bkauth host is not configured.",
-        }
+        return nil, "server error: bkauth host is not configured."
     end
 
     local url = bk_core.url.url_single_joining_slash(_M.host, string_format(LIST_APP_SECRETS_URL, app_code))
@@ -134,9 +118,7 @@ function _M.list_app_secrets(app_code)
 
     if not (res and res.body) then
         core.log.error(string_format("failed to request %s, err: %s", url, err))
-        return {
-            err = string_format("failed to request third-party api, url: %s, err: %s", url, err),
-        }
+        return nil, string_format("failed to request third-party api, url: %s, err: %s", url, err)
     end
 
     -- 响应格式正常，错误码 404，表示应用不存在
@@ -148,15 +130,13 @@ function _M.list_app_secrets(app_code)
 
     local result = core.json.decode(res.body)
     if result == nil then
-        return {
-            err = string_format("failed to request third-party api, response is not valid json, url: %s", url),
-        }
+        core.log.error(string_format("failed to request %s, response is not valid json, respones: %s", url, res.body))
+        return nil, string_format("failed to request third-party api, response is not valid json, url: %s", url)
     end
 
     if result.code ~= 0 or res.status ~= 200 then
-        return {
-            err = result.message,
-        }
+        core.log.error(string_format("failed to request %s, response: %s", url, res.body))
+        return nil, string_format("failed to request third-party api, bkauth error message: %s", result.message)
     end
 
     local app_secrets = {}
@@ -203,6 +183,7 @@ function _M.verify_access_token(access_token)
 
     local result = core.json.decode(res.body)
     if result == nil then
+        core.log.error(string_format("failed to request %s, response is not valid json, respones: %s", url, res.body))
         return nil, string_format("failed to request third-party api, response is not valid json, url: %s", url)
     end
 
