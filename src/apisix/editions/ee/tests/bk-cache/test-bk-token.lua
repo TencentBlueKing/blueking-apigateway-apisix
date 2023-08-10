@@ -15,7 +15,6 @@
 -- We undertake not to change the open source license (MIT license) applicable
 -- to the current version of the project delivered to anyone in the future.
 --
-
 local bk_token_cache = require("apisix.plugins.bk-cache.bk-token")
 local bklogin_component = require("apisix.plugins.bk-components.bklogin")
 local uuid = require("resty.jit-uuid")
@@ -24,14 +23,16 @@ describe(
     "bk-token cache", function()
 
         local get_username_by_bk_token_result
+        local get_username_by_bk_token_err
 
         before_each(
             function()
                 get_username_by_bk_token_result = nil
+                get_username_by_bk_token_err = "error"
 
                 stub(
                     bklogin_component, "get_username_by_bk_token", function()
-                        return get_username_by_bk_token_result
+                        return get_username_by_bk_token_result, get_username_by_bk_token_err
                     end
                 )
             end
@@ -50,6 +51,7 @@ describe(
                         get_username_by_bk_token_result = {
                             username = "admin",
                         }
+                        get_username_by_bk_token_err = nil
 
                         local bk_token = uuid.generate_v4()
                         local result, err = bk_token_cache.get_username_by_bk_token(bk_token)
@@ -69,9 +71,8 @@ describe(
 
                 it(
                     "get from cache, has err", function()
-                        get_username_by_bk_token_result = {
-                            err = "error",
-                        }
+                        get_username_by_bk_token_result = nil
+                        get_username_by_bk_token_err = "error"
 
                         local bk_token = uuid.generate_v4()
                         local result, err = bk_token_cache.get_username_by_bk_token(bk_token)
@@ -79,13 +80,13 @@ describe(
                         assert.is_equal(err, "error")
                         assert.stub(bklogin_component.get_username_by_bk_token).was_called_with(bk_token)
 
-                        -- get from cache
+                        -- has err, no cache
                         bk_token_cache.get_username_by_bk_token(bk_token)
-                        assert.stub(bklogin_component.get_username_by_bk_token).was_called(1)
+                        assert.stub(bklogin_component.get_username_by_bk_token).was_called(2)
 
                         -- get from func
                         bk_token_cache.get_username_by_bk_token(uuid.generate_v4())
-                        assert.stub(bklogin_component.get_username_by_bk_token).was_called(2)
+                        assert.stub(bklogin_component.get_username_by_bk_token).was_called(3)
                     end
                 )
             end

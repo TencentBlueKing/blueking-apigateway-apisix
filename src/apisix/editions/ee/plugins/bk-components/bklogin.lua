@@ -34,9 +34,7 @@ local _M = {
 
 function _M.get_username_by_bk_token(bk_token)
     if pl_types.is_empty(_M.host) then
-        return {
-            err = "server error: login host is not configured.",
-        }
+        return nil, "server error: login host is not configured."
     end
 
     local url = bk_core.url.url_single_joining_slash(_M.host, IS_LOGIN_URL)
@@ -60,15 +58,18 @@ function _M.get_username_by_bk_token(bk_token)
 
     local result, _err = bk_components_utils.parse_response(res, err, true)
     if result == nil then
-        core.log.error(string_format("failed to request %s, err: %s", url, _err))
-        return {
-            err = string_format("failed to request third-party api, url: %s, err: %s", url, _err),
-        }
+        core.log.error(
+            string_format(
+                "failed to request %s, err: %s, status: %s, response: %s", url, _err, res and res.status,
+                res and res.body
+            )
+        )
+        return nil, string_format("failed to request third-party api, url: %s, err: %s", url, _err)
     end
 
     if result.bk_error_code ~= 0 then
         return {
-            err = "bk_token is invalid",
+            error_message = string_format("bk_token is invalid, url: %s, code: %s", url, result.bk_error_code),
         }
     end
 

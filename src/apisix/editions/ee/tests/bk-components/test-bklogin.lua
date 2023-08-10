@@ -15,7 +15,6 @@
 -- We undertake not to change the open source license (MIT license) applicable
 -- to the current version of the project delivered to anyone in the future.
 --
-
 local core = require("apisix.core")
 local http = require("resty.http")
 local bklogin = require("apisix.plugins.bk-components.bklogin")
@@ -57,9 +56,9 @@ describe(
                         response = nil
                         response_err = "error"
 
-                        local result = bklogin.get_username_by_bk_token("fake-bk-token")
-                        assert.is_nil(result.username)
-                        assert.is_true(core.string.has_prefix(result.err, "failed to request"))
+                        local result, err = bklogin.get_username_by_bk_token("fake-bk-token")
+                        assert.is_nil(result)
+                        assert.is_true(core.string.has_prefix(err, "failed to request"))
                     end
                 )
 
@@ -77,9 +76,10 @@ describe(
                         }
                         response_err = nil
 
-                        local result = bklogin.get_username_by_bk_token("fake-bk-token")
+                        local result, err = bklogin.get_username_by_bk_token("fake-bk-token")
                         assert.is_nil(result.username)
-                        assert.is_equal(result.err, "bk_token is invalid")
+                        assert.is_true(core.string.has_prefix(result.error_message, "bk_token is invalid"))
+                        assert.is_nil(err)
                     end
                 )
 
@@ -99,9 +99,9 @@ describe(
                         }
                         response_err = nil
 
-                        local result = bklogin.get_username_by_bk_token("fake-bk-token")
+                        local result, err = bklogin.get_username_by_bk_token("fake-bk-token")
                         assert.is_equal(result.username, "admin")
-                        assert.is_nil(result.err)
+                        assert.is_nil(err)
                     end
                 )
             end
