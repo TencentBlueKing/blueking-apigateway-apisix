@@ -28,6 +28,10 @@ RUN luarocks install multipart --tree=/usr/local/apisix/deps && \
 
 ADD ./build/config-watcher ./src/build/bin/apisix-start.sh ./src/build/bin/config-watcher-start.sh /data/bkgateway/bin/
 ADD ./src/apisix/plugins/ /usr/local/apisix/apisix/plugins/
+# FIXME: remove the patch if upgrade to >=3.4.x, while the patch is only for 3.2.x ---
+ADD ./src/build/patches /usr/local/apisix/patches
+RUN ls /usr/local/apisix/patches | sort | xargs -L1 -I __patch_file__ sh -c 'cat ./patches/__patch_file__ | patch -t -p1'
+# FIXME: remove the patch if upgrade to >=3.4.x, while the patch is only for 3.2.x ---
 
 RUN chmod 755 /data/bkgateway/bin/* && chmod 777 /usr/local/apisix/logs
 
