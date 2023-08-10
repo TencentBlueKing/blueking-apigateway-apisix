@@ -92,7 +92,12 @@ function _M.verify_app_secret(app_code, app_secret)
     end
 
     if result.code ~= 0 or res.status ~= 200 then
-        core.log.error(string_format("failed to request %s, status: %s, response: %s", url, res.status, res.body))
+        core.log.error(
+            string_format(
+                "failed to request %s, result.code!=0 or status!=200, status: %s, response: %s", url, res.status,
+                res.body
+            )
+        )
         return nil, string_format(
             "failed to request third-party api, bkauth error message: %s, url: %s, status: %s, code: %s",
             result.message, url, res.status, result.code
@@ -152,7 +157,12 @@ function _M.list_app_secrets(app_code)
     end
 
     if result.code ~= 0 or res.status ~= 200 then
-        core.log.error(string_format("failed to request %s, status: %s, response: %s", url, res.status, res.body))
+        core.log.error(
+            string_format(
+                "failed to request %s, result.code!=0 or status!=200, status: %s, response: %s", url, res.status,
+                res.body
+            )
+        )
         return nil, string_format(
             "failed to request third-party api, bkauth error message: %s, url: %s, status: %s, code: %s",
             result.message, url, res.status, result.code
