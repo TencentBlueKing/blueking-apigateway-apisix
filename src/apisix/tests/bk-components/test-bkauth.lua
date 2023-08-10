@@ -15,7 +15,6 @@
 -- We undertake not to change the open source license (MIT license) applicable
 -- to the current version of the project delivered to anyone in the future.
 --
-
 local core = require("apisix.core")
 local http = require("resty.http")
 local bkauth = require("apisix.plugins.bk-components.bkauth")
@@ -53,6 +52,17 @@ describe(
         context(
             "verify_app_secret", function()
                 it(
+                    "response nil", function()
+                        response = nil
+                        response_err = "error"
+
+                        local result, err = bkauth.verify_app_secret("fake-app-code", "fake-app-secret")
+                        assert.is_nil(result)
+                        assert.is_true(core.string.has_prefix(err, "failed to request third-party api"))
+                    end
+                )
+
+                it(
                     "status 404", function()
                         response = {
                             status = 404,
@@ -65,10 +75,10 @@ describe(
                         }
                         response_err = nil
 
-                        local result = bkauth.verify_app_secret("fake-app-code", "fake-app-secret")
+                        local result, err = bkauth.verify_app_secret("fake-app-code", "fake-app-secret")
                         assert.is_false(result.existed)
                         assert.is_false(result.verified)
-                        assert.is_nil(result.err)
+                        assert.is_nil(err)
                     end
                 )
 
@@ -80,10 +90,9 @@ describe(
                         }
                         response_err = nil
 
-                        local result = bkauth.verify_app_secret("fake-app-code", "fake-app-secret")
-                        assert.is_false(result.existed)
-                        assert.is_false(result.verified)
-                        assert.is_equal(type(result.err), "string")
+                        local result, err = bkauth.verify_app_secret("fake-app-code", "fake-app-secret")
+                        assert.is_nil(result)
+                        assert.is_true(core.string.has_prefix(err, "failed to request third-party api"))
                     end
                 )
 
@@ -103,10 +112,9 @@ describe(
                         }
                         response_err = nil
 
-                        local result = bkauth.verify_app_secret("fake-app-code", "fake-app-secret")
-                        assert.is_false(result.existed)
-                        assert.is_false(result.verified)
-                        assert.is_equal(result.err, "error")
+                        local result, err = bkauth.verify_app_secret("fake-app-code", "fake-app-secret")
+                        assert.is_nil(result)
+                        assert.is_true(core.string.has_prefix(err, "failed to request third-party api"))
                     end
                 )
 
@@ -125,10 +133,10 @@ describe(
                         }
                         response_err = nil
 
-                        local result = bkauth.verify_app_secret("fake-app-code", "fake-app-secret")
+                        local result, err = bkauth.verify_app_secret("fake-app-code", "fake-app-secret")
                         assert.is_true(result.existed)
                         assert.is_true(result.verified)
-                        assert.is_nil(result.err)
+                        assert.is_nil(err)
                     end
                 )
 
@@ -147,10 +155,10 @@ describe(
                         }
                         response_err = nil
 
-                        local result = bkauth.verify_app_secret("fake-app-code", "fake-app-secret")
+                        local result, err = bkauth.verify_app_secret("fake-app-code", "fake-app-secret")
                         assert.is_true(result.existed)
                         assert.is_false(result.verified)
-                        assert.is_nil(result.err)
+                        assert.is_nil(err)
                     end
                 )
             end
@@ -158,6 +166,16 @@ describe(
 
         context(
             "list_app_secrets", function()
+                it(
+                    "response nil", function()
+                        response = nil
+                        response_err = "error"
+
+                        local result, err = bkauth.list_app_secrets("fake-app-code")
+                        assert.is_nil(result)
+                        assert.is_true(core.string.has_prefix(err, "failed to request third-party api"))
+                    end
+                )
                 it(
                     "status 404", function()
                         response = {
@@ -171,9 +189,13 @@ describe(
                         }
                         response_err = nil
 
-                        local result = bkauth.list_app_secrets("fake-app-code")
-                        assert.is_same(result.app_secrets, {})
-                        assert.is_nil(result.err)
+                        local result, err = bkauth.list_app_secrets("fake-app-code")
+                        assert.is_same(
+                            result, {
+                                app_secrets = {},
+                            }
+                        )
+                        assert.is_nil(err)
                     end
                 )
 
@@ -185,9 +207,9 @@ describe(
                         }
                         response_err = nil
 
-                        local result = bkauth.list_app_secrets("fake-app-code")
-                        assert.is_nil(result.app_secrets)
-                        assert.is_equal(type(result.err), "string")
+                        local result, err = bkauth.list_app_secrets("fake-app-code")
+                        assert.is_nil(result)
+                        assert.is_true(core.string.has_prefix(err, "failed to request third-party api"))
                     end
                 )
 
@@ -207,9 +229,9 @@ describe(
                         }
                         response_err = nil
 
-                        local result = bkauth.list_app_secrets("fake-app-code")
-                        assert.is_nil(result.app_secrets)
-                        assert.is_equal(result.err, "error")
+                        local result, err = bkauth.list_app_secrets("fake-app-code")
+                        assert.is_nil(result)
+                        assert.is_true(core.string.has_prefix(err, "failed to request third-party api"))
                     end
                 )
 
@@ -235,14 +257,16 @@ describe(
                         }
                         response_err = nil
 
-                        local result = bkauth.list_app_secrets("fake-app-code")
+                        local result, err = bkauth.list_app_secrets("fake-app-code")
                         assert.is_same(
-                            result.app_secrets, {
-                                "secret-1",
-                                "secret-2",
+                            result, {
+                                app_secrets = {
+                                    "secret-1",
+                                    "secret-2",
+                                },
                             }
                         )
-                        assert.is_nil(result.err)
+                        assert.is_nil(err)
                     end
                 )
             end
@@ -255,9 +279,9 @@ describe(
                         response = nil
                         response_err = "error"
 
-                        local token, err = bkauth.verify_access_token("fake-token")
-                        assert.is_nil(token)
-                        assert.is_equal(type(err), "string")
+                        local result, err = bkauth.verify_access_token("fake-token")
+                        assert.is_nil(result)
+                        assert.is_true(core.string.has_prefix(err, "failed to request third-party api"))
                     end
                 )
 
@@ -268,9 +292,9 @@ describe(
                         }
                         response_err = "error"
 
-                        local token, err = bkauth.verify_access_token("fake-token")
-                        assert.is_nil(token)
-                        assert.is_equal(type(err), "string")
+                        local result, err = bkauth.verify_access_token("fake-token")
+                        assert.is_nil(result)
+                        assert.is_true(core.string.has_prefix(err, "failed to request third-party api"))
                     end
                 )
 
@@ -282,9 +306,9 @@ describe(
                         }
                         response_err = nil
 
-                        local token, err = bkauth.verify_access_token("fake-token")
-                        assert.is_nil(token)
-                        assert.is_equal(type(err), "string")
+                        local result, err = bkauth.verify_access_token("fake-token")
+                        assert.is_nil(result)
+                        assert.is_true(core.string.has_prefix(err, "failed to request third-party api"))
                     end
                 )
 
@@ -301,9 +325,9 @@ describe(
                         }
                         response_err = nil
 
-                        local token, err = bkauth.verify_access_token("fake-token")
-                        assert.is_nil(token)
-                        assert.is_equal(err, "bkauth error message: error")
+                        local result, err = bkauth.verify_access_token("fake-token")
+                        assert.is_nil(result)
+                        assert.is_true(core.string.has_prefix(err, "bkauth error message: error"))
                     end
                 )
 
@@ -320,9 +344,9 @@ describe(
                         }
                         response_err = nil
 
-                        local token, err = bkauth.verify_access_token("fake-token")
-                        assert.is_nil(token)
-                        assert.is_equal(err, "bkauth error message: error")
+                        local result, err = bkauth.verify_access_token("fake-token")
+                        assert.is_nil(result)
+                        assert.is_true(core.string.has_prefix(err, "bkauth error message: error"))
                     end
                 )
 
@@ -343,9 +367,9 @@ describe(
                         }
                         response_err = nil
 
-                        local token, err = bkauth.verify_access_token("fake-token")
+                        local result, err = bkauth.verify_access_token("fake-token")
                         assert.is_same(
-                            token, {
+                            result, {
                                 bk_app_code = "bk-color",
                                 username = "admin",
                                 expires_in = 10,

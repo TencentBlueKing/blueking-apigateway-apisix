@@ -15,7 +15,6 @@
 -- We undertake not to change the open source license (MIT license) applicable
 -- to the current version of the project delivered to anyone in the future.
 --
-
 local core = require("apisix.core")
 local bkauth_component = require("apisix.plugins.bk-components.bkauth")
 local table_concat = table.concat
@@ -56,8 +55,7 @@ end
 
 function _M.list_app_secrets(app_code)
     local key = app_code
-    local result = app_code_app_secrets_lrucache(key, nil, bkauth_component.list_app_secrets, app_code)
-    return result.app_secrets, result.err
+    return app_code_app_secrets_lrucache(key, nil, bkauth_component.list_app_secrets, app_code)
 end
 
 return _M

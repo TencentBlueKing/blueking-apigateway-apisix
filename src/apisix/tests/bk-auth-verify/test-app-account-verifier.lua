@@ -15,7 +15,6 @@
 -- We undertake not to change the open source license (MIT license) applicable
 -- to the current version of the project delivered to anyone in the future.
 --
-
 local auth_params_mod = require("apisix.plugins.bk-auth-verify.auth-params")
 local app_account_verifier_mod = require("apisix.plugins.bk-auth-verify.app-account-verifier")
 local app_account_utils = require("apisix.plugins.bk-auth-verify.app-account-utils")
@@ -212,7 +211,11 @@ describe(
 
                 it(
                     "signature verify error", function()
-                        list_app_secrets_result = {"secret"}
+                        list_app_secrets_result = {
+                            app_secrets = {
+                                "secret",
+                            },
+                        }
                         list_app_secrets_err = nil
 
                         local app = verifier:verify_by_signature(
@@ -230,7 +233,11 @@ describe(
 
                 it(
                     "signature verify error", function()
-                        list_app_secrets_result = {"secret"}
+                        list_app_secrets_result = {
+                            app_secrets = {
+                                "secret",
+                            },
+                        }
                         list_app_secrets_err = nil
 
                         local app = verifier:verify_by_signature(
@@ -251,7 +258,11 @@ describe(
 
                 it(
                     "ok", function()
-                        list_app_secrets_result = {"secret"}
+                        list_app_secrets_result = {
+                            app_secrets = {
+                                "secret",
+                            },
+                        }
                         list_app_secrets_err = nil
 
                         local app = verifier:verify_by_signature(
@@ -272,13 +283,14 @@ describe(
         context(
             "verify_by_app_secret", function()
                 local verify_app_secret_result
+                local verify_app_secret_err
                 local verifier
 
                 before_each(
                     function()
                         stub(
                             bk_cache, "verify_app_secret", function()
-                                return verify_app_secret_result
+                                return verify_app_secret_result, verify_app_secret_err
                             end
                         )
 
@@ -300,11 +312,8 @@ describe(
 
                 it(
                     "verify app secret error", function()
-                        verify_app_secret_result = {
-                            existed = false,
-                            verified = false,
-                            err = "error",
-                        }
+                        verify_app_secret_result = nil
+                        verify_app_secret_err = "error"
 
                         local app = verifier:verify_by_app_secret()
                         assert.is_equal(app.app_code, "my-app")
@@ -319,6 +328,7 @@ describe(
                             existed = false,
                             verified = false,
                         }
+                        verify_app_secret_err = nil
 
                         local app = verifier:verify_by_app_secret()
                         assert.is_equal(app.app_code, "my-app")
@@ -333,6 +343,7 @@ describe(
                             existed = true,
                             verified = false,
                         }
+                        verify_app_secret_err = nil
 
                         local app = verifier:verify_by_app_secret()
                         assert.is_equal(app.app_code, "my-app")
@@ -347,6 +358,7 @@ describe(
                             existed = true,
                             verified = true,
                         }
+                        verify_app_secret_err = nil
 
                         local app = verifier:verify_by_app_secret()
                         assert.is_equal(app.app_code, "my-app")
