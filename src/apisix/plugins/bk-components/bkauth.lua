@@ -66,8 +66,9 @@ function _M.verify_app_secret(app_code, app_secret)
     )
 
     if not (res and res.body) then
-        core.log.error(string_format("failed to request %s, err: %s, response: nil", url, err))
-        return nil, string_format("failed to request third-party api, url: %s, err: %s, response: nil", url, err)
+        err = string_format("failed to request third-party api, url: %s, err: %s, response: nil", url, err)
+        core.log.error(err)
+        return nil, err
     end
 
     -- 响应格式正常，错误码 404，表示应用不存在
@@ -126,8 +127,9 @@ function _M.list_app_secrets(app_code)
     )
 
     if not (res and res.body) then
-        core.log.error(string_format("failed to request %s, err: %s, response: nil", url, err))
-        return nil, string_format("failed to request third-party api, url: %s, err: %s, response: nil", url, err)
+        err = string_format("failed to request third-party api, url: %s, err: %s, response: nil", url, err)
+        core.log.error(err)
+        return nil, err
     end
 
     -- 响应格式正常，错误码 404，表示应用不存在
@@ -195,8 +197,9 @@ function _M.verify_access_token(access_token)
     )
 
     if not (res and res.body) then
-        core.log.error(string_format("failed to request %s, err: %s, response: nil", url, err))
-        return nil, string_format("failed to request third-party api, url: %s, err: %s, response: nil", url, err)
+        err = string_format("failed to request third-party api, url: %s, err: %s, response: nil", url, err)
+        core.log.error(err)
+        return nil, err
     end
 
     local result = core.json.decode(res.body)
