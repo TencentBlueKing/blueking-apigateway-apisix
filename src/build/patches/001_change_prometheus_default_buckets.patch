@@ -1,14 +1,5 @@
-From 7ae3981c0e1793129e4e551c1583b2a3db22682d Mon Sep 17 00:00:00 2001
-From: jiangfucheng <jiangfucheng0914@foxmail.com>
-Date: Thu, 15 Jun 2023 22:57:25 +0800
-Subject: [PATCH 1/4] feat(prometheus): allow user configure DEFAULT_BUCKETS
-
----
- apisix/plugins/prometheus/exporter.lua |  7 ++-
- 1 files changed, 7 insertions(+), 1 deletion(-)
-
 diff --git a/apisix/plugins/prometheus/exporter.lua b/apisix/plugins/prometheus/exporter.lua
-index 1cb4a534cb9f..8e90326409bc 100644
+index 45ff94c3..5434ce56 100644
 --- a/apisix/plugins/prometheus/exporter.lua
 +++ b/apisix/plugins/prometheus/exporter.lua
 @@ -168,10 +168,15 @@ function _M.http_init(prometheus_enabled_in_stream)
@@ -28,3 +19,15 @@ index 1cb4a534cb9f..8e90326409bc 100644
  
      metrics.bandwidth = prometheus:counter("bandwidth",
              "Total bandwidth in bytes consumed per service in APISIX",
+@@ -208,6 +213,11 @@ end
+ 
+ 
+ function _M.http_log(conf, ctx)
++    local attr = plugin.plugin_attr("prometheus")
++    if attr and not attr.enable_official then
++        return
++    end
++
+     local vars = ctx.var
+ 
+     local route_id = ""
