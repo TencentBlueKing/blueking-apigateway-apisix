@@ -134,6 +134,10 @@ function _M.get_with_fallback(self, ctx, key, version, create_obj_func, ...)
     local key_s = cache_key
     log.info("try to lock with key ", key_s)
 
+    -- FIXME: possible problem here, if high concurrent, all requests may wait here except one
+    --        and at that time, process one by one after the retrieve finished
+    --        maybe some requests will timeout?
+    --        check the sentry and error log after this version online
     local elapsed, lock_err = lock:lock(key_s)
     if not elapsed then
         return nil, "failed to acquire the bk-cache-fallback lock, err: " .. lock_err
