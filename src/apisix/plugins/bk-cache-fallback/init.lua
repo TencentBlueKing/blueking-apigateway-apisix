@@ -122,7 +122,11 @@ function _M.get_with_fallback(self, ctx, key, version, create_obj_func, ...)
     -- 1.2 lrucache miss
 
     -- 2. retrieve the lock
-    local lock, create_lock_err = resty_lock:new(lock_shdict_name)
+    -- NOTE: while the bk-components http timeout is 5s, here the lock timeout should be bigger than 5s
+    --       and at the same time, set the exptime shorter, the lock will be released if the worker is crashed
+    --       so:  http timeout < lock timeout < lock exptime
+    --       https://github.com/openresty/lua-resty-lock#new
+    local lock, create_lock_err = resty_lock:new(lock_shdict_name, {timeout = 6, exptime = 7})
     if not lock then
         return nil, "failed to create lock, err: " .. create_lock_err
     end
