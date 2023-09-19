@@ -36,9 +36,8 @@ local ngx_shared = ngx.shared
 
 local fallback_missing_err = "create_obj_funcs failed and got no data in the shared_dict for fallback"
 
--- NOTE: here we use the same shared_dict as apisix lrucache-lock
---       if this become a problem in the future, we should apply and use our own bk-lrucache-lock
-local lock_shdict_name = "lrucache-lock"
+-- NOTE: change to separate shared_dict, avoid use the name with `lurcache-lock`
+local lock_shdict_name = "plugin-bk-cache-fallback-lock"
 if ngx.config.subsystem == "stream" then
     lock_shdict_name = lock_shdict_name .. "-" .. ngx.config.subsystem
 end
