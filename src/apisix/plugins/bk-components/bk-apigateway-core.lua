@@ -26,6 +26,7 @@ local string_format = string.format
 
 local QUERY_PERMISSION_URL = "/api/v1/micro-gateway/%s/permissions/"
 local QUERY_PUBLIC_KEY_URL = "/api/v1/micro-gateway/%s/public_keys/"
+-- NOTE: important, if you change the timeout here, you should reset the timeout/exptime in bk-cache-fallback lock
 local BKCORE_TIMEOUT_MS = 5 * 1000
 
 local _M = {
