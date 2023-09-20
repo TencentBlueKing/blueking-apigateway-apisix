@@ -15,7 +15,6 @@
 -- We undertake not to change the open source license (MIT license) applicable
 -- to the current version of the project delivered to anyone in the future.
 --
-
 local core = require("apisix.core")
 local multipart = require("multipart")
 local string_split = require("pl.stringx").split
@@ -34,6 +33,7 @@ local _M = {}
 
 local function get_content_type(ctx)
     local content_type = core.request.header(ctx, "Content-Type")
+
     if content_type == nil or content_type == "" then
         return "application/octet-stream"
     end
@@ -43,17 +43,47 @@ end
 
 local function is_urlencoded_form(ctx)
     local content_type = get_content_type(ctx)
-    if core.string.find(string_lower(content_type), "application/x-www-form-urlencoded") then
-        return true
+    local urlencoded_header = "application/x-www-form-urlencoded"
+
+    if type(content_type) == "string" then
+        if core.string.find(string_lower(content_type), urlencoded_header) then
+            return true
+        end
+        return false
     end
+
+    if type(content_type) == "table" then
+        for _, value in ipairs(content_type) do
+            if core.string.find(string_lower(value), urlencoded_header) then
+                return true
+            end
+        end
+        return false
+    end
+
     return false
 end
 
 local function is_multipart_form(ctx)
     local content_type = get_content_type(ctx)
-    if core.string.find(string_lower(content_type), "multipart/form-data") then
-        return true
+    local multipart_header = "multipart/form-data"
+
+    if type(content_type) == "string" then
+        if core.string.find(string_lower(content_type), multipart_header) then
+            return true
+        end
+        return false
     end
+
+    if type(content_type) == "table" then
+        for _, value in ipairs(content_type) do
+            if core.string.find(string_lower(value), multipart_header) then
+                return true
+            end
+        end
+        return false
+    end
+
     return false
 end
 

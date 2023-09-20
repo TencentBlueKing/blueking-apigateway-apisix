@@ -27,7 +27,7 @@ local string_format = string.format
 local VERIFY_ACCESS_TOKEN_URL = "/api/v1/auth/access-tokens/verify"
 local SSM_TIMEOUT_MS = 5 * 1000
 
-local bkapp = bk_core.config.get_bkapp()
+local bkapp = bk_core.config.get_bkapp() or {}
 
 local _M = {
     host = bk_core.config.get_ssm_addr(),

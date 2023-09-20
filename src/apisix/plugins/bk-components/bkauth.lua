@@ -30,7 +30,7 @@ local VERIFY_ACCESS_TOKEN_URL = "/api/v1/oauth/tokens/verify"
 
 local BKAUTH_TIMEOUT_MS = 5 * 1000
 
-local bkapp = bk_core.config.get_bkapp()
+local bkapp = bk_core.config.get_bkapp() or {}
 
 local _M = {
     host = bk_core.config.get_bkauth_addr(),
