@@ -15,7 +15,6 @@
 -- We undertake not to change the open source license (MIT license) applicable
 -- to the current version of the project delivered to anyone in the future.
 --
-
 local core = require("apisix.core")
 local bk_apigateway_core_component = require("apisix.plugins.bk-components.bk-apigateway-core")
 
@@ -34,9 +33,11 @@ local _M = {}
 
 function _M.get_jwt_public_key(gateway_name)
     local key = gateway_name
-    local result = jwt_public_key_lrucache(key, nil, bk_apigateway_core_component.get_apigw_public_key, gateway_name)
+    local result, err = jwt_public_key_lrucache(
+        key, nil, bk_apigateway_core_component.get_apigw_public_key, gateway_name
+    )
     if result == nil then
-        return nil, "get_jwt_public_key of " .. gateway_name .. " failed"
+        return nil, "get jwt public_key of gateway " .. gateway_name .. " failed, err: " .. err
     end
     return result.public_key, result.err
 end

@@ -36,9 +36,8 @@ local ngx_shared = ngx.shared
 
 local fallback_missing_err = "create_obj_funcs failed and got no data in the shared_dict for fallback"
 
--- NOTE: here we use the same shared_dict as apisix lrucache-lock
---       if this become a problem in the future, we should apply and use our own bk-lrucache-lock
-local lock_shdict_name = "lrucache-lock"
+-- NOTE: change to separate shared_dict, avoid use the name with `lurcache-lock`
+local lock_shdict_name = "plugin-bk-cache-fallback-lock"
 if ngx.config.subsystem == "stream" then
     lock_shdict_name = lock_shdict_name .. "-" .. ngx.config.subsystem
 end
@@ -123,7 +122,11 @@ function _M.get_with_fallback(self, ctx, key, version, create_obj_func, ...)
     -- 1.2 lrucache miss
 
     -- 2. retrieve the lock
-    local lock, create_lock_err = resty_lock:new(lock_shdict_name)
+    -- NOTE: while the bk-components http timeout is 5s, here the lock timeout should be bigger than 5s
+    --       and at the same time, set the exptime shorter, the lock will be released if the worker is crashed
+    --       so:  http timeout < lock timeout < lock exptime
+    --       https://github.com/openresty/lua-resty-lock#new
+    local lock, create_lock_err = resty_lock:new(lock_shdict_name, {timeout = 6, exptime = 7})
     if not lock then
         return nil, "failed to create lock, err: " .. create_lock_err
     end
@@ -131,6 +134,10 @@ function _M.get_with_fallback(self, ctx, key, version, create_obj_func, ...)
     local key_s = cache_key
     log.info("try to lock with key ", key_s)
 
+    -- FIXME: possible problem here, if high concurrent, all requests may wait here except one
+    --        and at that time, process one by one after the retrieve finished
+    --        maybe some requests will timeout?
+    --        check the sentry and error log after this version online
     local elapsed, lock_err = lock:lock(key_s)
     if not elapsed then
         return nil, "failed to acquire the bk-cache-fallback lock, err: " .. lock_err

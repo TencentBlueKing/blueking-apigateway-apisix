@@ -15,7 +15,6 @@
 -- We undertake not to change the open source license (MIT license) applicable
 -- to the current version of the project delivered to anyone in the future.
 --
-
 local core = require("apisix.core")
 local bk_core = require("apisix.plugins.bk-core.init")
 local ngx = ngx
@@ -105,6 +104,30 @@ describe(
                         assert.is_true(result)
                     end
                 )
+
+                it(
+                    "header is table", function()
+                        headers = {
+                            ["Content-Type"] = {
+                                "foo",
+                                "application/x-www-form-urlencoded; charset=utf8",
+                            },
+                        }
+
+                        local result = bk_core.request._is_urlencoded_form()
+                        assert.is_true(result)
+
+                        headers = {
+                            ["Content-Type"] = {
+                                "foo",
+                                "bar",
+                            },
+                        }
+
+                        local result = bk_core.request._is_urlencoded_form()
+                        assert.is_false(result)
+                    end
+                )
             end
         )
 
@@ -127,6 +150,30 @@ describe(
 
                         local result = bk_core.request._is_multipart_form()
                         assert.is_true(result)
+                    end
+                )
+
+                it(
+                    "header is table", function()
+                        headers = {
+                            ["Content-Type"] = {
+                                "foo",
+                                "multipart/form-data; charset=utf8",
+                            },
+                        }
+
+                        local result = bk_core.request._is_multipart_form()
+                        assert.is_true(result)
+
+                        headers = {
+                            ["Content-Type"] = {
+                                "foo",
+                                "bar",
+                            },
+                        }
+
+                        local result = bk_core.request._is_multipart_form()
+                        assert.is_false(result)
                     end
                 )
             end
