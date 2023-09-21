@@ -1,5 +1,5 @@
 diff --git a/apisix/plugins/prometheus/exporter.lua b/apisix/plugins/prometheus/exporter.lua
-index 45ff94c3..5434ce56 100644
+index 45ff94c3..6a9ff8eb 100644
 --- a/apisix/plugins/prometheus/exporter.lua
 +++ b/apisix/plugins/prometheus/exporter.lua
 @@ -168,10 +168,15 @@ function _M.http_init(prometheus_enabled_in_stream)
@@ -19,15 +19,54 @@ index 45ff94c3..5434ce56 100644
  
      metrics.bandwidth = prometheus:counter("bandwidth",
              "Total bandwidth in bytes consumed per service in APISIX",
-@@ -208,6 +213,11 @@ end
+@@ -208,6 +213,12 @@ end
  
  
  function _M.http_log(conf, ctx)
 +    local attr = plugin.plugin_attr("prometheus")
-+    if attr and not attr.enable_official then
-+        return
++    local official
++    if attr and attr.official then
++      official = attr.official
 +    end
 +
      local vars = ctx.var
  
      local route_id = ""
+@@ -235,11 +246,17 @@ function _M.http_log(conf, ctx)
+         matched_host = ctx.curr_req_matched._host or ""
+     end
+ 
++    if official and official.enable_status then
++
+     metrics.status:inc(1,
+         gen_arr(vars.status, route_id, matched_uri, matched_host,
+                 service_id, consumer_name, balancer_ip,
+                 unpack(extra_labels("http_status", ctx))))
+ 
++    end
++
++    if official and official.enable_latency then
++
+     local latency, upstream_latency, apisix_latency = latency_details(ctx)
+     local latency_extra_label_values = extra_labels("http_latency", ctx)
+ 
+@@ -257,6 +274,10 @@ function _M.http_log(conf, ctx)
+         gen_arr("apisix", route_id, service_id, consumer_name, balancer_ip,
+         unpack(latency_extra_label_values)))
+ 
++    end
++
++    if official and official.enable_bandwidth then
++
+     local bandwidth_extra_label_values = extra_labels("bandwidth", ctx)
+ 
+     metrics.bandwidth:inc(vars.request_length,
+@@ -266,6 +287,8 @@ function _M.http_log(conf, ctx)
+     metrics.bandwidth:inc(vars.bytes_sent,
+         gen_arr("egress", route_id, service_id, consumer_name, balancer_ip,
+         unpack(bandwidth_extra_label_values)))
++
++    end
+ end
+ 
+ 
