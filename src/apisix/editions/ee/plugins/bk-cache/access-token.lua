@@ -17,7 +17,7 @@
 --
 local core = require("apisix.core")
 local access_token_define = require("apisix.plugins.bk-define.access-token")
-local bkauth_component = require("apisix.plugins.bk-components.bkauth")
+-- local bkauth_component = require("apisix.plugins.bk-components.bkauth")
 local ssm_component = require("apisix.plugins.bk-components.ssm")
 
 local ACCESS_TOKEN_CACHE_TTL = 600
@@ -40,7 +40,7 @@ local function get_access_token(access_token)
     -- local bkauth_token, err = bkauth_component.verify_access_token(access_token)
     -- if bkauth_token ~= nil then
     --     return {
-    --         token = access_token_define.new(bkauth_token.bk_app_code, bkauth_token.username, bkauth_token.expires_in),
+    --         token = access_token_define.new(bkauth_token.bk_app_code, bkauth_token.username, bkauth_token.expires_in)
     --     }
     -- end
 
@@ -61,7 +61,10 @@ end
 
 function _M.get_access_token(access_token)
     local key = access_token
-    local result = access_token_lrucache(key, nil, get_access_token, access_token)
+    local result, err = access_token_lrucache(key, nil, get_access_token, access_token)
+    if result == nil then
+        return nil, err
+    end
     return result.token, result.err
 end
 

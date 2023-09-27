@@ -36,9 +36,8 @@ function _M.get_username_by_bk_token(bk_token)
     local result, err = bk_token_lrucache(key, nil, bklogin_component.get_username_by_bk_token, bk_token)
     if result == nil then
         return nil, err
-    else
-        return result.username, result.error_message
     end
+    return result.username, result.error_message
 end
 
 return _M
