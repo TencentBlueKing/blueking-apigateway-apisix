@@ -1,0 +1,19 @@
+diff --git a/apisix/utils/upstream.lua b/apisix/utils/upstream.lua
+index c39d4cce..5d23ce49 100644
+--- a/apisix/utils/upstream.lua
++++ b/apisix/utils/upstream.lua
+@@ -82,6 +82,14 @@ local function parse_domain_for_nodes(nodes)
+             core.table.insert(new_nodes, node)
+         end
+     end
++
++    -- patch for: https://github.com/apache/apisix/issues/10093#issuecomment-1738381865
++    if #new_nodes == 0 then
++        local err = "no valid ip found"
++        core.log.error("parse domain for nodes: ", core.json.delay_encode(nodes), " error: ", err)
++        return nil, err
++    end
++
+     return new_nodes
+ end
+ _M.parse_domain_for_nodes = parse_domain_for_nodes
