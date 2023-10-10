@@ -1,0 +1,17 @@
+diff --git a/apisix/init.lua b/apisix/init.lua
+index 388af426..9899c332 100644
+--- a/apisix/init.lua
++++ b/apisix/init.lua
+@@ -431,6 +431,12 @@ function _M.handle_upstream(api_ctx, route, enable_websocket)
+             route, err = parse_domain_in_route(route)
+             if err then
+                 core.log.error("failed to get resolved route: ", err)
++
++                -- if the dns resolve get no valid ips, return 502 , treat it as `pick_server` fail
++                if err == "no valid ip found" then
++                    return core.response.exit(502)
++                end
++
+                 return core.response.exit(500)
+             end
+ 
