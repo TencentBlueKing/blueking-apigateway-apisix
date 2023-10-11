@@ -26,7 +26,7 @@ RUN curl https://raw.githubusercontent.com/apache/apisix/${APISIX_VERSION}/utils
 RUN luarocks install multipart --tree=/usr/local/apisix/deps && \
     rm -rf /root/.cache/luarocks/ || echo "no /root/.cache/luarocks to clean"
 
-ADD ./build/config-watcher ./src/build/bin/apisix-start.sh ./src/build/bin/config-watcher-start.sh /data/bkgateway/bin/
+ADD ./build/config-watcher ./src/build/bin/apisix-start.sh ./src/build/bin/config-watcher-start.sh ./src/build/bin/sentrylogs-daemonize.sh /data/bkgateway/bin/
 ADD ./src/apisix/plugins/ /usr/local/apisix/apisix/plugins/
 # FIXME: remove the patch if upgrade to >=3.4.x, while the patch is only for 3.2.x ---
 ADD ./src/build/patches /usr/local/apisix/patches
