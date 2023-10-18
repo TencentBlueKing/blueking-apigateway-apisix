@@ -1,0 +1,40 @@
+diff --git a/apisix/http/router/radixtree_uri_with_parameter.lua b/apisix/http/router/radixtree_uri_with_parameter.lua
+index 4bf7f3eb..cd9da089 100644
+--- a/apisix/http/router/radixtree_uri_with_parameter.lua
++++ b/apisix/http/router/radixtree_uri_with_parameter.lua
+@@ -18,8 +18,12 @@ local require = require
+ local core = require("apisix.core")
+ local base_router = require("apisix.http.route")
+ local get_services = require("apisix.http.service").services
++local ngx_time     = ngx.time
++local random = math.random
+ local cached_router_version
+ local cached_service_version
++local cached_timestamp = 0
++local random_interval = 0
+ 
+ 
+ local _M = {}
+@@ -34,10 +38,22 @@ function _M.match(api_ctx)
+     if not cached_router_version or cached_router_version ~= user_routes.conf_version
+         or not cached_service_version or cached_service_version ~= service_version
+     then
++        if ngx_time() - cached_timestamp >= random_interval
++        then
++
+         uri_router = base_router.create_radixtree_uri_router(user_routes.values,
+                                                              uri_routes, true)
+         cached_router_version = user_routes.conf_version
+         cached_service_version = service_version
++
++                cached_timestamp = ngx_time()
++                -- rebuild the tree every {random_interval} seconds, at least 5 seconds
++                -- we do this to avoid:
++                -- 1. all the workers rebuild the tree at the same time
++                -- 2. the workers keep rebuilding if the `/routes` is updating frequently
++                random_interval = random(5, 15)
++                core.log.info("rebuild the tree")
++        end
+     end
+ 
+     if not uri_router then
