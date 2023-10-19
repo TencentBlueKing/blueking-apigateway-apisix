@@ -62,13 +62,9 @@ function _M.init()
     metric_api_requests_total = prometheus_registry:counter(
         "apigateway_api_requests_total",
         "How many HTTP requests processed, partitioned by status code, method and HTTP path.", {
-            "gateway",
             "api_name",
             "stage_name",
             "resource_name",
-            "service_name",
-            "method",
-            "matched_uri",
             "status",
             "proxy_phase",
             "proxy_error",
@@ -78,13 +74,9 @@ function _M.init()
     metric_api_request_duration = prometheus_registry:histogram(
         "apigateway_api_request_duration_milliseconds",
         "How long it took to process the request, partitioned by status code, method and HTTP path.", {
-            "gateway",
             "api_name",
             "stage_name",
             "resource_name",
-            "service_name",
-            "method",
-            "matched_uri",
         }, {
             100,
             300,
@@ -95,12 +87,10 @@ function _M.init()
 
     metric_app_requests_total = prometheus_registry:counter(
         "apigateway_app_requests_total", "How many HTTP requests per app_code/api/resource.", {
-            "gateway",
             "app_code",
             "api_name",
             "stage_name",
             "resource_name",
-            "service_name",
         }
     )
 end
@@ -116,19 +106,18 @@ function _M.log(conf, ctx)
     local api_name = ctx.var.bk_gateway_name or ""
     local stage_name = ctx.var.bk_stage_name or ""
     local resource_name = ctx.var.bk_resource_name or ""
-    local service_name = ctx.var.bk_service_name or ""
-    local instance = ctx.var.instance_id or ""
-    local method = ctx.var.method
     local proxy_phase = ctx.var.proxy_phase or ""
     local status = ctx.var.status
     local proxy_error = ctx.var.proxy_error or "0"
 
-    -- NOTE: change from path to matched_uri, to decrease the metrics(use /a/{id} instead of /a/123)
-    -- local path = ctx.var.uri
-    local matched_uri = ""
-    if ctx.curr_req_matched then
-        matched_uri = ctx.curr_req_matched._path or ""
-    end
+    -- 2023-10-18
+    -- remove unused labels: service_name/method/matched_uri
+    -- remove gateway=instance label, use cluster_id and namespace to identify the gateway instance
+
+    -- TODO:
+    -- 1. api_name to gateway_name
+    -- 2. all *_name to *_id
+    -- 3. make the name shorter `bk_apigateway_apigateway_api_request_duration_milliseconds_bucket`
 
     local status_label = ""
     if status then
@@ -137,13 +126,9 @@ function _M.log(conf, ctx)
 
     metric_api_requests_total:inc(
         1, {
-            instance,
             api_name,
             stage_name,
             resource_name,
-            service_name,
-            method,
-            matched_uri,
             status_label,
             proxy_phase,
             proxy_error,
@@ -153,13 +138,9 @@ function _M.log(conf, ctx)
     if ctx.var.request_time then
         metric_api_request_duration:observe(
             ctx.var.request_time * 1000, {
-                instance,
                 api_name,
                 stage_name,
                 resource_name,
-                service_name,
-                method,
-                matched_uri,
             }
         )
     end
@@ -167,12 +148,10 @@ function _M.log(conf, ctx)
     if ctx.var.bk_app_code then
         metric_app_requests_total:inc(
             1, {
-                instance,
                 ctx.var.bk_app_code,
                 api_name,
                 stage_name,
                 resource_name,
-                service_name,
             }
         )
     end
