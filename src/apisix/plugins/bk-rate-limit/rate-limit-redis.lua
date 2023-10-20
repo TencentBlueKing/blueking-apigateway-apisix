@@ -91,6 +91,7 @@ local function redis_cli(conf)
     local red = redis_new()
     local timeout = conf.redis_timeout or 1000 -- 1sec
 
+    -- set connect, send, and read to 1000ms, 1s
     red:set_timeouts(timeout, timeout, timeout)
 
     local ok, connect_err = red:connect(conf.redis_host, conf.redis_port or 6379)
@@ -115,7 +116,7 @@ local function redis_cli(conf)
             end
         end
     elseif check_err then
-        return nil, check_err
+        return nil, "failed to check reused times, err: " .. check_err
     end
     return red, nil
 end
@@ -161,7 +162,6 @@ function _M.incoming(self, key, limit, window)
 
     local ttl = 0
     res, err = red:eval(script, 1, key, limit, window)
-
     if err then
         return nil, "failed to eval script, err: " .. err, ttl
     end
@@ -169,7 +169,12 @@ function _M.incoming(self, key, limit, window)
     local remaining = res[1]
     ttl = res[2]
 
-    local ok, set_err = red:set_keepalive(10000, 100)
+    -- max_idle_timeout: ms, here set 5s
+    -- pool_size: 75
+    --   if 8 pods, 4 workers each; 8 * 4 * 75 = 2400 (currently)
+    --   if 10 pods, 4 workers each; 10 * 4 * 75 = 3000
+    --   if 12 pods, 4 workers each; 12 * 4 * 75 = 3600
+    local ok, set_err = red:set_keepalive(5000, 75)
     if not ok then
         return nil, "failed to set keepalive, err: " .. set_err, ttl
     end
