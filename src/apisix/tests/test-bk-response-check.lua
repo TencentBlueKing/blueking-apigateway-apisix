@@ -62,13 +62,9 @@ describe(
                     "should log the metrics", function()
                         ctx = {
                             var = {
-                                gateway = "gateway",
                                 api_name = "api_name",
                                 stage_name = "stage_name",
                                 resource_name = "resource_name",
-                                service_name = "service_name",
-                                method = "method",
-                                matched_uri = "matched_uri",
                                 status = 200,
                                 proxy_phase = "proxy_phase",
                                 proxy_error = "proxy_error",
@@ -86,19 +82,15 @@ describe(
 
                         local api_requests_total = prometheus.registry["apigateway_api_requests_total"]
                         local expected_label_names = {
-                            'gateway',
                             'api_name',
                             'stage_name',
                             'resource_name',
-                            'service_name',
-                            'method',
-                            'matched_uri',
                             'status',
                             'proxy_phase',
                             'proxy_error' ,
                         }
-                        local expected_key = 'apigateway_api_requests_total{gateway="",api_name="",stage_name="",' ..
-                        'resource_name="",service_name="",method="method",matched_uri="matched_uri",status="200",' ..
+                        local expected_key = 'apigateway_api_requests_total{api_name="",stage_name="",' ..
+                        'resource_name="",status="200",' ..
                         'proxy_phase="proxy_phase",proxy_error="proxy_error"}'
 
                         assert.is_same(expected_label_names, api_requests_total["label_names"])
