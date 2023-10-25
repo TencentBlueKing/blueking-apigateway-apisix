@@ -155,4 +155,8 @@ function _M.rate_limit(conf, ctx, plugin_name, key, count, time_window)
     end
 end
 
+if _TEST then
+    _M.gen_limit_key = gen_limit_key
+end
+
 return _M
