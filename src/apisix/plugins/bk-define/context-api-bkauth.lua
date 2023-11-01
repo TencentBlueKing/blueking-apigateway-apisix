@@ -15,7 +15,6 @@
 -- We undertake not to change the open source license (MIT license) applicable
 -- to the current version of the project delivered to anyone in the future.
 --
-
 local pl_types = require("pl.types")
 local setmetatable = setmetatable
 local ipairs = ipairs
@@ -112,6 +111,7 @@ function ContextApiBkAuth.new(bk_api_auth)
             api_type = bk_api_auth.api_type,
             unfiltered_sensitive_keys = bk_api_auth.unfiltered_sensitive_keys or {},
             include_system_headers_mapping = include_system_headers_mapping,
+            allow_auth_from_params = bk_api_auth.allow_auth_from_params,
             uin_conf = UinConf.new(bk_api_auth.uin_conf),
             rtx_conf = RtxConf.new(bk_api_auth.rtx_conf),
             user_conf = UserConf.new(bk_api_auth.user_conf),
@@ -121,6 +121,12 @@ end
 
 function ContextApiBkAuth.get_api_type(self)
     return self.api_type
+end
+
+---Allow get auth_params from request parameters, such as querystring, body
+---@return boolean
+function ContextApiBkAuth.allow_get_auth_params_from_parameters(self)
+    return self.allow_auth_from_params
 end
 
 ---Get the unfiltered sensitive keys.

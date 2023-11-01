@@ -15,7 +15,6 @@
 -- We undertake not to change the open source license (MIT license) applicable
 -- to the current version of the project delivered to anyone in the future.
 --
-
 ---@class nginx.ContextVar nginx 内建变量
 --- Embedded Variables
 --- see https://nginx.org/en/docs/http/ngx_http_core_module.html#variables
@@ -155,6 +154,7 @@
 ---@field upstream_uri_without_args string 后端 uri
 ---@field bk_apigw_error table 网关返回的错误信息
 ---@field bk_concurrency_limit_key string 并发限制 key; 仅在 bk-concurrency-limit 中使用
+---@field auth_params_location string 认证参数位置
 ---
 ---@class bk_gateway.LogContextVar 日志相关的上下文变量，仅在 log 阶段可用
 ---@field bk_log_request_timestamp integer|nil 日志请求秒级时间戳

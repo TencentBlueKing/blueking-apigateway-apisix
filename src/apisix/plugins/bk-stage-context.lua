@@ -15,7 +15,6 @@
 -- We undertake not to change the open source license (MIT license) applicable
 -- to the current version of the project delivered to anyone in the future.
 --
-
 local core = require("apisix.core")
 local bk_core = require("apisix.plugins.bk-core.init")
 local context_api_bkauth = require("apisix.plugins.bk-define.context-api-bkauth")
@@ -62,6 +61,10 @@ local schema = {
                     items = {
                         type = "string",
                     },
+                },
+                allow_auth_from_params = {
+                    type = "boolean",
+                    default = true,
                 },
                 uin_conf = {
                     type = "object",
@@ -132,19 +135,16 @@ local _M = {
     schema = schema,
 }
 
-
 ---@param jwt_private_key string: JWT private key (encoded in Base64)
----@return string|nil, string: The decoded JWT private key, or nil and error message if the decoding fails
+---@return string|nil, string|nil: The decoded JWT private key, or nil and error message if the decoding fails
 local function decode_jwt_private_key(jwt_private_key)
     local decoded_private_key = ngx_decode_base64(jwt_private_key)
     if not decoded_private_key then
         core.log.error("failed to decode jwt_private_key with base64. jwt_private_key=", jwt_private_key)
         return nil, "failed to decode jwt_private_key with base64"
     end
-    return decoded_private_key
+    return decoded_private_key, nil
 end
-
-
 
 ---@param conf table: The user-provided configuration for the plugin instance
 ---@return boolean, string|nil: true and nil if the configuration is valid, false and error message if not
@@ -164,7 +164,6 @@ function _M.check_schema(conf)
 
     return true
 end
-
 
 ---@param conf table: The user-provided configuration for the plugin instance
 ---@param ctx  api.Context: The request context
