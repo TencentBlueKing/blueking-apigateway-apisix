@@ -35,6 +35,7 @@
 --     redis_database: 0
 --     redis_timeout: 1001
 --
+local apisix_plugin = require("apisix.plugin")
 local core = require("apisix.core")
 local rate_limit_redis = require("apisix.plugins.bk-rate-limit.rate-limit-redis")
 local lrucache = core.lrucache.new(
@@ -77,6 +78,14 @@ local _M = {
     },
 }
 
+local function gen_limit_key(conf, key)
+    -- Here we use plugin-level conf version to prevent the counter from being resetting
+    -- because of the change elsewhere.
+    -- e.g. conf_version = 1969078430
+    local new_key = key .. ':' .. apisix_plugin.conf_version(conf)
+    return new_key
+end
+
 ---Create rate-limit-redis object
 ---@param plugin_name string @apisix plugin name
 ---@return table @rate-limit-redis object
@@ -108,6 +117,7 @@ function _M.rate_limit(conf, ctx, plugin_name, key, count, time_window)
         return 500
     end
 
+    key = gen_limit_key(conf, key)
     core.log.info("limit key: ", key)
 
     local delay, remaining, reset = lim:incoming(key, count, time_window)
@@ -143,6 +153,10 @@ function _M.rate_limit(conf, ctx, plugin_name, key, count, time_window)
             "X-Bkapi-RateLimit-Plugin", plugin_name
         )
     end
+end
+
+if _TEST then
+    _M.gen_limit_key = gen_limit_key
 end
 
 return _M

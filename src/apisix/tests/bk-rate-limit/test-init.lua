@@ -49,6 +49,25 @@ describe(
         )
 
         context(
+            "gen_limit_key", function()
+                it("ok", function()
+                    local conf = {}
+                    local key = ratelimit.gen_limit_key(conf, "key")
+                    assert.equal(key, "key:223132457")
+                    assert.equal(conf._version, "223132457")
+
+                    -- mock the conf change
+                    conf._version = nil
+                    conf["hello"] = "world"
+                    key = ratelimit.gen_limit_key(conf, "key")
+                    assert.equal(key, "key:3624485329")
+                end
+            )
+            end
+        )
+
+
+        context(
             "rate_limit", function()
                 local conf
                 local ctx
