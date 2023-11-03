@@ -15,8 +15,6 @@
 -- We undertake not to change the open source license (MIT license) applicable
 -- to the current version of the project delivered to anyone in the future.
 --
-
-local core = require("apisix.core")
 local plugin = require("apisix.plugins.bk-stage-context")
 
 describe(
@@ -102,6 +100,7 @@ describe(
                         assert.is_equal(ctx.var.jwt_private_key, "test")
                         assert.is_equal(ctx.var.bk_resource_name, ctx.route_name)
                         assert.is_equal(ctx.var.bk_service_name, ctx.service_name)
+                        assert.is_true(ctx.var.bk_api_auth.allow_auth_from_params)
                     end
                 )
             end

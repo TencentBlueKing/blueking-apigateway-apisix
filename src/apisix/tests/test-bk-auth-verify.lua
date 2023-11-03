@@ -15,7 +15,6 @@
 -- We undertake not to change the open source license (MIT license) applicable
 -- to the current version of the project delivered to anyone in the future.
 --
-
 local core = require("apisix.core")
 local bk_core = require("apisix.plugins.bk-core.init")
 local bk_auth_verify_init = require("apisix.plugins.bk-auth-verify.init")
@@ -38,6 +37,7 @@ describe(
         local json_body
         local form_data
         local multipart_form_data
+        local ctx
 
         before_each(
             function()
@@ -46,6 +46,9 @@ describe(
                 json_body = nil
                 form_data = nil
                 multipart_form_data = nil
+                ctx = {
+                    var = {},
+                }
 
                 stub(
                     ngx.req, "get_method", function()
@@ -261,6 +264,7 @@ describe(
             "get_auth_params_from_request", function()
                 it(
                     "from header", function()
+                        ctx.var.bk_api_auth = context_api_bkauth.new({})
                         stub(
                             core.request, "header", core.json.encode(
                                 {
@@ -270,7 +274,7 @@ describe(
                             )
                         )
 
-                        local auth_params = plugin._get_auth_params_from_request({}, authorization_keys)
+                        local auth_params, err = plugin._get_auth_params_from_request(ctx, authorization_keys)
                         assert.is_same(
                             auth_params, {
                                 bk_app_code = "my-app",
@@ -278,25 +282,83 @@ describe(
                                 a = "b",
                             }
                         )
+                        assert.is_nil(err)
+                        assert.is_same(ctx.var.auth_params_location, "header")
 
                         core.request.header:revert()
                     end
                 )
 
                 it(
-                    "from parameters", function()
+                    "from header with error", function()
+                        ctx.var.bk_api_auth = context_api_bkauth.new({})
+                        stub(core.request, "header", "no-valid-json")
+
+                        local auth_params, err = plugin._get_auth_params_from_request(ctx, authorization_keys)
+                        assert.is_nil(auth_params)
+                        assert.is_not_nil(err)
+                        assert.is_same(ctx.var.auth_params_location, "header")
+
+                        core.request.header:revert()
+                    end
+                )
+
+                it(
+                    "from parameters with auth params", function()
+                        ctx.var.bk_api_auth = context_api_bkauth.new({})
                         stub(
                             core.request, "get_uri_args", {
                                 bk_app_code = "my-app",
                                 a = "b",
                             }
                         )
-                        local auth_params = plugin._get_auth_params_from_request({}, authorization_keys)
+                        local auth_params, err = plugin._get_auth_params_from_request(ctx, authorization_keys)
                         assert.is_same(
                             auth_params, {
                                 bk_app_code = "my-app",
                             }
                         )
+                        assert.is_nil(err)
+                        assert.is_same(ctx.var.auth_params_location, "params")
+
+                        core.request.get_uri_args:revert()
+                    end
+                )
+
+                it(
+                    "from parameters without auth params", function()
+                        ctx.var.bk_api_auth = context_api_bkauth.new({})
+                        stub(
+                            core.request, "get_uri_args", {
+                                a = "b",
+                            }
+                        )
+                        local auth_params, err = plugin._get_auth_params_from_request(ctx, authorization_keys)
+                        assert.is_same(auth_params, {})
+                        assert.is_nil(err)
+                        assert.is_nil(ctx.var.auth_params_location)
+
+                        core.request.get_uri_args:revert()
+                    end
+                )
+
+                it(
+                    "do not allow get auth params from parameters", function()
+                        ctx.var.bk_api_auth = context_api_bkauth.new(
+                            {
+                                allow_auth_from_params = false,
+                            }
+                        )
+                        stub(
+                            core.request, "get_uri_args", {
+                                bk_app_code = "my-app",
+                                a = "b",
+                            }
+                        )
+                        local auth_params, err = plugin._get_auth_params_from_request(ctx, authorization_keys)
+                        assert.is_same(auth_params, {})
+                        assert.is_nil(err)
+                        assert.is_nil(ctx.var.auth_params_location)
 
                         core.request.get_uri_args:revert()
                     end
@@ -304,7 +366,8 @@ describe(
 
                 it(
                     "provide no valid inputs", function()
-                        local auth_params, err = plugin._get_auth_params_from_request({}, authorization_keys)
+                        ctx.var.bk_api_auth = context_api_bkauth.new({})
+                        local auth_params, err = plugin._get_auth_params_from_request(ctx, authorization_keys)
                         assert.are_same(auth_params, {})
                         assert.is_nil(err)
                     end
@@ -319,12 +382,14 @@ describe(
 
                 it(
                     "with no auth params", function()
-                        local app, user = plugin.verify({
-                            var = {
-                                bk_api_auth = bk_api_auth,
-                                bk_resource_auth = bk_resource_auth,
-                            },
-                        })
+                        local app, user = plugin.verify(
+                            {
+                                var = {
+                                    bk_api_auth = bk_api_auth,
+                                    bk_resource_auth = bk_resource_auth,
+                                },
+                            }
+                        )
                         assert.is_equal(app.app_code, "")
                         assert.is_false(app.verified)
                         -- The legacy verifier was triggered by default.
@@ -345,12 +410,14 @@ describe(
                     "with invalid JSON auth_params in header", function()
                         stub(core.request, "header", "not valid json")
 
-                        local app, user = plugin.verify({
-                            var = {
-                                bk_api_auth = bk_api_auth,
-                                bk_resource_auth = bk_resource_auth,
-                            },
-                        })
+                        local app, user = plugin.verify(
+                            {
+                                var = {
+                                    bk_api_auth = bk_api_auth,
+                                    bk_resource_auth = bk_resource_auth,
+                                },
+                            }
+                        )
                         assert.is_equal(app.app_code, "")
                         assert.is_false(app.verified)
                         assert.is_equal(
@@ -504,6 +571,7 @@ describe(
                         )
                         assert.is_same(ctx.var.bk_app_code, "my-app")
                         assert.is_same(ctx.var.bk_username, "admin")
+                        assert.is_same(ctx.var.auth_params_location, "")
 
                         plugin.verify:revert()
                     end
