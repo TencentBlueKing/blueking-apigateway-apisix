@@ -32,7 +32,7 @@
 认证：
 
 - bk-workflow-parameters                    # priority: 18750
-- bk-auth-parameters                        # priority: 18740
+- bk-auth-legacy-invalid-params             # priority: 18731
 - bk-auth-verify                            # priority: 18730
 
 执行 - 响应: 优先级: 17500 ~ 18000
