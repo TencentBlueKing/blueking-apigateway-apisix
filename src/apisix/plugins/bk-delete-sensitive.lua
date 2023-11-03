@@ -31,6 +31,7 @@ local core = require("apisix.core")
 local bk_core = require("apisix.plugins.bk-core.init")
 local ngx = ngx -- luacheck: ignore
 local ipairs = ipairs
+local tostring = tostring
 local table_concat = table.concat
 
 local plugin_name = "bk-delete-sensitive"
@@ -109,8 +110,8 @@ local function delete_sensitive_params(ctx, sensitive_keys, unfiltered_sensitive
 
     if ctx.var.auth_params_location == "header" and not pl_types.is_empty(deleted_keys) then
         core.log.warn(
-            "auth params exist in both header and request parameters, request_id: " .. ctx.var.bk_request_id ..
-                ", deleted keys in parameters: " .. table_concat(deleted_keys, ", ")
+            "auth params are present in both header and request parameters, request_id: " ..
+                tostring(ctx.var.bk_request_id) .. ", deleted keys in parameters: " .. table_concat(deleted_keys, ", ")
         )
         -- 记录认证参数位置，便于统计哪些请求将认证参数放到请求参数，推动优化
         ctx.var.auth_params_location = "header_and_params"

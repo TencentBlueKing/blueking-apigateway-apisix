@@ -126,6 +126,10 @@ end
 ---Allow get auth_params from request parameters, such as querystring, body
 ---@return boolean
 function ContextApiBkAuth.allow_get_auth_params_from_parameters(self)
+    if self.allow_auth_from_params == nil then
+        -- 默认允许从参数获取认证信息
+        return true
+    end
     return self.allow_auth_from_params
 end
 

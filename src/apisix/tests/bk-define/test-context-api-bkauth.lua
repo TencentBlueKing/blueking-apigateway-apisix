@@ -15,7 +15,6 @@
 -- We undertake not to change the open source license (MIT license) applicable
 -- to the current version of the project delivered to anyone in the future.
 --
-
 local context_api_bkauth = require("apisix.plugins.bk-define.context-api-bkauth")
 
 describe(
@@ -148,6 +147,19 @@ describe(
                                 "b",
                             }
                         )
+                    end
+                )
+
+                it(
+                    "allow_get_auth_params_from_parameters", function()
+                        bk_api_auth.allow_auth_from_params = nil
+                        assert.is_true(bk_api_auth:allow_get_auth_params_from_parameters())
+
+                        bk_api_auth.allow_auth_from_params = true
+                        assert.is_true(bk_api_auth:allow_get_auth_params_from_parameters())
+
+                        bk_api_auth.allow_auth_from_params = false
+                        assert.is_false(bk_api_auth:allow_get_auth_params_from_parameters())
                     end
                 )
 
