@@ -25,12 +25,10 @@
 -- ?app_code=appC&amp;app_secret=appC
 -- ?app_code=appC&amp;amp;app_secret=appC
 -- ?app_code=appC;app_secret=appC
+-- ?a=1;a=2
 
-local string_startswith = require("pl.stringx").startswith
 local string_replace = require("pl.stringx").replace
-local string_split = require("pl.stringx").split
 local string_find = string.find
-local string_gmatch = string.gmatch
 local core = require("apisix.core")
 
 local schema = {}
@@ -47,45 +45,22 @@ function _M.check_schema(conf)
 end
 
 function _M.rewrite(conf, ctx)
-    local args = core.request.get_uri_args()
+    -- FIXME: 未来新的接口使用`;`也不生效, 怎么控制范围?
 
+    -- FIX 1
+    -- in golang 1.16: strings.IndexAny(key, "&;")
+    -- so here we just need to replace `;` to `&`, then reset the uri_args
+    -- args will be decoded like golang version
+
+    -- core.log.error(ctx.var.args)
     -- only query string contains `;` should be processed
-    if string_find(ctx.var.args, ";") then
-        -- core.log.error("before:", core.json.delay_encode(args))
-        for key, val in pairs(args) do
-                -- core.log.error(key, "=", val)
-                if string_startswith(key, "amp;") then
-                    -- we need to replace all
-                    -- case: ?a=b&amp;c=d
-                    -- case: ?a=b&amp;amp;c=d
-                    local new_key = string_replace(key, "amp;", "")
-                    args[key] = nil
-                    args[new_key] = val
-
-                    -- FIXME: will error here, should check if the key already exists, and use a table to store it
-                    -- case: ?a=b&amp;a=c
-                else
-                    -- case: ?a=b;c=d;e=f
-                    if string_find(val, ";") and string_find(val, "=") then
-                        -- key=value;a=b
-                        -- 1. key=value
-                        args[key] = string_split(val, ";")[1]
-
-                        -- 2. a=b
-                        for k, v in string_gmatch(val, "([^;=]+)=([^;=]+)") do
-                            args[k] = v
-                        end
-
-                        -- case: ?a=b;a=c
-                        -- FIXME: will error here, should check if the key already exists, and use a table to store it
-
-                    end
-                end
-        end
-        -- core.log.error("after: ", core.json.delay_encode(args))
-        core.request.set_uri_args(ctx, args)
+    if ctx.var.args ~= nil and string_find(ctx.var.args, ";") then
+        local new_args = string_replace(ctx.var.args, ";", "&")
+        -- core.log.error("replace ; to &: ", new_args)
+        core.request.set_uri_args(ctx, new_args)
     end
-
+    -- local args = core.request.get_uri_args()
+    -- core.log.error(core.json.delay_encode(args))
 end
 
 return _M
