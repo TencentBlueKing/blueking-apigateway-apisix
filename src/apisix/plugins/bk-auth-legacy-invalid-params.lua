@@ -35,7 +35,7 @@ local schema = {}
 
 local _M = {
     version = 0.1,
-    priority = 18731,
+    priority = 18880,
     name = "bk-auth-legacy-invalid-params",
     schema = schema,
 }
