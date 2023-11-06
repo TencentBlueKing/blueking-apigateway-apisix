@@ -18,7 +18,7 @@
 
 上下文注入，优先级：18000 ~ 19000
 
-- bk-auth-legacy-invalid-params             # priority: 18880  # 用于兼容老版本 go1.16 使用 `;` 作为 query string 分隔符
+- bk-legacy-invalid-params                  # priority: 18880  # 用于兼容老版本 go1.16 使用 `;` 作为 query string 分隔符
 - bk-opentelemetry                          # priority: 18870  # 这个插件用于 opentelemetry, 需要尽量精准统计全局的耗时，同时需要注入 trace_id/span_id 作为后面所有插件自定义 opentelemetry 上报的 trace_id 即 parent span_id
 - bk-not-found-handler                      # priority: 18860  # 该插件仅适用于由 operator 创建的默认根路由，用以规范化 404 消息。该插件以较高优先级结束请求返回 404 错误信息
 - bk-request-id                             # priority: 18850
@@ -33,6 +33,7 @@
 认证：
 
 - bk-workflow-parameters                    # priority: 18750 (abandonned)
+- bk-auth-parameters                        # priority: 18740 (abandonned)
 - bk-auth-verify                            # priority: 18730
 
 执行 - 响应：优先级：17500 ~ 18000

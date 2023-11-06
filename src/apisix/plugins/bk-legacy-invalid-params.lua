@@ -16,7 +16,7 @@
 -- to the current version of the project delivered to anyone in the future.
 --
 
--- # bk-auth-legacy-invalid-params
+-- # bk-legacy-invalid-params
 --
 -- For old gateway calling, because go 1.16 support both `&` and `;` as query string separator, but lua only support `&`
 -- and in some case, the caller html escaped the `&` to `&amp;`(it's ok for go 1.16 gateway)
@@ -36,7 +36,7 @@ local schema = {}
 local _M = {
     version = 0.1,
     priority = 18880,
-    name = "bk-auth-legacy-invalid-params",
+    name = "bk-legacy-invalid-params",
     schema = schema,
 }
 
