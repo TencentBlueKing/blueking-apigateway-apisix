@@ -32,7 +32,6 @@ local bk_core = require("apisix.plugins.bk-core.init")
 local ngx = ngx -- luacheck: ignore
 local ipairs = ipairs
 local tostring = tostring
-local table_concat = table.concat
 
 local plugin_name = "bk-delete-sensitive"
 
