@@ -76,7 +76,6 @@ local function delete_sensitive_params(ctx, sensitive_keys, unfiltered_sensitive
     local query_changed = false
     local form_changed = false
     local body_changed = false
-    local deleted_keys = {}
 
     for _, key in ipairs(sensitive_keys) do
         if include_sensitive_params[key] then
@@ -86,32 +85,26 @@ local function delete_sensitive_params(ctx, sensitive_keys, unfiltered_sensitive
         if check_query and uri_args[key] ~= nil then
             uri_args[key] = nil
             query_changed = true
-
-            core.table.insert(deleted_keys, key)
         end
 
         -- only when the content-type is application/x-www-form-urlencoded
         if check_form and form_data ~= nil and form_data[key] ~= nil then
             form_data[key] = nil
             form_changed = true
-
-            core.table.insert(deleted_keys, key)
         end
 
         if check_body and json_body ~= nil and json_body[key] ~= nil then
             json_body[key] = nil
             body_changed = true
-
-            core.table.insert(deleted_keys, key)
         end
 
         ::continue::
     end
 
-    if ctx.var.auth_params_location == "header" and not pl_types.is_empty(deleted_keys) then
+    if ctx.var.auth_params_location == "header" and (query_changed or form_changed or body_changed) then
         core.log.warn(
             "auth params are present in both header and request parameters, request_id: " ..
-                tostring(ctx.var.bk_request_id) .. ", deleted keys in parameters: " .. table_concat(deleted_keys, ", ")
+                tostring(ctx.var.bk_request_id)
         )
         -- 记录认证参数位置，便于统计哪些请求将认证参数放到请求参数，推动优化
         ctx.var.auth_params_location = "header_and_params"

@@ -297,7 +297,7 @@ describe(
                         local auth_params, err = plugin._get_auth_params_from_request(ctx, authorization_keys)
                         assert.is_nil(auth_params)
                         assert.is_not_nil(err)
-                        assert.is_same(ctx.var.auth_params_location, "header")
+                        assert.is_nil(ctx.var.auth_params_location)
 
                         core.request.header:revert()
                     end

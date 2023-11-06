@@ -115,11 +115,12 @@ end
 local function get_auth_params_from_request(ctx, authorization_keys)
     -- 请求头 X-Bkapi-Authorization 只要存在，则使用此数据作为认证信息，若不存在，则从参数中获取认证信息
     local auth_params, err = get_auth_params_from_header(ctx)
-    if err ~= nil or auth_params ~= nil then
+    if err ~= nil then
+        return nil, err
+    elseif auth_params ~= nil then
         -- 记录认证参数位置，便于统计哪些请求将认证参数放到请求参数，推动优化
         ctx.var.auth_params_location = "header"
-
-        return auth_params, err
+        return auth_params, nil
     end
 
     if not ctx.var.bk_api_auth:allow_get_auth_params_from_parameters() then

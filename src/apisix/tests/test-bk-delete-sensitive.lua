@@ -280,18 +280,28 @@ describe(
 
                 it(
                     "does not need to delete sensitive params", function()
-                        ctx.var.bk_api_auth = context_api_bkauth.new(
-                            {
-                                api_type = 0,
-                            }
-                        )
                         uri_args = {
                             bk_app_secret = "fake-secret",
                             foo = "bar",
                         }
 
+                        -- esb
+                        ctx.var.bk_api_auth = context_api_bkauth.new(
+                            {
+                                api_type = 0,
+                            }
+                        )
                         plugin.rewrite({}, ctx)
+                        assert.stub(core.request.set_uri_args).was_not_called()
 
+                        -- allow_delete_sensitive_params = false
+                        ctx.var.bk_api_auth = context_api_bkauth.new(
+                            {
+                                api_type = 10,
+                                allow_delete_sensitive_params = false,
+                            }
+                        )
+                        plugin.rewrite({}, ctx)
                         assert.stub(core.request.set_uri_args).was_not_called()
                     end
                 )
