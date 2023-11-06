@@ -66,6 +66,10 @@ local schema = {
                     type = "boolean",
                     default = true,
                 },
+                allow_delete_sensitive_params = {
+                    type = "boolean",
+                    default = true,
+                },
                 uin_conf = {
                     type = "object",
                     properties = {

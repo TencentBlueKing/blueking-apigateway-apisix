@@ -101,6 +101,7 @@ describe(
                         assert.is_equal(ctx.var.bk_resource_name, ctx.route_name)
                         assert.is_equal(ctx.var.bk_service_name, ctx.service_name)
                         assert.is_true(ctx.var.bk_api_auth.allow_auth_from_params)
+                        assert.is_true(ctx.var.bk_api_auth.allow_delete_sensitive_params)
                     end
                 )
             end

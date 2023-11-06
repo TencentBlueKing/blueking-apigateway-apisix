@@ -214,11 +214,59 @@ describe(
                 )
 
                 it(
-                    "is_filter_sensitive_params", function()
-                        assert.is_true(bk_api_auth:is_filter_sensitive_params())
+                    "should_delete_sensitive_params", function()
+                        local data = {
+                            -- esb
+                            {
+                                params = {
+                                    api_type = 0,
+                                    allow_delete_sensitive_params = nil,
+                                },
+                                expected = false,
+                            },
+                            {
+                                params = {
+                                    api_type = 0,
+                                    allow_delete_sensitive_params = true,
+                                },
+                                expected = false,
+                            },
+                            {
+                                params = {
+                                    api_type = 0,
+                                    allow_delete_sensitive_params = false,
+                                },
+                                expected = false,
+                            },
+                            -- normal
+                            {
+                                params = {
+                                    api_type = 10,
+                                    allow_delete_sensitive_params = nil,
+                                },
+                                expected = true,
+                            },
+                            {
+                                params = {
+                                    api_type = 10,
+                                    allow_delete_sensitive_params = true,
+                                },
+                                expected = true,
+                            },
+                            {
+                                params = {
+                                    api_type = 10,
+                                    allow_delete_sensitive_params = false,
+                                },
+                                expected = false,
+                            },
+                        }
+                        for _, item in ipairs(data) do
+                            bk_api_auth.api_type = item.params.api_type
+                            bk_api_auth.allow_delete_sensitive_params = item.params.allow_delete_sensitive_params
 
-                        bk_api_auth.api_type = 0
-                        assert.is_false(bk_api_auth:is_filter_sensitive_params())
+                            assert.is_equal(bk_api_auth:should_delete_sensitive_params(), item.expected)
+                        end
                     end
                 )
 

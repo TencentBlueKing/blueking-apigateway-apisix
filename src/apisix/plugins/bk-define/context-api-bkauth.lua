@@ -112,6 +112,7 @@ function ContextApiBkAuth.new(bk_api_auth)
             unfiltered_sensitive_keys = bk_api_auth.unfiltered_sensitive_keys or {},
             include_system_headers_mapping = include_system_headers_mapping,
             allow_auth_from_params = bk_api_auth.allow_auth_from_params,
+            allow_delete_sensitive_params = bk_api_auth.allow_delete_sensitive_params,
             uin_conf = UinConf.new(bk_api_auth.uin_conf),
             rtx_conf = RtxConf.new(bk_api_auth.rtx_conf),
             user_conf = UserConf.new(bk_api_auth.user_conf),
@@ -126,11 +127,8 @@ end
 ---Allow get auth_params from request parameters, such as querystring, body
 ---@return boolean
 function ContextApiBkAuth.allow_get_auth_params_from_parameters(self)
-    if self.allow_auth_from_params == nil then
-        -- 默认允许从参数获取认证信息
-        return true
-    end
-    return self.allow_auth_from_params
+    -- 默认允许从参数获取认证信息
+    return self.allow_auth_from_params ~= false
 end
 
 ---Get the unfiltered sensitive keys.
@@ -157,8 +155,9 @@ end
 
 ---Filter the sensitive params or not, do the filter if api_type is not ESB.
 ---@return boolean
-function ContextApiBkAuth.is_filter_sensitive_params(self)
-    return self.api_type ~= ESB
+function ContextApiBkAuth.should_delete_sensitive_params(self)
+    -- 非 esb，且允许删除敏感参数（默认允许删除）
+    return self.api_type ~= ESB and self.allow_delete_sensitive_params ~= false
 end
 
 function ContextApiBkAuth.is_user_type_uin(self)

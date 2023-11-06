@@ -141,7 +141,7 @@ local function delete_sensitive_headers()
 end
 
 function _M.rewrite(conf, ctx) -- luacheck: no unused
-    if ctx.var.bk_api_auth and ctx.var.bk_api_auth:is_filter_sensitive_params() then
+    if ctx.var.bk_api_auth and ctx.var.bk_api_auth:should_delete_sensitive_params() then
         delete_sensitive_params(
             ctx, bk_core.config.get_sensitive_keys(), ctx.var.bk_api_auth:get_unfiltered_sensitive_keys()
         )
