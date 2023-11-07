@@ -62,6 +62,8 @@ function _M.access(conf, ctx)
     end
 
     -- TODO: make it lazy, share the key with other plugins
+    -- FIXME: should change the bk_reosurce_name to bk_resource_id if you need more accurate rate limit
+    --        while the developer may change the bk_resource_name from the frontend page.
     local key = table_concat(
         {
             bk_app_code,

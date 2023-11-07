@@ -85,7 +85,6 @@ function _M.access(conf, ctx)
     else
         for i, rate in ipairs(rates) do
             -- here we should add the rate index into key, otherwise the rate limit will be shared(will be wrong)
-            -- FIXME: if the rate changes, will wait for the period to effect
             local limit_key = key .. ":" .. tostring(i)
             local code = ratelimit.rate_limit(conf, ctx, plugin_name, limit_key, rate.tokens, rate.period)
             if code then

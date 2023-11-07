@@ -35,5 +35,6 @@ RUN ls /usr/local/apisix/patches | sort | xargs -L1 -I __patch_file__ sh -c 'cat
 
 RUN chmod 755 /data/bkgateway/bin/* && chmod 777 /usr/local/apisix/logs
 
-
 CMD ["sh", "-c", "/usr/bin/apisix init && /usr/bin/apisix init_etcd && /usr/local/openresty/bin/openresty -p /usr/local/apisix -g 'daemon off;'"]
+
+STOPSIGNAL SIGQUIT
