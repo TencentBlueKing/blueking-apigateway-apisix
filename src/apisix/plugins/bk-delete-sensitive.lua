@@ -15,6 +15,7 @@
 -- We undertake not to change the open source license (MIT license) applicable
 -- to the current version of the project delivered to anyone in the future.
 --
+
 -- bk-delete-sensitive
 --
 -- Delete the sensitive parameters in the request header, uri args and body,
@@ -24,8 +25,10 @@
 -- so, we need to delete the sensitive parameters in the uri args and body.
 -- in new version, we change the doc and the sdk, and the sensitive parameters should be sent in the header.
 -- but still, we need to delete the sensitive parameters in the uri args and body, for the compatibility.
+
 -- FIXME: we should merge sensitive_keys and unfiltered_sensitive_keys first,
 --       other than do the check in the loop with `continue`.
+
 local pl_types = require("pl.types")
 local core = require("apisix.core")
 local bk_core = require("apisix.plugins.bk-core.init")
