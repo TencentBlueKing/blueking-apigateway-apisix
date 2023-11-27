@@ -87,6 +87,7 @@ describe(
                     "app_code length is greather 32", function()
                         local auth_params = auth_params_mod.new({
                             bk_app_code = "123456789012345678901234567890123",
+                            bk_app_secret = "world",
                         })
                         local verifier = app_account_verifier_mod.new(auth_params)
 
