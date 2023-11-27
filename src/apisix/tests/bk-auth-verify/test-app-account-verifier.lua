@@ -84,6 +84,35 @@ describe(
                 )
 
                 it(
+                    "app_code length is greather 32", function()
+                        local auth_params = auth_params_mod.new({
+                            bk_app_code = "123456789012345678901234567890123",
+                        })
+                        local verifier = app_account_verifier_mod.new(auth_params)
+
+                        local app = verifier:verify_app()
+                        assert.is_equal(app.app_code, "")
+                        assert.is_false(app.verified)
+                        assert.is_equal(app.valid_error_message, "app code cannot be longer than 32 characters")
+                    end
+                )
+
+                it(
+                    "app_secret length is greather 128", function()
+                        local auth_params = auth_params_mod.new({
+                            bk_app_code = "hello",
+                            bk_app_secret = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+                        })
+                        local verifier = app_account_verifier_mod.new(auth_params)
+
+                        local app = verifier:verify_app()
+                        assert.is_equal(app.app_code, "")
+                        assert.is_false(app.verified)
+                        assert.is_equal(app.valid_error_message, "app secret cannot be longer than 128 characters")
+                    end
+                )
+
+                it(
                     "app secret is not empty", function()
                         auth_params = auth_params_mod.new(
                             {

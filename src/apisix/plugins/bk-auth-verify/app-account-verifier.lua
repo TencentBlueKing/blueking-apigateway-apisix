@@ -20,6 +20,7 @@ local app_account_utils = require("apisix.plugins.bk-auth-verify.app-account-uti
 local bk_app_define = require("apisix.plugins.bk-define.app")
 local bk_cache = require("apisix.plugins.bk-cache.init")
 local setmetatable = setmetatable
+local string       = string
 
 local _M = {}
 
@@ -43,6 +44,14 @@ end
 function _M.verify_app(self)
     if pl_types.is_empty(self.app_code) then
         return bk_app_define.new_anonymous_app("app code cannot be empty")
+    end
+
+    -- check the length before call bkauth apis
+    if string.len(self.app_code) > 32 then
+        return bk_app_define.new_anonymous_app("app code cannot be longer than 32 characters")
+    end
+    if string.len(self.app_secret) > 128 then
+        return bk_app_define.new_anonymous_app("app secret cannot be longer than 128 characters")
     end
 
     if not pl_types.is_empty(self.app_secret) then
