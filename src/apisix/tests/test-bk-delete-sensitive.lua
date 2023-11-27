@@ -15,7 +15,6 @@
 -- We undertake not to change the open source license (MIT license) applicable
 -- to the current version of the project delivered to anyone in the future.
 --
-
 local core = require("apisix.core")
 local bk_core = require("apisix.plugins.bk-core.init")
 local context_api_bkauth = require("apisix.plugins.bk-define.context-api-bkauth")
@@ -34,10 +33,14 @@ describe(
             "access_token",
         }
         local unfiltered_sensitive_keys
+        local ctx
 
         before_each(
             function()
                 unfiltered_sensitive_keys = {}
+                ctx = {
+                    var = {},
+                }
 
                 stub(ngx.req, "clear_header")
                 stub(
@@ -83,9 +86,9 @@ describe(
                             bk_app_secret = "fake-secret",
                             foo = "bar",
                         }
-                        plugin._delete_sensitive_params({}, sensitive_keys, unfiltered_sensitive_keys)
+                        plugin._delete_sensitive_params(ctx, sensitive_keys, unfiltered_sensitive_keys)
                         assert.stub(core.request.set_uri_args).was_called_with(
-                            {}, {
+                            ctx, {
                                 foo = "bar",
                             }
                         )
@@ -98,7 +101,7 @@ describe(
                         uri_args = {
                             foo = "bar",
                         }
-                        plugin._delete_sensitive_params({}, sensitive_keys, unfiltered_sensitive_keys)
+                        plugin._delete_sensitive_params(ctx, sensitive_keys, unfiltered_sensitive_keys)
                         assert.stub(core.request.set_uri_args).was_not_called()
                         assert.stub(ngx.req.set_body_data).was_not_called()
                     end
@@ -110,7 +113,7 @@ describe(
                             bk_app_secret = "fake-secret",
                             foo = "bar",
                         }
-                        plugin._delete_sensitive_params({}, sensitive_keys, unfiltered_sensitive_keys)
+                        plugin._delete_sensitive_params(ctx, sensitive_keys, unfiltered_sensitive_keys)
                         assert.stub(core.request.set_uri_args).was_not_called()
                         assert.stub(ngx.req.set_body_data).was_called_with("foo=bar")
                     end
@@ -122,7 +125,7 @@ describe(
                             a = "b",
                             foo = "bar",
                         }
-                        plugin._delete_sensitive_params({}, sensitive_keys, unfiltered_sensitive_keys)
+                        plugin._delete_sensitive_params(ctx, sensitive_keys, unfiltered_sensitive_keys)
                         assert.stub(core.request.set_uri_args).was_not_called()
                         assert.stub(ngx.req.set_body_data).was_not_called()
                     end
@@ -134,7 +137,7 @@ describe(
                             bk_app_secret = "fake-secret",
                             foo = "bar",
                         }
-                        plugin._delete_sensitive_params({}, sensitive_keys, unfiltered_sensitive_keys)
+                        plugin._delete_sensitive_params(ctx, sensitive_keys, unfiltered_sensitive_keys)
                         assert.stub(core.request.set_uri_args).was_not_called()
                         assert.stub(ngx.req.set_body_data).was_called_with("{\"foo\":\"bar\"}")
                     end
@@ -145,7 +148,7 @@ describe(
                         json_body = {
                             foo = "bar",
                         }
-                        plugin._delete_sensitive_params({}, sensitive_keys, unfiltered_sensitive_keys)
+                        plugin._delete_sensitive_params(ctx, sensitive_keys, unfiltered_sensitive_keys)
                         assert.stub(core.request.set_uri_args).was_not_called()
                         assert.stub(ngx.req.set_body_data).was_not_called()
                     end
@@ -163,9 +166,9 @@ describe(
                             access_token = "fake-token",
                             foo = "bar",
                         }
-                        plugin._delete_sensitive_params({}, sensitive_keys, unfiltered_sensitive_keys)
+                        plugin._delete_sensitive_params(ctx, sensitive_keys, unfiltered_sensitive_keys)
                         assert.stub(core.request.set_uri_args).was_called_with(
-                            {}, {
+                            ctx, {
                                 foo = "bar",
                             }
                         )
@@ -185,9 +188,9 @@ describe(
                             access_token = "fake-token",
                             foo = "bar",
                         }
-                        plugin._delete_sensitive_params({}, sensitive_keys, unfiltered_sensitive_keys)
+                        plugin._delete_sensitive_params(ctx, sensitive_keys, unfiltered_sensitive_keys)
                         assert.stub(core.request.set_uri_args).was_called_with(
-                            {}, {
+                            ctx, {
                                 foo = "bar",
                             }
                         )
@@ -205,13 +208,34 @@ describe(
                             access_token = "fake-token",
                             foo = "bar",
                         }
-                        plugin._delete_sensitive_params({}, sensitive_keys, unfiltered_sensitive_keys)
+                        plugin._delete_sensitive_params(ctx, sensitive_keys, unfiltered_sensitive_keys)
                         assert.stub(core.request.set_uri_args).was_called_with(
-                            {}, {
+                            ctx, {
                                 bk_app_secret = "fake-secret",
                                 foo = "bar",
                             }
                         )
+                    end
+                )
+
+                it(
+                    "auth_params_location", function()
+                        ctx.var.auth_params_location = "header"
+
+                        uri_args = {
+                            bk_app_secret = "fake-secret",
+                            foo = "bar",
+                        }
+                        plugin._delete_sensitive_params(ctx, sensitive_keys, unfiltered_sensitive_keys)
+                        assert.is_same(ctx.var.auth_params_location, "header_and_params")
+
+                        ctx.var.auth_params_location = ""
+                        uri_args = {
+                            bk_app_secret = "fake-secret",
+                            foo = "bar",
+                        }
+                        plugin._delete_sensitive_params(ctx, sensitive_keys, unfiltered_sensitive_keys)
+                        assert.is_same(ctx.var.auth_params_location, "")
                     end
                 )
             end
@@ -232,16 +256,6 @@ describe(
 
         context(
             "rewrite", function()
-                local ctx
-
-                before_each(
-                    function()
-                        ctx = {
-                            var = {},
-                        }
-                    end
-                )
-
                 it(
                     "delete sensitive params", function()
                         ctx.var.bk_api_auth = context_api_bkauth.new(
@@ -266,18 +280,28 @@ describe(
 
                 it(
                     "does not need to delete sensitive params", function()
-                        ctx.var.bk_api_auth = context_api_bkauth.new(
-                            {
-                                api_type = 0,
-                            }
-                        )
                         uri_args = {
                             bk_app_secret = "fake-secret",
                             foo = "bar",
                         }
 
+                        -- esb
+                        ctx.var.bk_api_auth = context_api_bkauth.new(
+                            {
+                                api_type = 0,
+                            }
+                        )
                         plugin.rewrite({}, ctx)
+                        assert.stub(core.request.set_uri_args).was_not_called()
 
+                        -- allow_delete_sensitive_params = false
+                        ctx.var.bk_api_auth = context_api_bkauth.new(
+                            {
+                                api_type = 10,
+                                allow_delete_sensitive_params = false,
+                            }
+                        )
+                        plugin.rewrite({}, ctx)
                         assert.stub(core.request.set_uri_args).was_not_called()
                     end
                 )

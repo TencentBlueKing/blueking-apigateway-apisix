@@ -118,11 +118,25 @@ local function get_auth_params_from_request(ctx, authorization_keys)
     if err ~= nil then
         return nil, err
     elseif auth_params ~= nil then
+        -- 记录认证参数位置，便于统计哪些请求将认证参数放到请求参数，推动优化
+        ctx.var.auth_params_location = "header"
         return auth_params, nil
     end
 
+    if not ctx.var.bk_api_auth:allow_get_auth_params_from_parameters() then
+        -- 不允许从请求参数获取认证参数，直接返回
+        return {}, nil
+    end
+
     -- from the querystring and body
-    return get_auth_params_from_parameters(ctx, authorization_keys), nil
+    auth_params = get_auth_params_from_parameters(ctx, authorization_keys)
+
+    if not pl_types.is_empty(auth_params) then
+        -- 记录认证参数位置，便于统计哪些请求将认证参数放到请求参数，推动优化
+        ctx.var.auth_params_location = "params"
+    end
+
+    return auth_params
 end
 -- utils end
 
@@ -174,6 +188,8 @@ function _M.rewrite(conf, ctx) -- luacheck: no unused
     ctx.var.bk_user = user
     ctx.var.bk_app_code = app["app_code"]
     ctx.var.bk_username = user["username"]
+    -- 记录认证参数位置，便于统计哪些请求将认证参数放到请求参数，推动优化
+    ctx.var.auth_params_location = ctx.var.auth_params_location or ""
 end
 
 if _TEST then -- luacheck: ignore
