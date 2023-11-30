@@ -33,4 +33,4 @@
 - [apisix source code : t](https://github.com/apache/apisix/tree/master/t)
 - [test-nginx](https://github.com/openresty/test-nginx)
 - [test-nginx doc: user guide](https://openresty.gitbooks.io/programming-openresty/content/testing/index.html)
-
+- [Test::Nginx::Socket](https://metacpan.org/pod/Test::Nginx::Socket)

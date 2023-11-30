@@ -34,6 +34,7 @@ local core = require("apisix.core")
 local bk_core = require("apisix.plugins.bk-core.init")
 local ngx = ngx -- luacheck: ignore
 local ipairs = ipairs
+local tostring = tostring
 
 local plugin_name = "bk-delete-sensitive"
 
@@ -54,7 +55,6 @@ local _M = {
 function _M.check_schema(conf)
     return core.schema.check(schema, conf)
 end
-
 
 ---Delete the sensitive parameters in the request header, uri args and body,
 ---it will check the first, then do the modification.
@@ -103,6 +103,15 @@ local function delete_sensitive_params(ctx, sensitive_keys, unfiltered_sensitive
         ::continue::
     end
 
+    if ctx.var.auth_params_location == "header" and (query_changed or form_changed or body_changed) then
+        core.log.warn(
+            "auth params are present in both header and request parameters, request_id: " ..
+                tostring(ctx.var.bk_request_id)
+        )
+        -- 记录认证参数位置，便于统计哪些请求将认证参数放到请求参数，推动优化
+        ctx.var.auth_params_location = "header_and_params"
+    end
+
     if check_query and query_changed then
         core.request.set_uri_args(ctx, uri_args)
     end
@@ -127,7 +136,7 @@ local function delete_sensitive_headers()
 end
 
 function _M.rewrite(conf, ctx) -- luacheck: no unused
-    if ctx.var.bk_api_auth and ctx.var.bk_api_auth:is_filter_sensitive_params() then
+    if ctx.var.bk_api_auth and ctx.var.bk_api_auth:should_delete_sensitive_params() then
         delete_sensitive_params(
             ctx, bk_core.config.get_sensitive_keys(), ctx.var.bk_api_auth:get_unfiltered_sensitive_keys()
         )
