@@ -34,7 +34,6 @@ local core = require("apisix.core")
 local bk_core = require("apisix.plugins.bk-core.init")
 local ngx = ngx -- luacheck: ignore
 local ipairs = ipairs
-local tostring = tostring
 
 local plugin_name = "bk-delete-sensitive"
 
@@ -104,10 +103,6 @@ local function delete_sensitive_params(ctx, sensitive_keys, unfiltered_sensitive
     end
 
     if ctx.var.auth_params_location == "header" and (query_changed or form_changed or body_changed) then
-        core.log.warn(
-            "auth params are present in both header and request parameters, request_id: " ..
-                tostring(ctx.var.bk_request_id)
-        )
         -- 记录认证参数位置，便于统计哪些请求将认证参数放到请求参数，推动优化
         ctx.var.auth_params_location = "header_and_params"
     end
