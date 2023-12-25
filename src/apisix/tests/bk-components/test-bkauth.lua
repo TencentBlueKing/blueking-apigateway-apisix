@@ -80,7 +80,6 @@ describe(
                         assert.is_false(result.existed)
                         assert.is_false(result.verified)
                         assert.is_nil(err)
-                        assert.is_true(core.string.has_prefix(err, "request_id"))
                     end
                 )
 
@@ -201,7 +200,6 @@ describe(
                             }
                         )
                         assert.is_nil(err)
-                        assert.is_true(core.string.has_prefix(err, "request_id"))
                     end
                 )
 
@@ -338,6 +336,7 @@ describe(
                         local result, err = bkauth.verify_access_token("fake-token")
                         assert.is_nil(result)
                         assert.is_true(core.string.has_prefix(err, "bkauth error message: error"))
+                        assert.is_true(core.string.has_prefix(err, "request_id"))
                     end
                 )
 
