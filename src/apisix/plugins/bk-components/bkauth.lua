@@ -17,6 +17,7 @@
 --
 local pl_types = require("pl.types")
 local http = require("resty.http")
+local uuid = require("resty.jit-uuid")
 local core = require("apisix.core")
 local bk_core = require("apisix.plugins.bk-core.init")
 
@@ -48,6 +49,8 @@ function _M.verify_app_secret(app_code, app_secret)
 
     local http_client = http.new()
     http_client:set_timeout(BKAUTH_TIMEOUT_MS)
+
+    local request_id= uuid.generate_v4()
     local res, err = http_client:request_uri(
         url, {
             method = "POST",
@@ -57,16 +60,18 @@ function _M.verify_app_secret(app_code, app_secret)
                 }
             ),
             ssl_verify = false,
+
             headers = {
                 ["X-Bk-App-Code"] = _M.app_code,
                 ["X-Bk-App-Secret"] = _M.app_secret,
+                ["X-Request-Id"] =request_id,
                 ["Content-Type"] = "application/json",
             },
         }
     )
 
     if not (res and res.body) then
-        err = string_format("failed to request third-party api, url: %s, err: %s, response: nil", url, err)
+        err = string_format("failed to request third-party api, url: %s, request_id: %s, err: %s, response: nil", url,request_id, err)
         core.log.error(err)
         return nil, err
     end
@@ -83,24 +88,24 @@ function _M.verify_app_secret(app_code, app_secret)
     if result == nil then
         core.log.error(
             string_format(
-                "failed to request %s, response is not valid json, status: %s, response: %s", url, res.status, res.body
+                "failed to request %s, request_id: %s, response is not valid json, status: %s, response: %s", url, request_id, res.status, res.body
             )
         )
         return nil, string_format(
-            "failed to request third-party api, response is not valid json, url: %s, status: %s", url, res.status
+            "failed to request third-party api, response is not valid json, url: %s, request_id: %s, status: %s", url,request_id, res.status
         )
     end
 
     if result.code ~= 0 or res.status ~= 200 then
         core.log.error(
             string_format(
-                "failed to request %s, result.code!=0 or status!=200, status: %s, response: %s", url, res.status,
+                "failed to request %s,request_id: %s, result.code!=0 or status!=200, status: %s, response: %s", url,request_id, res.status,
                 res.body
             )
         )
         return nil, string_format(
-            "failed to request third-party api, bkauth error message: %s, url: %s, status: %s, code: %s",
-            result.message, url, res.status, result.code
+            "failed to request third-party api, bkauth error message: %s, url: %s,request_id: %s, status: %s, code: %s",
+            result.message, url,request_id, res.status, result.code
         )
     end
 
@@ -119,6 +124,7 @@ function _M.list_app_secrets(app_code)
 
     local http_client = http.new()
     http_client:set_timeout(BKAUTH_TIMEOUT_MS)
+    local request_id= uuid.generate_v4()
     local res, err = http_client:request_uri(
         url, {
             method = "GET",
@@ -126,13 +132,14 @@ function _M.list_app_secrets(app_code)
             headers = {
                 ["X-Bk-App-Code"] = _M.app_code,
                 ["X-Bk-App-Secret"] = _M.app_secret,
+                ["X-Request-Id"] =request_id,
                 ["Content-Type"] = "application/x-www-form-urlencoded",
             },
         }
     )
 
     if not (res and res.body) then
-        err = string_format("failed to request third-party api, url: %s, err: %s, response: nil", url, err)
+        err = string_format("failed to request third-party api, url: %s,request_id: %s, err: %s, response: nil", url,request_id, err)
         core.log.error(err)
         return nil, err
     end
@@ -148,24 +155,24 @@ function _M.list_app_secrets(app_code)
     if result == nil then
         core.log.error(
             string_format(
-                "failed to request %s, response is not valid json, status: %s, response: %s", url, res.status, res.body
+                "failed to request %s,request_id: %s, response is not valid json, status: %s, response: %s", url,request_id, res.status, res.body
             )
         )
         return nil, string_format(
-            "failed to request third-party api, response is not valid json, url: %s, status: %s", url, res.status
+            "failed to request third-party api, response is not valid json, url: %s, request_id: %s, status: %s", url, request_id, res.status
         )
     end
 
     if result.code ~= 0 or res.status ~= 200 then
         core.log.error(
             string_format(
-                "failed to request %s, result.code!=0 or status!=200, status: %s, response: %s", url, res.status,
+                "failed to request %s, request_id: %s, result.code!=0 or status!=200, status: %s, response: %s", url,request_id, res.status,
                 res.body
             )
         )
         return nil, string_format(
-            "failed to request third-party api, bkauth error message: %s, url: %s, status: %s, code: %s",
-            result.message, url, res.status, result.code
+            "failed to request third-party api, bkauth error message: %s, url: %s, request_id: %s, status: %s, code: %s",
+            result.message, url,request_id, res.status, result.code
         )
     end
 
@@ -188,6 +195,7 @@ function _M.verify_access_token(access_token)
 
     local http_client = http.new()
     http_client:set_timeout(BKAUTH_TIMEOUT_MS)
+    local request_id= uuid.generate_v4()
     local res, err = http_client:request_uri(
         url, {
             method = "POST",
@@ -200,6 +208,7 @@ function _M.verify_access_token(access_token)
             headers = {
                 ["X-Bk-App-Code"] = _M.app_code,
                 ["X-Bk-App-Secret"] = _M.app_secret,
+                ["X-Request-Id"] =request_id,
                 -- ["Authorization"] = "Bearer " .. self.bkauth_access_token
                 ["Content-Type"] = "application/json",
             },
@@ -207,7 +216,7 @@ function _M.verify_access_token(access_token)
     )
 
     if not (res and res.body) then
-        err = string_format("failed to request third-party api, url: %s, err: %s, response: nil", url, err)
+        err = string_format("failed to request third-party api, url: %s,request_id: %s, err: %s, response: nil", url,request_id, err)
         core.log.error(err)
         return nil, err
     end
@@ -216,17 +225,17 @@ function _M.verify_access_token(access_token)
     if result == nil then
         core.log.error(
             string_format(
-                "failed to request %s, response is not valid json, status: %s, response: %s", url, res.status, res.body
+                "failed to request %s,request_id: %s, response is not valid json, status: %s, response: %s", url,request_id, res.status, res.body
             )
         )
         return nil, string_format(
-            "failed to request third-party api, response is not valid json, url: %s, status: %s", url, res.status
+            "failed to request third-party api, response is not valid json, url: %s,request_id: %s, status: %s", url,request_id, res.status
         )
     end
 
     if result.code ~= 0 or res.status ~= 200 then
         return nil, string_format(
-            "bkauth error message: %s, url: %s, status: %s, code: %s", result.message, url, res.status, result.code
+            "bkauth error message: %s, url: %s, request_id: %s, status: %s, code: %s", result.message, url, request_id,res.status, result.code
         )
     end
 
