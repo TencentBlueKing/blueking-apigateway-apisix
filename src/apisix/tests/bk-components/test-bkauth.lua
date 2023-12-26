@@ -356,7 +356,7 @@ describe(
                         local result, err = bkauth.verify_access_token("fake-token")
                         assert.is_nil(result)
                         assert.is_true(core.string.has_prefix(err, "bkauth error message: error"))
-                        assert.is_true(core.string.has_prefix(err, "request_id"))
+                        assert.is_true(core.string.contains(err, "request_id"))
                     end
                 )
 
