@@ -44,7 +44,8 @@ function _M.get_verified_user_required(self)
 end
 
 function _M.get_resource_perm_required(self)
-    return self.resource_perm_required
+    -- only verified_app_required is true, the bk_app_code is verified, then the resource perm is meaningful
+    return self.verified_app_required and self.resource_perm_required
 end
 
 function _M.get_skip_user_verification(self)
