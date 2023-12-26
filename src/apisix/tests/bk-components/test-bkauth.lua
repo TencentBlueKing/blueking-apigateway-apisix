@@ -58,7 +58,7 @@ describe(
                         local result, err = bkauth.verify_app_secret("fake-app-code", "fake-app-secret")
                         assert.is_nil(result)
                         assert.is_true(core.string.has_prefix(err, "failed to request third-party api"))
-                        assert.is_true(core.string.contains(err, "request_id"))
+                        assert.is_true(core.string.find(err, "request_id"))
                     end
                 )
 
@@ -93,7 +93,7 @@ describe(
                         local result, err = bkauth.verify_app_secret("fake-app-code", "fake-app-secret")
                         assert.is_nil(result)
                         assert.is_true(core.string.has_prefix(err, "failed to request third-party api"))
-                        assert.is_true(core.string.contains(err, "request_id"))
+                        assert.is_true(core.string.find(err, "request_id"))
                     end
                 )
 
@@ -116,7 +116,7 @@ describe(
                         local result, err = bkauth.verify_app_secret("fake-app-code", "fake-app-secret")
                         assert.is_nil(result)
                         assert.is_true(core.string.has_prefix(err, "failed to request third-party api"))
-                        assert.is_true(core.string.contains(err, "request_id"))
+                        assert.is_true(core.string.find(err, "request_id"))
                     end
                 )
 
