@@ -102,13 +102,13 @@ function _M.verify_app_secret(app_code, app_secret)
     if result.code ~= 0 or res.status ~= 200 then
         core.log.error(
             string_format(
-                "failed to request %s,request_id: %s, result.code!=0 or status!=200, status: %s, response: %s", url,
+                "failed to request %s, request_id: %s, result.code!=0 or status!=200, status: %s, response: %s", url,
                 request_id, res.status,
                 res.body
             )
         )
         return nil, string_format(
-            "failed to request third-party api, bkauth error message: %s, url: %s,request_id: %s, status: %s, code: %s",
+            "failed to request third-party api, bkauth error message: %s, url: %s, request_id: %s, status: %s, code: %s",
             result.message, url, request_id, res.status, result.code
         )
     end
@@ -143,7 +143,7 @@ function _M.list_app_secrets(app_code)
     )
 
     if not (res and res.body) then
-        err = string_format("failed to request third-party api, url: %s,request_id: %s, err: %s, response: nil", url,
+        err = string_format("failed to request third-party api, url: %s, request_id: %s, err: %s, response: nil", url,
             request_id, err)
         core.log.error(err)
         return nil, err
@@ -160,7 +160,7 @@ function _M.list_app_secrets(app_code)
     if result == nil then
         core.log.error(
             string_format(
-                "failed to request %s,request_id: %s, response is not valid json, status: %s, response: %s", url,
+                "failed to request %s, request_id: %s, response is not valid json, status: %s, response: %s", url,
                 request_id, res.status, res.body
             )
         )
@@ -224,7 +224,7 @@ function _M.verify_access_token(access_token)
     )
 
     if not (res and res.body) then
-        err = string_format("failed to request third-party api, url: %s,request_id: %s, err: %s, response: nil", url,
+        err = string_format("failed to request third-party api, url: %s, request_id: %s, err: %s, response: nil", url,
             request_id, err)
         core.log.error(err)
         return nil, err
@@ -234,12 +234,12 @@ function _M.verify_access_token(access_token)
     if result == nil then
         core.log.error(
             string_format(
-                "failed to request %s,request_id: %s, response is not valid json, status: %s, response: %s", url,
+                "failed to request %s, request_id: %s, response is not valid json, status: %s, response: %s", url,
                 request_id, res.status, res.body
             )
         )
         return nil, string_format(
-            "failed to request third-party api, response is not valid json, url: %s,request_id: %s, status: %s", url,
+            "failed to request third-party api, response is not valid json, url: %s, request_id: %s, status: %s", url,
             request_id, res.status
         )
     end
