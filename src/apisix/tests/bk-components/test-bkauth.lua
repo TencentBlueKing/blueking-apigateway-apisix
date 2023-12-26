@@ -21,7 +21,6 @@ local bkauth = require("apisix.plugins.bk-components.bkauth")
 
 describe(
     "bkauth", function()
-
         local response, response_err
 
         before_each(
