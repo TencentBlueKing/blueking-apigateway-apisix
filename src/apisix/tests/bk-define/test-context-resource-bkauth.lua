@@ -60,6 +60,49 @@ describe(
                         )
                     end
                 )
+
+                it(
+                    "resource perm, verified_app_required is false", function()
+                        bk_resource_auth = context_resource_bkauth.new(
+                            {
+                                verified_app_required = false,
+                                verified_user_required = true,
+                                resource_perm_required = true,
+                                skip_user_verification = true,
+                            }
+                        )
+
+                        assert.is_false(bk_resource_auth:get_resource_perm_required())
+                    end
+                )
+                it(
+                    "resource perm, resource_perm_required is false", function()
+                        bk_resource_auth = context_resource_bkauth.new(
+                            {
+                                verified_app_required = true,
+                                verified_user_required = true,
+                                resource_perm_required = false,
+                                skip_user_verification = true,
+                            }
+                        )
+
+                        assert.is_false(bk_resource_auth:get_resource_perm_required())
+                    end
+                )
+                it(
+                    "resource perm, both true", function()
+                        bk_resource_auth = context_resource_bkauth.new(
+                            {
+                                verified_app_required = true,
+                                verified_user_required = true,
+                                resource_perm_required = true,
+                                skip_user_verification = true,
+                            }
+                        )
+
+                        assert.is_true(bk_resource_auth:get_resource_perm_required())
+                    end
+                )
             end
         )
     end
