@@ -21,7 +21,6 @@ local bkauth = require("apisix.plugins.bk-components.bkauth")
 
 describe(
     "bkauth", function()
-
         local response, response_err
 
         before_each(
@@ -59,6 +58,7 @@ describe(
                         local result, err = bkauth.verify_app_secret("fake-app-code", "fake-app-secret")
                         assert.is_nil(result)
                         assert.is_true(core.string.has_prefix(err, "failed to request third-party api"))
+                        assert.is_true(core.string.find(err, "request_id") ~= nil)
                     end
                 )
 
@@ -93,6 +93,7 @@ describe(
                         local result, err = bkauth.verify_app_secret("fake-app-code", "fake-app-secret")
                         assert.is_nil(result)
                         assert.is_true(core.string.has_prefix(err, "failed to request third-party api"))
+                        assert.is_true(core.string.find(err, "request_id") ~= nil)
                     end
                 )
 
@@ -115,6 +116,7 @@ describe(
                         local result, err = bkauth.verify_app_secret("fake-app-code", "fake-app-secret")
                         assert.is_nil(result)
                         assert.is_true(core.string.has_prefix(err, "failed to request third-party api"))
+                        assert.is_true(core.string.find(err, "request_id") ~= nil)
                     end
                 )
 
@@ -174,6 +176,7 @@ describe(
                         local result, err = bkauth.list_app_secrets("fake-app-code")
                         assert.is_nil(result)
                         assert.is_true(core.string.has_prefix(err, "failed to request third-party api"))
+                        assert.is_true(core.string.find(err, "request_id") ~= nil)
                     end
                 )
                 it(
@@ -210,6 +213,7 @@ describe(
                         local result, err = bkauth.list_app_secrets("fake-app-code")
                         assert.is_nil(result)
                         assert.is_true(core.string.has_prefix(err, "failed to request third-party api"))
+                        assert.is_true(core.string.find(err, "request_id") ~= nil)
                     end
                 )
 
@@ -232,6 +236,7 @@ describe(
                         local result, err = bkauth.list_app_secrets("fake-app-code")
                         assert.is_nil(result)
                         assert.is_true(core.string.has_prefix(err, "failed to request third-party api"))
+                        assert.is_true(core.string.find(err, "request_id") ~= nil)
                     end
                 )
 
@@ -282,6 +287,7 @@ describe(
                         local result, err = bkauth.verify_access_token("fake-token")
                         assert.is_nil(result)
                         assert.is_true(core.string.has_prefix(err, "failed to request third-party api"))
+                        assert.is_true(core.string.find(err, "request_id") ~= nil)
                     end
                 )
 
@@ -295,6 +301,7 @@ describe(
                         local result, err = bkauth.verify_access_token("fake-token")
                         assert.is_nil(result)
                         assert.is_true(core.string.has_prefix(err, "failed to request third-party api"))
+                        assert.is_true(core.string.find(err, "request_id") ~= nil)
                     end
                 )
 
@@ -309,6 +316,7 @@ describe(
                         local result, err = bkauth.verify_access_token("fake-token")
                         assert.is_nil(result)
                         assert.is_true(core.string.has_prefix(err, "failed to request third-party api"))
+                        assert.is_true(core.string.find(err, "request_id") ~= nil)
                     end
                 )
 
@@ -328,6 +336,7 @@ describe(
                         local result, err = bkauth.verify_access_token("fake-token")
                         assert.is_nil(result)
                         assert.is_true(core.string.has_prefix(err, "bkauth error message: error"))
+                        assert.is_true(core.string.find(err, "request_id") ~= nil)
                     end
                 )
 
@@ -347,6 +356,7 @@ describe(
                         local result, err = bkauth.verify_access_token("fake-token")
                         assert.is_nil(result)
                         assert.is_true(core.string.has_prefix(err, "bkauth error message: error"))
+                        assert.is_true(core.string.find(err, "request_id") ~= nil)
                     end
                 )
 
