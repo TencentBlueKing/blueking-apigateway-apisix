@@ -108,7 +108,8 @@ function _M.verify_app_secret(app_code, app_secret)
             )
         )
         return nil, string_format(
-            "failed to request third-party api, bkauth error message: %s, url: %s, request_id: %s, status: %s, code: %s",
+            "failed to request third-party api, bkauth error message: %s, url: %s, \
+             request_id: %s, status: %s, code: %s",
             result.message, url, request_id, res.status, result.code
         )
     end
@@ -179,7 +180,8 @@ function _M.list_app_secrets(app_code)
             )
         )
         return nil, string_format(
-            "failed to request third-party api, bkauth error message: %s, url: %s, request_id: %s, status: %s, code: %s",
+            "failed to request third-party api, bkauth error message: %s, url: %s,\
+             request_id: %s, status: %s, code: %s",
             result.message, url, request_id, res.status, result.code
         )
     end
@@ -246,8 +248,8 @@ function _M.verify_access_token(access_token)
 
     if result.code ~= 0 or res.status ~= 200 then
         return nil, string_format(
-            "bkauth error message: %s, url: %s, request_id: %s, status: %s, code: %s", result.message, url,
-            request_idres.status, result.code
+            "bkauth error message: %s, url: %s, request_id: %s, status: %s, code: %s",
+            result.message, url, request_id, res.status, result.code
         )
     end
 
