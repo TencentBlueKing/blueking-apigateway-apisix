@@ -18,6 +18,7 @@ RUN wget https://github.com/apache/apisix/archive/refs/tags/${APISIX_VERSION}.ta
 # install dependencies
 ARG CODE_DIR=/codes/apisix-${APISIX_VERSION}
 RUN sed -i 's#yum install -y openresty openresty-debug openresty-openssl111-debug-devel pcre pcre-devel#yum install -y openresty openresty-debug openresty-openssl111-debug-devel pcre pcre-devel --skip-broken#g' ${CODE_DIR}/ci/centos7-ci.sh
+RUN sed -i 's|https://registry.npm.taobao.org|https://registry.npmmirror.com|g' ${CODE_DIR}/t/plugin/grpc-web/package-lock.json
 RUN cd ${CODE_DIR} &&  bash ./ci/centos7-ci.sh install_dependencies
 RUN cp -r ${CODE_DIR}/t /usr/local/apisix/
 
