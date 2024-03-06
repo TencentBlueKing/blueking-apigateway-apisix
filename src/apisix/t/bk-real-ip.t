@@ -105,6 +105,8 @@ passed
 GET /hello
 --- more_headers
 X-Forwarded-For: 1.1.1.1
+--- response_body
+hello world
 
 
 
@@ -145,6 +147,8 @@ passed
 GET /hello
 --- more_headers
 XFF: 1.1.1.1
+--- response_body
+hello world
 
 
 
