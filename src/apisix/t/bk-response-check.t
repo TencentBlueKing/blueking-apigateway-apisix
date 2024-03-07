@@ -152,7 +152,7 @@ passed
 
 
 
-=== TEST 5: fetch the prometheus metric data
+=== TEST 5: fetch the prometheus metric data apisix_apigateway_api_requests_total
 --- request
 GET /apisix/prometheus/metrics
 --- response_body eval
@@ -160,7 +160,7 @@ qr/apisix_apigateway_api_requests_total\{api_name="demo",stage_name="prod",resou
 
 
 
-=== TEST 6: fetch the prometheus metric data
+=== TEST 6: fetch the prometheus metric data apisix_apigateway_api_request_duration_milliseconds_bucket
 --- request
 GET /apisix/prometheus/metrics
 --- response_body eval
@@ -168,7 +168,7 @@ qr/apisix_apigateway_api_request_duration_milliseconds_bucket\{api_name="demo",s
 
 
 
-=== TEST 7: fetch the prometheus metric data
+=== TEST 7: fetch the prometheus metric data apisix_apigateway_app_requests_total
 --- request
 GET /apisix/prometheus/metrics
 --- response_body eval

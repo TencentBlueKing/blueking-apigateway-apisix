@@ -157,7 +157,7 @@ passed
 
 
 
-=== TEST 4: check ctx var
+=== TEST 4: check ctx var part one
 --- request
 GET /hello HTTP/1.1
 --- response_body
@@ -235,7 +235,7 @@ passed
 
 
 
-=== TEST 6: check ctx var
+=== TEST 6: check ctx var part two
 --- request
 GET /hello HTTP/1.1
 --- response_body

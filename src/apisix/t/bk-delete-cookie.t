@@ -90,7 +90,7 @@ passed
 
 
 
-=== TEST 3: check ctx var
+=== TEST 3: check with cookie
 --- request
 GET /hello HTTP/1.1
 --- more_headers

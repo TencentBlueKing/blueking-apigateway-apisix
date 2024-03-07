@@ -95,7 +95,7 @@ passed
 
 
 
-=== TEST 3: check ctx var
+=== TEST 3: check ctx var should_log_response_body
 --- request
 GET /hello HTTP/1.1
 --- error_log
@@ -143,7 +143,7 @@ passed
 
 
 
-=== TEST 5: check ctx var
+=== TEST 5: check ctx var backend_part_response_body
 --- request
 GET /hello HTTP/1.1
 --- response_body
@@ -193,7 +193,7 @@ passed
 
 
 
-=== TEST 7: check ctx var
+=== TEST 7: check ctx var backend_part_response_body empty
 --- request
 GET /hello HTTP/1.1
 --- response_body

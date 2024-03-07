@@ -83,7 +83,7 @@ done
                             },
                             "serverless-post-function": {
                                 "phase": "rewrite",
-                                "functions" : ["return function(conf, ctx) ngx.say(string.format(\"ID: %d, Name: %s, Auth: %s\", ctx.var.bk_resource_id, ctx.var.bk_resource_name, require(\"toolkit.json\").encode(ctx.var.bk_resource_auth))); ngx.exit(200); end"]
+                                "functions" : ["return function(conf, ctx) ngx.say(string.format(\"bk_resource_id: %d, bk_resource_name: %s, bk_resource_auth: %s\", ctx.var.bk_resource_id, ctx.var.bk_resource_name, require(\"toolkit.json\").encode(ctx.var.bk_resource_auth))); ngx.exit(200); end"]
                             }
                         },
                         "upstream": {
@@ -113,4 +113,4 @@ passed
 --- request
 GET /hello HTTP/1.1
 --- response_body
-ID: 1, Name: resource, Auth: {"resource_perm_required":false,"skip_user_verification":true,"verified_app_required":true,"verified_user_required":true}
+bk_resource_id: 1, bk_resource_name: resource, bk_resource_auth: {"resource_perm_required":false,"skip_user_verification":true,"verified_app_required":true,"verified_user_required":true}

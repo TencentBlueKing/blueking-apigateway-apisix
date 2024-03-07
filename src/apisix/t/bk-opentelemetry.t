@@ -95,7 +95,7 @@ __DATA__
 
 
 
-=== TEST 2: add plugin
+=== TEST 2: add plugin route
 --- config
     location /t {
         content_by_lua_block {
