@@ -173,7 +173,7 @@ opentelemetry export span
 
         -- bk-opentelemetry inject 8 attributes + service and route
         if #span.attributes ~= 10 then
-            ngx.log(ngx.ERR, "expect len(span.attributes) = 6, but got ", #span.attributes)
+            ngx.log(ngx.ERR, "expect len(span.attributes) = 10, but got ", #span.attributes)
             return
         end
 
