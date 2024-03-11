@@ -50,9 +50,7 @@ __DATA__
     location /t {
         content_by_lua_block {
             local plugin = require("apisix.plugins.bk-response-check")
-            local ok, err = plugin.check_schema({
-                log_2xx_response_body = false
-            })
+            local ok, err = plugin.check_schema({})
             if not ok then
                 ngx.say(err)
             end
@@ -156,7 +154,7 @@ passed
 --- request
 GET /apisix/prometheus/metrics
 --- response_body eval
-qr/apisix_apigateway_api_requests_total\{api_name="demo",stage_name="prod",resource_name="",status="200",proxy_phase="",proxy_error="0"\} \d+/
+qr/apisix_apigateway_api_requests_total\{api_name="demo",stage_name="prod",resource_name="",status="200",proxy_phase="",proxy_error="0"\} 4/
 
 
 
@@ -172,4 +170,4 @@ qr/apisix_apigateway_api_request_duration_milliseconds_bucket\{api_name="demo",s
 --- request
 GET /apisix/prometheus/metrics
 --- response_body eval
-qr/apisix_apigateway_app_requests_total\{app_code="demo",api_name="demo",stage_name="prod",resource_name=""\} \d+/
+qr/apisix_apigateway_app_requests_total\{app_code="demo",api_name="demo",stage_name="prod",resource_name=""\} 4/

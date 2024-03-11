@@ -156,3 +156,11 @@ hello world
 --- request
 GET /hello
 --- error_code: 403
+
+
+=== TEST 8: miss address with xff
+--- request
+GET /hello
+--- more_headers
+X-Forwarded-For: 1.1.1.1
+--- error_code: 403
