@@ -19,7 +19,7 @@ local core = require("apisix.core")
 local bklogin_component = require("apisix.plugins.bk-components.bklogin")
 
 local BK_TOKEN_CACHE_TTL = 300
-local BK_TOKEN_CACHE_COUNT = 500
+local BK_TOKEN_CACHE_COUNT = 2000
 local bk_token_lrucache = core.lrucache.new(
     {
         ttl = BK_TOKEN_CACHE_TTL,
