@@ -9,6 +9,8 @@ FROM apache/apisix:$APISIX_VERSION-centos
 
 RUN sed -i 's#mirrorlist.centos.org#vault.centos.org#g' /etc/yum.repos.d/CentOS-Base.repo
 RUN sed -i 's#mirror.centos.org#vault.centos.org#g' /etc/yum.repos.d/CentOS-Base.repo
+RUN cat /etc/yum.repos.d/CentOS-Base.repo
+RUN yum clean all && yum update -y
 
 RUN yum install -y sudo make gcc curl wget unzip git valgrind
 
