@@ -7,6 +7,9 @@ FROM apache/apisix:$APISIX_VERSION-centos
 #     curl -o /etc/yum.repos.d/CentOS-Base.repo http://mirrors.cloud.tencent.com/repo/centos7_base.repo && \
 #     yum clean all
 
+RUN sed -i 's#mirrorlist.centos.org#vault.centos.org#g' /etc/yum.repos.d/CentOS-Base.repo
+RUN sed -i 's#mirror.centos.org#vault.centos.org#g' /etc/yum.repos.d/CentOS-Base.repo
+
 RUN yum install -y sudo make gcc curl wget unzip git valgrind
 
 ARG APISIX_VERSION
