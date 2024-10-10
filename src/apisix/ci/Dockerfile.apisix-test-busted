@@ -9,7 +9,6 @@ FROM apache/apisix:$APISIX_VERSION-centos
 
 RUN sed -i 's/mirrorlist/#mirrorlist/g' /etc/yum.repos.d/CentOS-*
 RUN sed -i 's|#baseurl=http://mirror.centos.org|baseurl=http://vault.centos.org|g' /etc/yum.repos.d/CentOS-*
-RUN cat /etc/yum.repos.d/CentOS-Base.repo
 
 RUN yum install -y sudo make gcc curl wget unzip git valgrind
 
