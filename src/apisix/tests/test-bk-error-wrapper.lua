@@ -97,63 +97,63 @@ describe(
             end
         )
 
-        context(
-            "apisix plugins error", function()
+        -- context(
+        --     "apisix plugins error", function()
 
-                before_each(
-                    function()
-                        ctx = {
-                            var = {},
-                        }
-                        ngx.var = {}
-                    end
-                )
+        --         before_each(
+        --             function()
+        --                 ctx = {
+        --                     var = {},
+        --                 }
+        --                 ngx.var = {}
+        --             end
+        --         )
 
-                it(
-                    "apisix plugins error", function()
-                        ngx.status = 404
-                        plugin.header_filter(nil, ctx)
+        --         it(
+        --             "apisix plugins error", function()
+        --                 ngx.status = 404
+        --                 plugin.header_filter(nil, ctx)
 
-                        local bk_apigw_error = errorx.new_api_not_found()
+        --                 local bk_apigw_error = errorx.new_api_not_found()
 
-                        assert.is_equal(bk_apigw_error.status, ctx.var.bk_apigw_error.status)
-                        assert.is_equal(bk_apigw_error.error.code, ctx.var.bk_apigw_error.error.code)
+        --                 assert.is_equal(bk_apigw_error.status, ctx.var.bk_apigw_error.status)
+        --                 assert.is_equal(bk_apigw_error.error.code, ctx.var.bk_apigw_error.error.code)
 
-                        assert.stub(response.clear_header_as_body_modified).was.called()
-                        assert.stub(response.set_header)
-                            .was_called_with("Content-Type", "application/json; charset=utf-8")
-                        assert.stub(response.set_header).was_called_with(
-                            "X-Bkapi-Error-Code", tostring(bk_apigw_error.error.code)
-                        )
-                        assert.stub(response.set_header).was_called_with(
-                            "X-Bkapi-Error-Message", bk_apigw_error.error.message
-                        )
-                        assert.is_nil(ctx.var.proxy_phase)
-                    end
-                )
+        --                 assert.stub(response.clear_header_as_body_modified).was.called()
+        --                 assert.stub(response.set_header)
+        --                     .was_called_with("Content-Type", "application/json; charset=utf-8")
+        --                 assert.stub(response.set_header).was_called_with(
+        --                     "X-Bkapi-Error-Code", tostring(bk_apigw_error.error.code)
+        --                 )
+        --                 assert.stub(response.set_header).was_called_with(
+        --                     "X-Bkapi-Error-Message", bk_apigw_error.error.message
+        --                 )
+        --                 assert.is_nil(ctx.var.proxy_phase)
+        --             end
+        --         )
 
-                it(
-                    "apisix plugins error but do'not need dealing with", function()
-                        ngx.status = 409
-                        plugin.header_filter(nil, ctx)
-                        assert.is_not_nil(ctx.var.bk_apigw_error)
+        --         it(
+        --             "apisix plugins error but do'not need dealing with", function()
+        --                 ngx.status = 409
+        --                 plugin.header_filter(nil, ctx)
+        --                 assert.is_not_nil(ctx.var.bk_apigw_error)
 
-                        local bk_apigw_error = errorx.new_unkonwon_error(409)
+        --                 local bk_apigw_error = errorx.new_unkonwon_error(409)
 
-                        assert.stub(response.clear_header_as_body_modified).was_called()
-                        assert.stub(response.set_header)
-                            .was_called_with("Content-Type", "application/json; charset=utf-8")
-                        assert.stub(response.set_header).was_called_with(
-                            "X-Bkapi-Error-Code", tostring(bk_apigw_error.error.code)
-                        )
-                        assert.stub(response.set_header).was_called_with(
-                            "X-Bkapi-Error-Message", bk_apigw_error.error.message
-                        )
-                        assert.is_nil(ctx.var.proxy_phase)
-                    end
-                )
-            end
-        )
+        --                 assert.stub(response.clear_header_as_body_modified).was_called()
+        --                 assert.stub(response.set_header)
+        --                     .was_called_with("Content-Type", "application/json; charset=utf-8")
+        --                 assert.stub(response.set_header).was_called_with(
+        --                     "X-Bkapi-Error-Code", tostring(bk_apigw_error.error.code)
+        --                 )
+        --                 assert.stub(response.set_header).was_called_with(
+        --                     "X-Bkapi-Error-Message", bk_apigw_error.error.message
+        --                 )
+        --                 assert.is_nil(ctx.var.proxy_phase)
+        --             end
+        --         )
+        --     end
+        -- )
 
         context(
             "upstream error", function()

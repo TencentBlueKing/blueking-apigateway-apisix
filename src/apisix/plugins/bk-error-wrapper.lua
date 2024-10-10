@@ -69,9 +69,12 @@ end
 ---  - 502 + failed to connect to upstream: the upstream port is not listened
 ---  - 504 + failed to connect to upstream: the upstream port is listened, but the handshake timeout
 ---    usually network problem
+---  - 502 + cannot read header from upstream: upstream prematurely closed connection while reading response header from upstream
+---  - 504 + cannot read header from upstream: upstream timed out (110: Connection timed out) while reading response header from upstream
 ---@param ctx apisix.Context
 ---@return string,string|nil @the specific phase and error message
 local function _get_upstream_error_msg(ctx)
+    -- FIXME: add ngx.status as parameter, return specific error message in comment above
     if not ctx.var.upstream_connect_time then -- 握手失败
         return proxy_phases.CONNECTING, "failed to connect to upstream"
     -- note: 此处删掉对$upstream_bytes_sent判断的原因是
@@ -110,10 +113,26 @@ function _M.header_filter(conf, ctx) -- luacheck: no unused
         ctx.var.proxy_error = "1"
     end
 
+    -- 2024-10-10 封装导致非蓝鲸插件例如 fault-injection 返回非 200 时 response body 被吞掉
+    -- 注释掉之后
+    -- 1. 插件返回的非 200 不会存在 ctx.var.bk_apigw_error
+    -- 2. apisix 和 openresty 默认错误不会被封装, 将返回原始 body
+
     -- apisix or openresty default error
-    if not ctx.var.bk_apigw_error and ngx.status >= ngx.HTTP_BAD_REQUEST then
-        -- wrap and generate a bk_apigw_error
+    -- or it's other plugin return non-200 status
+    -- if not ctx.var.bk_apigw_error and ngx.status >= ngx.HTTP_BAD_REQUEST then
+    --     -- wrap and generate a bk_apigw_error
+    --     local error = errorx.new_default_error_with_status(ngx.status)
+    --     -- after set this, the body_filter will be called
+    --     ctx.var.bk_apigw_error = error
+    -- end
+
+    -- upstream status 报错封装成网关的报错
+    if upstream_error_msg then
         local error = errorx.new_default_error_with_status(ngx.status)
+        -- append the upstream error message
+        error:with_field("upstream_error", upstream_error_msg)
+
         -- after set this, the body_filter will be called
         ctx.var.bk_apigw_error = error
     end
@@ -122,11 +141,6 @@ function _M.header_filter(conf, ctx) -- luacheck: no unused
     -- do nothing if no error have to deal with
     if not apigw_error then
         return
-    end
-
-    -- append the upstream error message
-    if upstream_error_msg then
-        apigw_error:with_field("upstream_error", upstream_error_msg)
     end
 
     -- for body filter
