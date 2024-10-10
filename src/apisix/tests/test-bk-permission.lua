@@ -72,10 +72,10 @@ describe(
                 local cache = plugin._get_cache()
                 assert.is_not_nil(cache)
 
-                assert.equal(5120, cache.lrucache_max_items)
+                assert.equal(10240, cache.lrucache_max_items)
                 assert.equal(60, cache.lrucache_ttl)
-                assert.equal(30, cache.lrucache_short_ttl)
-                assert.equal(3600, cache.fallback_cache_ttl)
+                assert.equal(2, cache.lrucache_short_ttl)
+                assert.equal(43200, cache.fallback_cache_ttl)
 
             end
         )
