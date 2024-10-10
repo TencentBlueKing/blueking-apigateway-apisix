@@ -77,10 +77,10 @@ local cache
 function _M.init()
     cache = cache_fallback.new(
         {
-            lrucache_max_items = 5120,
+            lrucache_max_items = 10240, -- key is gateway+resource+app_code, so maybe a lot of keys
             lrucache_ttl = 60,
-            lrucache_short_ttl = 30,
-            fallback_cache_ttl = 60 * 60,
+            lrucache_short_ttl = 2, -- cache failed response for 2 seconds
+            fallback_cache_ttl = 60 * 60 * 12, -- if core-api is down, use the fallback cache data generated in 12 hours
         }, plugin_name
     )
 end
