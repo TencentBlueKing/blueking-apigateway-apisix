@@ -131,18 +131,23 @@ function _M.header_filter(conf, ctx) -- luacheck: no unused
 
     -- upstream status 报错封装成网关的报错
     if upstream_error_msg then
-        local error = errorx.new_default_error_with_status(ngx.status)
-        -- append the upstream error message
-        error:with_field("upstream_error", upstream_error_msg)
-
-        -- after set this, the body_filter will be called
-        ctx.var.bk_apigw_error = error
+      if not ctx.var.bk_apigw_error and ngx.status >= ngx.HTTP_BAD_REQUEST then
+          -- wrap and generate a bk_apigw_error
+          local error = errorx.new_default_error_with_status(ngx.status)
+          -- after set this, the body_filter will be called
+          ctx.var.bk_apigw_error = error
+      end
     end
 
     local apigw_error = ctx.var.bk_apigw_error
     -- do nothing if no error have to deal with
     if not apigw_error then
         return
+    end
+
+    -- append the upstream error message
+    if upstream_error_msg then
+        apigw_error:with_field("upstream_error", upstream_error_msg)
     end
 
     -- for body filter
