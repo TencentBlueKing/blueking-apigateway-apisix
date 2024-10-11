@@ -495,9 +495,14 @@ describe(
                 it(
                     "apisix plugin return status not 200", function()
                         ngx.status = 502
+                        ngx.arg[1] = "it's 502"
+                        ngx.arg[2] = true
                         plugin.header_filter(nil, ctx)
                         plugin.body_filter(nil, ctx)
+
                         assert.stub(core.json.encode).called(0)
+                        assert.equal("it's 502", ngx.arg[1])
+                        assert.equal(true, ngx.arg[2])
                     end
                 )
             end
