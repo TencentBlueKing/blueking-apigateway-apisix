@@ -167,6 +167,7 @@ local function extract_error_info_from_body(body)
     if pl_types.is_empty(body) then
         return nil
     end
+    -- FIXME: should use the raw body as error message?
 
     -- openresty default error message for non-200 status, for example
     -- <html>\r\n<head><title>404 Not Found<\/title>...
