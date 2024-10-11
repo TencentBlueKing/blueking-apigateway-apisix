@@ -69,8 +69,10 @@ end
 ---  - 502 + failed to connect to upstream: the upstream port is not listened
 ---  - 504 + failed to connect to upstream: the upstream port is listened, but the handshake timeout
 ---    usually network problem
----  - 502 + cannot read header from upstream: upstream prematurely closed connection while reading response header from upstream
----  - 504 + cannot read header from upstream: upstream timed out (110: Connection timed out) while reading response header from upstream
+---  - 502 + cannot read header from upstream: upstream prematurely closed connection while reading
+---    response header from upstream
+---  - 504 + cannot read header from upstream: upstream timed out (110: Connection timed out)
+---    while reading response header from upstream
 ---@param ctx apisix.Context
 ---@return string,string|nil @the specific phase and error message
 local function _get_upstream_error_msg(ctx)
