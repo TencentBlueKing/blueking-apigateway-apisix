@@ -114,6 +114,7 @@ function _M.header_filter(conf, ctx) -- luacheck: no unused
 
         ctx.var.proxy_error = "1"
     end
+    -- if not ctx.var.upstream_status, means from apisix internal or the plugin return
 
     -- 2024-10-10 封装导致非蓝鲸插件例如 fault-injection 返回非 200 时 response body 被吞掉
     -- 注释掉之后
