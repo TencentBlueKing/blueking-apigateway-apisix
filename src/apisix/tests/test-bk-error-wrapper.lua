@@ -98,7 +98,7 @@ describe(
         )
 
         context(
-            "apisix plugins error", function()
+            "apisix plugins error, will use raw status and response body", function()
 
                 before_each(
                     function()
@@ -110,48 +110,30 @@ describe(
                 )
 
                 it(
-                    "apisix plugins error", function()
+                    "apisix plugins return 404", function()
                         ngx.status = 404
                         plugin.header_filter(nil, ctx)
+                        assert.is_nil(ctx.var.bk_apigw_error)
 
-                        local bk_apigw_error = errorx.new_api_not_found()
+                        -- local bk_apigw_error = errorx.new_api_not_found()
 
-                        assert.is_equal(bk_apigw_error.status, ctx.var.bk_apigw_error.status)
-                        assert.is_equal(bk_apigw_error.error.code, ctx.var.bk_apigw_error.error.code)
+                        -- assert.is_equal(bk_apigw_error.status, ctx.var.bk_apigw_error.status)
+                        -- assert.is_equal(bk_apigw_error.error.code, ctx.var.bk_apigw_error.error.code)
 
-                        assert.stub(response.clear_header_as_body_modified).was.called()
-                        assert.stub(response.set_header)
-                            .was_called_with("Content-Type", "application/json; charset=utf-8")
-                        assert.stub(response.set_header).was_called_with(
-                            "X-Bkapi-Error-Code", tostring(bk_apigw_error.error.code)
-                        )
-                        assert.stub(response.set_header).was_called_with(
-                            "X-Bkapi-Error-Message", bk_apigw_error.error.message
-                        )
+                        assert.stub(response.clear_header_as_body_modified).was_not_called()
+                        -- assert.stub(response.set_header)
+                        --     .was_called_with("Content-Type", "application/json; charset=utf-8")
+                        -- assert.stub(response.set_header).was_called_with(
+                        --     "X-Bkapi-Error-Code", tostring(bk_apigw_error.error.code)
+                        -- )
+                        -- assert.stub(response.set_header).was_called_with(
+                        --     "X-Bkapi-Error-Message", bk_apigw_error.error.message
+                        -- )
+
                         assert.is_nil(ctx.var.proxy_phase)
                     end
                 )
 
-                it(
-                    "apisix plugins error but do'not need dealing with", function()
-                        ngx.status = 409
-                        plugin.header_filter(nil, ctx)
-                        assert.is_not_nil(ctx.var.bk_apigw_error)
-
-                        local bk_apigw_error = errorx.new_unkonwon_error(409)
-
-                        assert.stub(response.clear_header_as_body_modified).was_called()
-                        assert.stub(response.set_header)
-                            .was_called_with("Content-Type", "application/json; charset=utf-8")
-                        assert.stub(response.set_header).was_called_with(
-                            "X-Bkapi-Error-Code", tostring(bk_apigw_error.error.code)
-                        )
-                        assert.stub(response.set_header).was_called_with(
-                            "X-Bkapi-Error-Message", bk_apigw_error.error.message
-                        )
-                        assert.is_nil(ctx.var.proxy_phase)
-                    end
-                )
             end
         )
 
@@ -507,6 +489,20 @@ describe(
                     "will do nothing", function()
                         plugin.body_filter(nil, ctx)
                         assert.stub(core.json.encode).called(0)
+                    end
+                )
+
+                it(
+                    "apisix plugin return status not 200", function()
+                        ngx.status = 502
+                        ngx.arg[1] = "it's 502"
+                        ngx.arg[2] = true
+                        plugin.header_filter(nil, ctx)
+                        plugin.body_filter(nil, ctx)
+
+                        assert.stub(core.json.encode).called(0)
+                        assert.equal("it's 502", ngx.arg[1])
+                        assert.equal(true, ngx.arg[2])
                     end
                 )
             end
