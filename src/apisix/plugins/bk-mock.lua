@@ -27,7 +27,6 @@
 
 local pl_types = require("pl.types")
 local core = require("apisix.core")
-local ngx = ngx
 local pairs = pairs
 
 local plugin_name = "bk-mock"
