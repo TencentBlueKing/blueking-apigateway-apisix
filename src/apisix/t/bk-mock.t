@@ -68,7 +68,7 @@ done
                         "plugins": {
                             "bk-mock": {
                                 "response_status": 400,
-                                "response_example": "abc",
+                                "response_example": "abc\n",
                                 "response_headers" : {
                                     "foo": "bar",
                                     "Content-Type": "application/json2"
@@ -95,9 +95,10 @@ GET /t
 --- response_body
 passed
 
-=== TEST 3: check bk-mock
+=== TEST 3: check
 --- request
 GET /hello HTTP/1.1
+--- error_code: 400
 --- response_body
 abc
 --- response_headers
