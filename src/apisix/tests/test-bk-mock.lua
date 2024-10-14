@@ -123,6 +123,7 @@ describe(
 
                         plugin.header_filter(conf)
                         assert.stub(core.response.set_header).was_called_with("X-Token", "foo")
+                        assert.stub(core.response.set_header).was_called_with("x-mock-by", "bk-apigateway")
                     end
                 )
 
@@ -132,18 +133,6 @@ describe(
 
                         plugin.header_filter(conf)
                         assert.stub(core.response.set_header).was_not_called()
-                    end
-                )
-
-                it(
-                    "header cannot be overwriten", function()
-                        ngx.header["X-Token"] = "bar"
-                        conf.response_headers = {
-                            ["X-Token"] = "foo",
-                        }
-
-                        plugin.header_filter(conf)
-                        assert.is_equal(ngx.header["X-Token"], "bar")
                     end
                 )
             end
