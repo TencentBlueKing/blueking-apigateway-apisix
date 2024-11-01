@@ -27,7 +27,6 @@
 
 local pl_types = require("pl.types")
 local core = require("apisix.core")
-local ngx = ngx
 local pairs = pairs
 
 local plugin_name = "bk-mock"
@@ -75,11 +74,11 @@ function _M.header_filter(conf)
     end
 
     for key, value in pairs(conf.response_headers) do
-        -- set the header if it is not set by other plugins(they have higher priority)
-        if not ngx.header[key] then
-            core.response.set_header(key, value)
-        end
+        core.response.set_header(key, value)
     end
+
+    -- fixme: add a config with_mock_header to control whether to add the header
+    core.response.set_header("x-mock-by", "bk-apigateway")
 end
 
 return _M
