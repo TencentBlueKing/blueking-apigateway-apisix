@@ -19,7 +19,7 @@
 上下文注入，优先级：18000 ~ 19000
 
 - bk-legacy-invalid-params                  # priority: 18880  # 用于兼容老版本 go1.16 使用 `;` 作为 query string 分隔符
-- bk-opentelemetry                          # priority: 18870  # 这个插件用于 opentelemetry, 需要尽量精准统计全局的耗时，同时需要注入 trace_id/span_id 作为后面所有插件自定义 opentelemetry 上报的 trace_id 即 parent span_id
+- bk-opentelemetry                          # priority: 18870  # 这个插件用于 opentelemetry, 需要尽量精准统计全局的耗时，同时需要注入 trace_id/span_id 作为后面所有插件自定义 opentelemetry 上报的 trace_id 即 parent span_id (abandonned, will be replaced by another plugin)
 - bk-not-found-handler                      # priority: 18860  # 该插件仅适用于由 operator 创建的默认根路由，用以规范化 404 消息。该插件以较高优先级结束请求返回 404 错误信息
 - bk-request-id                             # priority: 18850
 - bk-stage-context                          # priority: 18840
@@ -63,17 +63,20 @@ proxy 预处理：17000 ~ 17500
 - bk-resource-header-rewrite                # priority: 17420
 - bk-mock                                   # priority: 17150
 
+官方插件：
+
+- fault-injection                           # priority: 11000
+- request-validation                        # priority: 2800
+- api-breaker                               # priority: 1005
+- prometheus                                # priority: 500
+- file-logger (priority update)             # priority: 399
+
 响应后处理：
 
-- bk-response-check                 # priority: 153
-- bk-time-cost                      # priority: 150
-- bk-debug                          # priority: 145
-- bk-error-wrapper                  # priority: 0 # 该插件应默认应用于所有路由
-
-默认：优先级：
-
-- prometheus                        # priority: 500
-- file-logger (priority update)     # priority: 399
+- bk-response-check                         # priority: 153
+- bk-time-cost                              # priority: 150
+- bk-debug                                  # priority: 145
+- bk-error-wrapper                          # priority: 0 # 该插件应默认应用于所有路由
 
 ## 插件开发
 

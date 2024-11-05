@@ -129,7 +129,10 @@ function _M.access(conf, ctx)
 
     -- 0. no permission records, return app_no_permission
     if pl_types.is_empty(data) then
-        return errorx.exit_with_apigw_err(ctx, errorx.new_app_no_permission():with_field("reason", reason_no_perm), _M)
+        local reason = reason_no_perm .. ", bk_app_code=" .. app_code
+        return errorx.exit_with_apigw_err(
+            ctx, errorx.new_app_no_permission():with_field("reason", reason), _M
+        )
     end
 
     local now = ngx_time()
@@ -145,8 +148,9 @@ function _M.access(conf, ctx)
             -- if only has one record, means expired
             if pl_tablex.size(data) == 1 then
                 -- expired: permission has expired
+                local reason = reason_perm_expired .. ", type=gateway_permission, bk_app_code=" .. app_code
                 return errorx.exit_with_apigw_err(
-                    ctx, errorx.new_app_no_permission():with_field("reason", reason_perm_expired), _M
+                    ctx, errorx.new_app_no_permission():with_field("reason", reason), _M
                 )
             end
 
@@ -161,8 +165,9 @@ function _M.access(conf, ctx)
             return
         else
             -- expired: permission has expired
+            local reason = reason_perm_expired .. ", type=resource_permission, bk_app_code=" .. app_code
             return errorx.exit_with_apigw_err(
-                ctx, errorx.new_app_no_permission():with_field("reason", reason_perm_expired), _M
+                ctx, errorx.new_app_no_permission():with_field("reason", reason), _M
             )
         end
     end

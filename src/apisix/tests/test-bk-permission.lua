@@ -171,6 +171,8 @@ describe(
 
                         local code = plugin.access(conf, ctx)
                         assert.is_equal(403, code)
+                        assert.is_equal(ctx.var.bk_apigw_error.error.message,
+                            'App has no permission to the resource [reason="no permission, bk_app_code=bk-app-code"]')
                         assert.stub(cache_fallback.get_with_fallback).was_called(1)
                     end
                 )
@@ -184,6 +186,9 @@ describe(
 
                         local code = plugin.access(conf, ctx)
                         assert.is_equal(403, code)
+                        -- the last return in access
+                        assert.is_equal(ctx.var.bk_apigw_error.error.message,
+                            'App has no permission to the resource [reason="no permission"]')
                         assert.stub(cache_fallback.get_with_fallback).was_called(1)
                     end
                 )
@@ -197,6 +202,8 @@ describe(
 
                         local code = plugin.access(conf, ctx)
                         assert.is_equal(403, code)
+                        assert.is_equal(ctx.var.bk_apigw_error.error.message,
+                            'App has no permission to the resource [reason="permission has expired, type=gateway_permission, bk_app_code=bk-app-code"]')
                         assert.stub(cache_fallback.get_with_fallback).was_called(1)
                     end
                 )
@@ -223,6 +230,8 @@ describe(
 
                         local code = plugin.access(conf, ctx)
                         assert.is_equal(403, code)
+                        assert.is_equal(ctx.var.bk_apigw_error.error.message,
+                            'App has no permission to the resource [reason="permission has expired, type=resource_permission, bk_app_code=bk-app-code"]')
                         assert.stub(cache_fallback.get_with_fallback).was_called(1)
                     end
                 )
