@@ -44,6 +44,7 @@
 - bk-break-recursive-call                   # priority: 17700  # 该插件应默认应用于所有路由
 - bk-body-limit                             # priority: 17690
 - bk-auth-validate                          # priority: 17680
+- bk-user-restriction                       # priority: 17679
 - bk-jwt                                    # priority: 17670
 - bk-ip-restriction                         # priority: 17662
 - bk-ip-group-restriction                   # priority: 17661 (will be deprecated)
