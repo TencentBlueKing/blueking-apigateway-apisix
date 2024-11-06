@@ -87,8 +87,8 @@ function _M.check_schema(conf)
         for _, rule in ipairs(conf.rules) do
             if rule.match then
                 -- Validate the match expression
-                local _, err = expr.new(rule.match)
-                if err then
+                local _, err2 = expr.new(rule.match)
+                if err2 then
                     core.log.error("failed to validate the 'match' expression: ", err)
                     return false, "failed to validate the 'match' expression: " .. err
                 end
