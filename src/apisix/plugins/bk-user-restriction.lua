@@ -86,6 +86,11 @@ function _M.access(conf, ctx)
         return
     end
 
+    -- not verified user required, return directly(do nothing)
+    if not ctx.var.bk_resource_auth:get_verified_user_required() then
+        return
+    end
+
     -- if user is nil, return directly(do nothing)
     if ctx.var.user == nil then
         return

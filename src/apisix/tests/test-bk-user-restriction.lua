@@ -17,7 +17,6 @@
 --
 
 local plugin = require("apisix.plugins.bk-user-restriction")
-local core = require("apisix.core")
 
 describe("bk-user-restriction", function()
     local ctx, conf
@@ -52,8 +51,19 @@ describe("bk-user-restriction", function()
     end)
 
     context("access", function()
+        it("user is nil, do nothing", function()
+            ctx.var.user = nil
+            local code = plugin.access(conf, ctx)
+            assert.is_nil(code)
+        end)
+
+        it("user is not verified, do nothing", function()
+            ctx.var.user.verified = false
+            local code = plugin.access(conf, ctx)
+            assert.is_nil(code)
+        end)
+
         it("should deny user not in whitelist", function()
-            -- -- FIXME: check_schema, init the map
             local ok = plugin.check_schema(conf)
             assert.is_true(ok)
             assert.is_not_nil(conf.whitelist_map)
@@ -62,10 +72,11 @@ describe("bk-user-restriction", function()
             local code = plugin.access(conf, ctx)
             assert.is_equal(code, 403)
             assert.is_not_nil(ctx.var.bk_apigw_error)
+            assert.is_equal(ctx.var.bk_apigw_error.error.message,
+        'Request rejected by bk-user restriction [message="The bk-user is not allowed" bk_username="unknown_user"]')
         end)
 
         it("should allow user not in whitelist", function()
-            -- -- FIXME: check_schema, init the map
             local ok = plugin.check_schema(conf)
             assert.is_true(ok)
             assert.is_not_nil(conf.whitelist_map)
@@ -76,9 +87,32 @@ describe("bk-user-restriction", function()
             assert.is_nil(ctx.var.bk_apigw_error)
         end)
 
-        -- TODO: not hit blacklist, allowed
-        -- TODO: hit blacklist, denied
+        it("should deny user in blacklist", function()
+            conf.whitelist = nil
+            conf.blacklist = { "denied_user" }
+            local ok = plugin.check_schema(conf)
+            assert.is_true(ok)
+            assert.is_not_nil(conf.blacklist_map)
 
+            ctx.var.user.username = "denied_user"
+            local code = plugin.access(conf, ctx)
+            assert.is_equal(code, 403)
+            assert.is_not_nil(ctx.var.bk_apigw_error)
+            assert.is_equal(ctx.var.bk_apigw_error.error.message,
+        'Request rejected by bk-user restriction [message="The bk-user is not allowed" bk_username="denied_user"]')
+        end)
 
+        it("should allow user not in blacklist", function()
+            conf.whitelist = nil
+            conf.blacklist = { "denied_user" }
+            local ok = plugin.check_schema(conf)
+            assert.is_true(ok)
+            assert.is_not_nil(conf.blacklist_map)
+
+            ctx.var.user.username = "allowed_user"
+            local code = plugin.access(conf, ctx)
+            assert.is_nil(code)
+            assert.is_nil(ctx.var.bk_apigw_error)
+        end)
     end)
 end)
