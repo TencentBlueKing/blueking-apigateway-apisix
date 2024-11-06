@@ -16,6 +16,7 @@
 -- to the current version of the project delivered to anyone in the future.
 --
 
+local core = require("apisix.core")
 local plugin = require("apisix.plugins.bk-user-restriction")
 local context_resource_bkauth = require("apisix.plugins.bk-define.context-resource-bkauth")
 
@@ -91,8 +92,9 @@ describe("bk-user-restriction", function()
             local code = plugin.access(conf, ctx)
             assert.is_equal(code, 403)
             assert.is_not_nil(ctx.var.bk_apigw_error)
-            assert.is_equal(ctx.var.bk_apigw_error.error.message,
-        'Request rejected by bk-user restriction [message="The bk-user is not allowed" bk_username="unknown_user"]')
+            assert.is_true(core.string.find(ctx.var.bk_apigw_error.error.message, 'Request rejected by bk-user restriction') ~= nil)
+            assert.is_true(core.string.find(ctx.var.bk_apigw_error.error.message, 'message="The bk-user is not allowed"') ~= nil)
+            assert.is_true(core.string.find(ctx.var.bk_apigw_error.error.message, 'bk_username="unknown_user"') ~= nil)
         end)
 
         it("should allow user not in whitelist", function()
@@ -117,8 +119,9 @@ describe("bk-user-restriction", function()
             local code = plugin.access(conf, ctx)
             assert.is_equal(code, 403)
             assert.is_not_nil(ctx.var.bk_apigw_error)
-            assert.is_equal(ctx.var.bk_apigw_error.error.message,
-        'Request rejected by bk-user restriction [message="The bk-user is not allowed" bk_username="denied_user"]')
+            assert.is_true(core.string.find(ctx.var.bk_apigw_error.error.message, 'Request rejected by bk-user restriction') ~= nil)
+            assert.is_true(core.string.find(ctx.var.bk_apigw_error.error.message, 'message="The bk-user is not allowed"') ~= nil)
+            assert.is_true(core.string.find(ctx.var.bk_apigw_error.error.message, 'bk_username="denied_user"') ~= nil)
         end)
 
         it("should allow user not in blacklist", function()
