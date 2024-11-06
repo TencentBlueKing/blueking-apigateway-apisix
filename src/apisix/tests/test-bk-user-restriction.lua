@@ -17,14 +17,21 @@
 --
 
 local plugin = require("apisix.plugins.bk-user-restriction")
+local context_resource_bkauth = require("apisix.plugins.bk-define.context-resource-bkauth")
 
 describe("bk-user-restriction", function()
     local ctx, conf
+    local bk_resource_auth = context_resource_bkauth.new({
+        verified_app_required = true,
+        verified_user_required = true,
+        resource_perm_required = true,
+        skip_user_verification = false,
+    })
 
     before_each(function()
         ctx = {
             var = {
-                bk_resource_auth = true,
+                bk_resource_auth = bk_resource_auth,
                 user = {
                     username = "test_user",
                     verified = true,
@@ -62,6 +69,18 @@ describe("bk-user-restriction", function()
             local code = plugin.access(conf, ctx)
             assert.is_nil(code)
         end)
+
+        it("bk_resource_auth verified_user_required false, do nothing", function()
+            ctx.var.bk_resource_auth = context_resource_bkauth.new({
+                verified_app_required = true,
+                verified_user_required = false,
+                resource_perm_required = true,
+                skip_user_verification = false,
+            })
+            local code = plugin.access(conf, ctx)
+            assert.is_nil(code)
+        end)
+
 
         it("should deny user not in whitelist", function()
             local ok = plugin.check_schema(conf)
