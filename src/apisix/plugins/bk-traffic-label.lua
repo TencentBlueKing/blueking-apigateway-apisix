@@ -71,7 +71,7 @@ local plugin_name = "bk-traffic-label"
 
 local _M = {
     version = 0.1,
-    priority = 967,
+    priority = 17460,
     name = plugin_name,
     schema = schema
 }
