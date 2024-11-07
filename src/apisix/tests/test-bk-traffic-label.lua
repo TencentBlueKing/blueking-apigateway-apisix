@@ -20,6 +20,83 @@ describe(
         )
 
         context(
+            "schema validation", function()
+                it(
+                    "invalid schema: empty", function()
+                        conf = {}
+                        local ok, err = plugin.check_schema(conf)
+                        assert.is_false(ok)
+                        assert.is_not_nil(err)
+                    end
+                )
+
+                it(
+                    "valid schema", function()
+                        conf = {
+                            rules = {
+                                {
+                                    match = {
+                                        {"uri", "==", "/foo"}
+                                    },
+                                    actions = {
+                                        {
+                                            set_headers = {
+                                                ["X-Test-Header"] = "test"
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                        local ok, err = plugin.check_schema(conf)
+                        assert.is_true(ok)
+                        assert.is_nil(err)
+                    end
+                )
+
+                it(
+                    "valid schema with 1 match and 3 actions with same weight", function()
+                        conf = {
+                            rules = {
+                                {
+                                    match = {
+                                        {"uri", "==", "/foo"}
+                                    },
+                                    actions = {
+                                        {
+                                            set_headers = {
+                                                ["X-Test-Header-1"] = "test1"
+                                            },
+                                            weight = 1
+                                        },
+                                        {
+                                            set_headers = {
+                                                ["X-Test-Header-2"] = "test2"
+                                            },
+                                            weight = 1
+                                        },
+                                        {
+                                            set_headers = {
+                                                ["X-Test-Header-3"] = "test3"
+                                            },
+                                            weight = 1
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                        local ok, err = plugin.check_schema(conf)
+                        assert.is_true(ok)
+                        assert.is_nil(err)
+                        assert.is_equal(conf.rules[1].actions[1].weight, 33)
+                        assert.is_equal(conf.rules[1].actions[2].weight, 33)
+                        assert.is_equal(conf.rules[1].actions[3].weight, 34)
+                    end
+                )
+            end
+        )
+
+        context(
             "1 ruls: 1 match 1 action", function()
                 before_each(
                     function()
@@ -78,13 +155,13 @@ describe(
                                             set_headers = {
                                                 ["X-Test-Header-1"] = "test1"
                                             },
-                                            weight = 0.5
+                                            weight = 1
                                         },
                                         {
                                             set_headers = {
                                                 ["X-Test-Header-2"] = "test2"
                                             },
-                                            weight = 0.5
+                                            weight = 1
                                         }
                                     }
                                 }
@@ -245,5 +322,6 @@ describe(
                 )
             end
         )
+
     end
 )

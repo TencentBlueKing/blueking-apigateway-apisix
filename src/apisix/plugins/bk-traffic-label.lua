@@ -65,6 +65,7 @@ local schema = {
             }
         }
     },
+    required = {"rules"},
 }
 
 local plugin_name = "bk-traffic-label"
@@ -99,8 +100,15 @@ function _M.check_schema(conf)
                 total_weight = total_weight + (action.weight or 1)
             end
             -- Normalize the weight of each action
-            for _, action in ipairs(rule.actions) do
-                action.weight = (action.weight or 1) / total_weight
+            local accumulated_weight = 0
+            for i, action in ipairs(rule.actions) do
+                if i == #rule.actions then
+                    -- Assign the remaining weight to the last action to ensure the total is 100
+                    action.weight = 100 - accumulated_weight
+                else
+                    action.weight = math.floor((action.weight or 1) / total_weight * 100)
+                    accumulated_weight = accumulated_weight + action.weight
+                end
             end
         end
     end
@@ -109,8 +117,8 @@ function _M.check_schema(conf)
 end
 
 local function apply_actions(actions, ctx)
-    -- Generate a random number between 0 and 1
-    local random_weight = math.random()
+    -- Generate a random number between 0 and 100
+    local random_weight = math.random(0, 100)
     local current_weight = 0
 
     for _, action in ipairs(actions) do
