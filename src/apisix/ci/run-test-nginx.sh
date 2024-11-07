@@ -71,5 +71,10 @@ export OPENRESTY_PREFIX="/usr/local/openresty-debug"
 export APISIX_MAIN="https://raw.githubusercontent.com/apache/incubator-apisix/master/rockspec/apisix-master-0.rockspec"
 export PATH=$OPENRESTY_PREFIX/nginx/sbin:$OPENRESTY_PREFIX/luajit/bin:$OPENRESTY_PREFIX/bin:$PATH
 
-FLUSH_ETCD=1 prove --timer -Itest-nginx/lib -I./  t/bk-*.t
+if [ -n "$1" ]; then
+    CASE_FILE=$1
+    FLUSH_ETCD=1 prove --timer -Itest-nginx/lib -I./ t/bk-00.t t/$CASE_FILE
+else
+    FLUSH_ETCD=1 prove --timer -Itest-nginx/lib -I./ t/bk-*.t
+fi
 
