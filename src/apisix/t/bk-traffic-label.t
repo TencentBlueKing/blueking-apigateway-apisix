@@ -231,7 +231,7 @@ GET /t
 --- response_body
 passed
 
-=== TEST 6: match hit set_headers
+=== TEST 8: match hit set_headers
 --- request
 GET /hello?env=prod
 --- response_body
@@ -240,7 +240,7 @@ host: localhost
 x-real-ip: 127.0.0.1
 x-test-header: test2
 
-=== TEST 7: only the action with non-zero weight is applied, but do nothing
+=== TEST 9: only the action with non-zero weight is applied, but do nothing
 --- config
     location /t {
         content_by_lua_block {
@@ -287,7 +287,7 @@ GET /t
 --- response_body
 passed
 
-=== TEST 8: match hit set_headers
+=== TEST 10: match hit set_headers
 --- request
 GET /hello?env=prod
 --- response_body
@@ -295,7 +295,7 @@ uri: /uri/plugin_proxy_rewrite
 host: localhost
 x-real-ip: 127.0.0.1
 
-=== TEST 9: multiple matches, all hit
+=== TEST 11: multiple matches, all hit
 --- config
     location /t {
         content_by_lua_block {
@@ -349,7 +349,7 @@ GET /t
 --- response_body
 passed
 
-=== TEST 10: multiple matches, only hit one
+=== TEST 12: multiple matches, only hit one
 --- request
 GET /hello?env=dev&type=foo
 --- response_body
@@ -358,7 +358,7 @@ host: localhost
 x-real-ip: 127.0.0.1
 x-test-header-2: test2
 
-=== TEST 10: multiple matches, hit both
+=== TEST 13: multiple matches, hit both
 --- request
 GET /hello?env=prod&type=foo
 --- response_body

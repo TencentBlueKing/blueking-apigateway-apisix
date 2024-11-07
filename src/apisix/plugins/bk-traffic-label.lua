@@ -98,7 +98,7 @@ function _M.check_schema(conf)
             -- Calculate total weight of all actions and preprocess actions to set default weight
             local total_weight = 0
             for _, action in ipairs(rule.actions) do
-                if action.weight == nil or action.weight <= 0 then
+                if action.weight == nil or action.weight < 0 then
                     action.weight = 1
                 end
                 total_weight = total_weight + action.weight
