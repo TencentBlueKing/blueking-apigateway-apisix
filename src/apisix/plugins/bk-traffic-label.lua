@@ -94,11 +94,16 @@ function _M.check_schema(conf)
                     return false, "failed to validate the 'match' expression: " .. err
                 end
             end
-            -- Calculate total weight of all actions
+
+            -- Calculate total weight of all actions and preprocess actions to set default weight
             local total_weight = 0
             for _, action in ipairs(rule.actions) do
-                total_weight = total_weight + (action.weight or 1)
+                if action.weight == nil or action.weight <= 0 then
+                    action.weight = 1
+                end
+                total_weight = total_weight + action.weight
             end
+
             -- Normalize the weight of each action
             local accumulated_weight = 0
             for i, action in ipairs(rule.actions) do
@@ -106,7 +111,7 @@ function _M.check_schema(conf)
                     -- Assign the remaining weight to the last action to ensure the total is 100
                     action.weight = 100 - accumulated_weight
                 else
-                    action.weight = math.floor((action.weight or 1) / total_weight * 100)
+                    action.weight = math.floor(action.weight / total_weight * 100)
                     accumulated_weight = accumulated_weight + action.weight
                 end
             end
