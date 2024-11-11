@@ -134,13 +134,30 @@ function _M.get_with_fallback(self, ctx, key, version, create_obj_func, ...)
     local key_s = cache_key
     log.info("try to lock with key ", key_s)
 
-    -- FIXME: possible problem here, if high concurrent, all requests may wait here except one
-    --        and at that time, process one by one after the retrieve finished
-    --        maybe some requests will timeout?
-    --        check the sentry and error log after this version online
+    -- NOTE: possible problem here, if high concurrent, all requests may wait here except one
+    --        and at that time, process one by one after the retrieve finished, some requests will timeout?
     local elapsed, lock_err = lock:lock(key_s)
     if not elapsed then
-        return nil, "failed to acquire the bk-cache-fallback lock, err: " .. lock_err
+        if lock_err ~= "timeout" then
+            return nil, "failed to acquire the bk-cache-fallback lock, err: " .. lock_err
+        end
+
+        -- NOTE: 2024-11-11 we met some timeout here, in the same apisix pod, the same cache_key,
+        --       the lock aquire timeout, then cause all responses fail at that time!
+        -- So: we should try to use the fallback shared_dict data here
+        local shared_data_dict = ngx_shared[self.plugin_shared_dict_name]
+        if shared_data_dict ~= nil then
+            local sd = shared_data_dict:get(cache_key)
+            if sd ~= nil then
+                local obj_decoded, json_err = core.json.decode(sd)
+                if json_err == nil then
+                    log.error("failed to acquire the bk-cache-fallback lock, fallback to get the data from shared_dict")
+                    return obj_decoded, nil
+                end
+            end
+        end
+
+        return nil, "failed to acquire the bk-cache-fallback lock, error: timeout."
     end
 
     -- TODO: 函数过长, 需要考虑拆分, 特别是 unlock 特别多, 也容易出问题
