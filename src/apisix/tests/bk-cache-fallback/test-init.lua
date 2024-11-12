@@ -19,7 +19,6 @@
 local cache_fallback = require("apisix.plugins.bk-cache-fallback.init")
 local ngx_shared = ngx.shared
 local ngx_sleep = ngx.sleep
-local core = require("apisix.core")
 
 describe(
     "bk-cache-fallback", function()

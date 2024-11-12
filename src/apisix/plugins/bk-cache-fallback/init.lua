@@ -138,6 +138,7 @@ function _M.get_with_fallback(self, ctx, key, version, create_obj_func, ...)
     --        and at that time, process one by one after the retrieve finished, some requests will timeout?
     local elapsed, lock_err = lock:lock(key_s)
     if not elapsed then
+        -- FIXME: if lock err not timeout, should we use the cache data in shared_dict too? (Very rarely)
         if lock_err ~= "timeout" then
             return nil, "failed to acquire the bk-cache-fallback lock, key: " .. key_s .. ", err: " .. lock_err
         end
