@@ -139,7 +139,7 @@ function _M.get_with_fallback(self, ctx, key, version, create_obj_func, ...)
     local elapsed, lock_err = lock:lock(key_s)
     if not elapsed then
         if lock_err ~= "timeout" then
-            return nil, "failed to acquire the bk-cache-fallback lock, err: " .. lock_err
+            return nil, "failed to acquire the bk-cache-fallback lock, key: " .. key_s .. ", err: " .. lock_err
         end
 
         -- NOTE: 2024-11-11 we met some timeout here, in the same apisix pod, the same cache_key,
@@ -151,13 +151,14 @@ function _M.get_with_fallback(self, ctx, key, version, create_obj_func, ...)
             if sd ~= nil then
                 local obj_decoded, json_err = core.json.decode(sd)
                 if json_err == nil then
-                    log.error("failed to acquire the bk-cache-fallback lock, fallback to get the data from shared_dict")
+                    log.error("failed to acquire the bk-cache-fallback lock, key: " .. key_s ..
+                              ", fallback to get the data from shared_dict")
                     return obj_decoded, nil
                 end
             end
         end
 
-        return nil, "failed to acquire the bk-cache-fallback lock, error: timeout."
+        return nil, "failed to acquire the bk-cache-fallback lock, key: " .. key_s  .. ", error: timeout."
     end
 
     -- TODO: 函数过长, 需要考虑拆分, 特别是 unlock 特别多, 也容易出问题
