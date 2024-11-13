@@ -29,7 +29,7 @@ local VERIFY_APP_SECRET_URL = "/api/v1/apps/%s/access-keys/verify"
 local LIST_APP_SECRETS_URL = "/api/v1/apps/%s/access-keys"
 local VERIFY_ACCESS_TOKEN_URL = "/api/v1/oauth/tokens/verify"
 
-local BKAUTH_TIMEOUT_MS = 5 * 1000
+local BKAUTH_TIMEOUT_MS = 3 * 1000
 
 local bkapp = bk_core.config.get_bkapp() or {}
 
@@ -70,6 +70,28 @@ function _M.verify_app_secret(app_code, app_secret)
         }
     )
 
+    -- if got timeout, retry here
+    if err == "timeout" then
+        res, err = http_client:request_uri(
+            url, {
+                method = "POST",
+                body = core.json.encode(
+                    {
+                        bk_app_secret = app_secret,
+                    }
+                ),
+                ssl_verify = false,
+
+                headers = {
+                    ["X-Bk-App-Code"] = _M.app_code,
+                    ["X-Bk-App-Secret"] = _M.app_secret,
+                    ["X-Request-Id"] = request_id,
+                    ["Content-Type"] = "application/json",
+                },
+            }
+        )
+    end
+
     if not (res and res.body) then
         local wrapped_err = string_format(
             "failed to request third-party api, url: %s, request_id: %s, err: %s, response: nil",
@@ -94,22 +116,21 @@ function _M.verify_app_secret(app_code, app_secret)
     if result == nil then
         core.log.error(
             string_format(
-                "failed to request %s, request_id: %s, response is not valid json, status: %s, response: %s", url,
-                request_id, res.status, res.body
+                "failed to request %s, request_id: %s, response is not valid json, status: %s, response: %s",
+                url, request_id, res.status, res.body
             )
         )
         return nil, string_format(
-            "failed to request third-party api, response is not valid json, url: %s, request_id: %s, status: %s", url,
-            request_id, res.status
+            "failed to request third-party api, response is not valid json, url: %s, request_id: %s, status: %s",
+            url, request_id, res.status
         )
     end
 
     if result.code ~= 0 or res.status ~= 200 then
         core.log.error(
             string_format(
-                "failed to request %s, request_id: %s, result.code!=0 or status!=200, status: %s, response: %s", url,
-                request_id, res.status,
-                res.body
+                "failed to request %s, request_id: %s, result.code!=0 or status!=200, status: %s, response: %s",
+                url, request_id, res.status, res.body
             )
         )
         return nil, string_format(
