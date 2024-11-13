@@ -83,9 +83,9 @@ describe(
                         ssm_verify_access_token_err = "ssm error"
                         ssm_is_configured = true
 
-                        local result = access_token_cache._get_access_token("fake-access-token")
-                        assert.is_nil(result.token)
-                        assert.is_equal(result.err, "ssm error")
+                        local result, err = access_token_cache._get_access_token("fake-access-token")
+                        assert.is_nil(result)
+                        assert.is_equal(err, "ssm error")
                     end
                 )
 
@@ -95,9 +95,9 @@ describe(
                         ssm_verify_access_token_err = "ssm error"
                         ssm_is_configured = nil
 
-                        local result = access_token_cache._get_access_token("fake-access-token")
-                        assert.is_nil(result.token)
-                        assert.is_equal(result.err, "authentication based on access_token is not supported")
+                        local result, err = access_token_cache._get_access_token("fake-access-token")
+                        assert.is_nil(result)
+                        assert.is_equal(err, "authentication based on access_token is not supported")
                     end
                 )
 
@@ -111,9 +111,9 @@ describe(
                         ssm_verify_access_token_err = nil
                         ssm_is_configured = nil
 
-                        local result = access_token_cache._get_access_token("fake-access-token")
-                        assert.is_nil(result.token)
-                        assert.is_equal(result.err, "authentication based on access_token is not supported")
+                        local result, err = access_token_cache._get_access_token("fake-access-token")
+                        assert.is_nil(result)
+                        assert.is_equal(err, "authentication based on access_token is not supported")
                     end
                 )
             end
@@ -164,16 +164,55 @@ describe(
                         local result, err = access_token_cache.get_access_token(access_token)
                         assert.is_nil(result)
                         assert.is_not_nil(err)
+                        assert.stub(ssm_component.verify_access_token).was_called(1)
 
                         -- get from cache
                         access_token_cache.get_access_token(access_token)
-                        assert.stub(ssm_component.verify_access_token).was_called(1)
+                        assert.stub(ssm_component.verify_access_token).was_called(2)
 
                         -- get from func
                         access_token_cache.get_access_token(uuid.generate_v4())
-                        assert.stub(ssm_component.verify_access_token).was_called(2)
+                        assert.stub(ssm_component.verify_access_token).was_called(3)
                     end
                 )
+
+                it(
+                    "connection refused, miss in fallback cache", function()
+                        ssm_verify_access_token_result = nil
+                        ssm_verify_access_token_err = "connection refused"
+                        ssm_is_configured = true
+
+                        local access_token = uuid.generate_v4()
+                        local result, err = access_token_cache.get_access_token(access_token)
+                        assert.is_nil(result)
+                        assert.is_equal(err, "connection refused")
+                        assert.stub(ssm_component.verify_access_token).was_called_with(access_token)
+                    end
+                )
+
+                it(
+                    "connection refused, hit in fallback cache", function()
+                        local cached_access_token_result = {
+                            token = {
+                                app_code = "my-app",
+                                user_id = "admin",
+                                expires_in = 100,
+                            }
+                        }
+                        ssm_verify_access_token_result = nil
+                        ssm_verify_access_token_err = "connection refused"
+                        ssm_is_configured = true
+
+                        local access_token = uuid.generate_v4()
+                        access_token_cache._access_token_fallback_lrucache:set(access_token, cached_access_token_result, 60 * 60 * 24)
+
+                        local result, err = access_token_cache.get_access_token(access_token)
+                        assert.is_same(result, cached_access_token_result.token)
+                        assert.is_nil(err)
+                        assert.stub(ssm_component.verify_access_token).was_called_with(access_token)
+                    end
+                )
+
             end
         )
     end

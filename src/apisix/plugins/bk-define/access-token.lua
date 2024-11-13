@@ -48,6 +48,11 @@ function _M.has_expired(self)
     return self.expires_in <= 0
 end
 
+-- AccessToken 将会在多久过期
+function _M.get_expires_in(self)
+    return self.expires_in
+end
+
 -- 是否为用户类型的 AccessToken
 function _M.is_user_token(self)
     return not pl_types.is_empty(self.user_id)

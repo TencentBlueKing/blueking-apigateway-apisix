@@ -65,6 +65,12 @@ function _M.verify_access_token(access_token)
         }
     )
 
+    -- if the ssm is down, return the raw error
+    if err == "connection refused" then
+        core.log.error("failed to request url: %s, err: %s, response: nil", url, err)
+        return nil, err
+    end
+
     local result, _err = bk_components_utils.parse_response(res, err, true)
     if result == nil then
         core.log.error(
