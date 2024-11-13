@@ -65,7 +65,7 @@ function _M.verify_app_secret(app_code, app_secret)
                                "key=", key, " result=", core.json.delay_encode(result))
                 return result, nil
             -- else
-            --     core.log.error("the bkauth down, but also miss in fallback cache, error: ", err, " fallback cache is empty. key=", key)
+            --     core.log.error("the bkauth down, but also miss in fallback cache, error: ", err, " key=", key)
             end
         end
 

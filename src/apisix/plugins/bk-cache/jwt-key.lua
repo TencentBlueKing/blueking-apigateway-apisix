@@ -18,7 +18,7 @@
 local core = require("apisix.core")
 local bk_apigateway_core_component = require("apisix.plugins.bk-components.bk-apigateway-core")
 
--- NOTE: the jwt would never changed? so we can cache it forever
+-- NOTE: the jwt would never changed? so we can cache it for a long time
 local JWT_PUBLIC_KEY_CACHE_TTL = 60 * 60 * 24
 local JWT_PUBLIC_KEY_CACHE_COUNT = 1000
 local jwt_public_key_lrucache = core.lrucache.new(
