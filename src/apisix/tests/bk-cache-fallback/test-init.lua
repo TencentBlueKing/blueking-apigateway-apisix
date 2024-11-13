@@ -313,5 +313,124 @@ describe(
             end
         )
 
+        -- a new case here, to test the lock:lock timeout and other errors
+        describe("lock:lock timeout and other errors", function()
+            local key
+            local f
+
+            before_each(function ()
+                key = "foo"
+
+                f = {
+                    create_obj_func_ok = function() end,
+                    create_obj_func_fail = function() end,
+                }
+
+                stub(f, "create_obj_func_ok", function ()
+                    return {
+                        ["hello"] = "world",
+                    }, nil
+                end)
+                stub(f, "create_obj_func_fail", function ()
+                    return nil, "error"
+                end)
+
+            end)
+
+            after_each(function ()
+                f.create_obj_func_ok:revert()
+                f.create_obj_func_fail:revert()
+            end)
+
+            it("is not timeout error, should return the error", function ()
+                local ctx = {
+                    conf_id = 789,
+                    conf_type = "test",
+                }
+                local cache = cache_fallback.new(conf, "bk-cache-fallback-lock-error")
+                local cache_key = cache.key_prefix .. key
+
+                local shared_data_dict = ngx_shared[cache.plugin_shared_dict_name]
+                assert.is_not_nil(shared_data_dict)
+
+                -- Stub lock:lock to simulate an error (not timeout)
+                local lock = require("resty.lock")
+                stub(lock, "lock", function(self, key_s)
+                    if key_s == cache_key then
+                        return nil, "some error"
+                    else
+                        return 0, nil
+                    end
+                end)
+
+                local obj, err = cache:get_with_fallback(ctx, key, nil, f.create_obj_func_fail)
+                assert.is_nil(obj)
+                assert.is_not_nil(err)
+                assert.equal("failed to acquire the bk-cache-fallback lock, key: bk-cache-fallback-lock-error:foo, err: some error", err)
+
+                lock.lock:revert()
+            end)
+
+            it("is timeout, no data in shared_dict, return the error", function ()
+                local ctx = {
+                    conf_id = 789,
+                    conf_type = "test",
+                }
+                local cache = cache_fallback.new(conf, "bk-cache-fallback-lock-timeout")
+                local cache_key = cache.key_prefix .. key
+
+                local shared_data_dict = ngx_shared[cache.plugin_shared_dict_name]
+                assert.is_not_nil(shared_data_dict)
+
+                -- Stub lock:lock to simulate a timeout
+                local lock = require("resty.lock")
+                stub(lock, "lock", function(self, key_s)
+                    if key_s == cache_key then
+                        return nil, "timeout"
+                    else
+                        return 0, nil
+                    end
+                end)
+
+                local obj, err = cache:get_with_fallback(ctx, key, nil, f.create_obj_func_fail)
+                assert.is_nil(obj)
+                assert.is_not_nil(err)
+                assert.equal("failed to acquire the bk-cache-fallback lock, key: bk-cache-fallback-lock-timeout:foo, error: timeout.", err)
+
+                lock.lock:revert()
+            end)
+
+            it("is timeout, got the data in shared_dict, return data,nil", function ()
+                local ctx = {
+                    conf_id = 789,
+                    conf_type = "test",
+                }
+                local cache = cache_fallback.new(conf, "bk-cache-fallback-lock-timeout-data")
+                local cache_key = cache.key_prefix .. key
+
+                local shared_data_dict = ngx_shared[cache.plugin_shared_dict_name]
+                assert.is_not_nil(shared_data_dict)
+
+                -- set data in shared_dict
+                shared_data_dict:set(cache_key, '{"hello":"abc"}', 60 * 60)
+
+                -- Stub lock:lock to simulate a timeout
+                local lock = require("resty.lock")
+                stub(lock, "lock", function(self, key_s)
+                    if key_s == cache_key then
+                        return nil, "timeout"
+                    else
+                        return 0, nil
+                    end
+                end)
+
+                local obj, err = cache:get_with_fallback(ctx, key, nil, f.create_obj_func_ok)
+                assert.is_not_nil(obj)
+                assert.is_nil(err)
+                assert.equal("abc", obj["hello"])
+
+                lock.lock:revert()
+            end)
+        end)
     end
 )
