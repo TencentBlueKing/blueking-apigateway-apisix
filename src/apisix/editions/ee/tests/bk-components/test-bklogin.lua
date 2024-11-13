@@ -63,6 +63,17 @@ describe(
                 )
 
                 it(
+                    "connection refused", function()
+                        response = nil
+                        response_err = "connection refused"
+
+                        local result, err = bklogin.get_username_by_bk_token("fake-bk-token")
+                        assert.is_nil(result)
+                        assert.equals(err, "connection refused")
+                    end
+                )
+
+                it(
                     "bk_error_code is not 0", function()
                         response = {
                             status = 200,

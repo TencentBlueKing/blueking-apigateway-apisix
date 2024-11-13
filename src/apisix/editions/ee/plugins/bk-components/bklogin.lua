@@ -74,6 +74,12 @@ function _M.get_username_by_bk_token(bk_token)
         )
     end
 
+    -- if the ssm is down, return the raw error
+    if err == "connection refused" then
+        core.log.error("failed to request url: %s, err: %s, response: nil", url, err)
+        return nil, err
+    end
+
     local result, _err = bk_components_utils.parse_response(res, err, true)
     if result == nil then
         core.log.error(
