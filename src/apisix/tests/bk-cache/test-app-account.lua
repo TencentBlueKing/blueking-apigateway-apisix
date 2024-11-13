@@ -105,6 +105,40 @@ describe(
                         assert.stub(bkauth_component.verify_app_secret).was_called(3)
                     end
                 )
+
+                it(
+                    'connection refused, miss in fallback cache', function()
+                        verify_app_secret_result = nil
+                        verify_app_secret_err = 'connection refused'
+
+                        local app_code = uuid.generate_v4()
+                        local result, err = app_account_cache.verify_app_secret(app_code, 'fake-app-secret')
+                        assert.is_nil(result)
+                        assert.is_equal(err, 'connection refused')
+                        assert.stub(bkauth_component.verify_app_secret).was_called_with(app_code, 'fake-app-secret')
+                    end
+                )
+
+                it(
+                    'connection refused, hit in fallback cache', function()
+                        local cached_verify_app_secret_result = {
+                            existed = true,
+                            verified = true,
+                        }
+                        verify_app_secret_result = nil
+                        verify_app_secret_err = 'connection refused'
+
+                        local app_code = uuid.generate_v4()
+                        local key = table.concat({ app_code, 'fake-app-secret' }, ':')
+                        app_account_cache._verify_app_secret_fallback_lrucache:set(key, cached_verify_app_secret_result, 60 * 60 * 24)
+
+                        local result, err = app_account_cache.verify_app_secret(app_code, 'fake-app-secret')
+                        assert.is_same(result, cached_verify_app_secret_result)
+                        assert.is_nil(err)
+                        assert.stub(bkauth_component.verify_app_secret).was_called_with(app_code, 'fake-app-secret')
+                    end
+                )
+
             end
         )
 
