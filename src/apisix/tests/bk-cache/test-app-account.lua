@@ -114,7 +114,7 @@ describe(
                         local app_code = uuid.generate_v4()
                         local result, err = app_account_cache.verify_app_secret(app_code, 'fake-app-secret')
                         assert.is_nil(result)
-                        assert.is_equal(err, 'connection refused')
+                        assert.is_equal(err, 'verify_app_secret failed, error: connection refused')
                         assert.stub(bkauth_component.verify_app_secret).was_called_with(app_code, 'fake-app-secret')
                     end
                 )

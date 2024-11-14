@@ -98,7 +98,7 @@ describe(
                         local bk_token = uuid.generate_v4()
                         local result, err = bk_token_cache.get_username_by_bk_token(bk_token)
                         assert.is_nil(result)
-                        assert.is_equal(err, "connection refused")
+                        assert.is_equal(err, "get_username_by_bk_token failed, error: connection refused")
                         assert.stub(bklogin_component.get_username_by_bk_token).was_called_with(bk_token)
                     end
                 )

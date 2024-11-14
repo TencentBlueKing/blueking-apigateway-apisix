@@ -185,7 +185,7 @@ describe(
                         local access_token = uuid.generate_v4()
                         local result, err = access_token_cache.get_access_token(access_token)
                         assert.is_nil(result)
-                        assert.is_equal(err, "connection refused")
+                        assert.is_equal(err, "get_access_token failed, error: connection refused")
                         assert.stub(ssm_component.verify_access_token).was_called_with(access_token)
                     end
                 )

@@ -67,6 +67,8 @@ function _M.verify_app_secret(app_code, app_secret)
             -- else
             --     core.log.error("the bkauth down, but also miss in fallback cache, error: ", err, " key=", key)
             end
+
+            err = "verify_app_secret failed, error: " .. err
         end
 
         return nil, err

@@ -77,6 +77,8 @@ function _M.get_access_token(access_token)
                                "key=", key, " result=", core.json.delay_encode(result))
                 return result.token, nil
             end
+
+            err = "get_access_token failed, error: " .. err
         end
 
         return nil, err

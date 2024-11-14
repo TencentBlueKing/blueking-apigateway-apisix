@@ -50,6 +50,8 @@ function _M.get_username_by_bk_token(bk_token)
                                "key=", key, " result=", core.json.delay_encode(result))
                 return result.username, result.error_message
             end
+
+            err = "get_username_by_bk_token failed, error: " .. err
         end
 
         return nil, err
