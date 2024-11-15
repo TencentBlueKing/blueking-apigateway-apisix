@@ -90,8 +90,8 @@ function _M.check_schema(conf)
                 -- Validate the match expression
                 local _, err2 = expr.new(rule.match)
                 if err2 then
-                    core.log.error("failed to validate the 'match' expression: ", err)
-                    return false, "failed to validate the 'match' expression: " .. err
+                    core.log.error("failed to validate the 'match' expression: ", err2)
+                    return false, "failed to validate the 'match' expression: " .. err2
                 end
             end
 

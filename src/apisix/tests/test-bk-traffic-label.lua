@@ -97,7 +97,7 @@ describe(
         )
 
         context(
-            "1 ruls: 1 match 1 action", function()
+            "1 rules: 1 match 1 action", function()
                 before_each(
                     function()
                         conf = {
@@ -141,7 +141,7 @@ describe(
         )
 
         context(
-            "1 ruls: 1 match 2 actions, with weight", function()
+            "1 rules: 1 match 2 actions, with weight", function()
                 before_each(
                     function()
                         conf = {
@@ -183,7 +183,7 @@ describe(
         )
 
         context(
-            "1 ruls: 1 match 2 actions, one with weight 0", function()
+            "1 rules: 1 match 2 actions, one with weight 0", function()
                 before_each(
                     function()
                         conf = {
@@ -225,7 +225,7 @@ describe(
         )
 
         context(
-            "1 ruls: 1 match 2 actions, one with weight 0, another weight no set_headers", function()
+            "1 rules: 1 match 2 actions, one with weight 0, another weight no set_headers", function()
                 before_each(
                     function()
                         conf = {
