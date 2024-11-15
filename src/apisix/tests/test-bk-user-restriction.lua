@@ -97,7 +97,7 @@ describe("bk-user-restriction", function()
             assert.is_true(core.string.find(ctx.var.bk_apigw_error.error.message, 'bk_username="unknown_user"') ~= nil)
         end)
 
-        it("should allow user not in whitelist", function()
+        it("should allow user in whitelist", function()
             local ok = plugin.check_schema(conf)
             assert.is_true(ok)
             assert.is_not_nil(conf.whitelist_map)
