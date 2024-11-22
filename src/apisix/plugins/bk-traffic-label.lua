@@ -103,30 +103,19 @@ function _M.check_schema(conf)
                 end
                 total_weight = total_weight + action.weight
             end
-
-            -- Normalize the weight of each action
-            local accumulated_weight = 0
-            for i, action in ipairs(rule.actions) do
-                if i == #rule.actions then
-                    -- Assign the remaining weight to the last action to ensure the total is 100
-                    action.weight = 100 - accumulated_weight
-                else
-                    action.weight = math.floor(action.weight / total_weight * 100)
-                    accumulated_weight = accumulated_weight + action.weight
-                end
-            end
+            rule.total_weight = total_weight
         end
     end
 
     return true
 end
 
-local function apply_actions(actions, ctx)
-    -- Generate a random number between 0 and 100
-    local random_weight = math.random(0, 100)
+local function apply_actions(rule, ctx)
+    -- Generate a random number between 1 and total_weight, [1, total_weight]
+    local random_weight = math.random(1, rule.total_weight)
     local current_weight = 0
 
-    for _, action in ipairs(actions) do
+    for _, action in ipairs(rule.actions) do
         current_weight = current_weight + action.weight
         -- Apply the action if the random number falls within the current weight range
         if random_weight <= current_weight then
@@ -153,7 +142,7 @@ function _M.access(conf, ctx)
             local match_passed = ex:eval(ctx.var)
             if match_passed then
                 -- Apply the actions if the match condition is met
-                apply_actions(rule.actions, ctx)
+                apply_actions(rule, ctx)
             end
         end
     end

@@ -88,9 +88,10 @@ describe(
                         local ok, err = plugin.check_schema(conf)
                         assert.is_true(ok)
                         assert.is_nil(err)
-                        assert.is_equal(conf.rules[1].actions[1].weight, 33)
-                        assert.is_equal(conf.rules[1].actions[2].weight, 33)
-                        assert.is_equal(conf.rules[1].actions[3].weight, 34)
+                        assert.is_equal(conf.rules[1].actions[1].weight, 1)
+                        assert.is_equal(conf.rules[1].actions[2].weight, 1)
+                        assert.is_equal(conf.rules[1].actions[3].weight, 1)
+                        assert.is_equal(conf.rules[1].total_weight, 3)
                     end
                 )
             end
