@@ -93,10 +93,15 @@ function _M.verify_app_secret(app_code, app_secret)
     end
 
     if not (res and res.body) then
-        err = string_format("failed to request third-party api, url: %s, request_id: %s, err: %s, response: nil", url,
-            request_id, err)
-        core.log.error(err)
-        return nil, err
+        local wrapped_err = string_format(
+            "failed to request third-party api, url: %s, request_id: %s, err: %s, response: nil",
+            url, request_id, err
+        )
+        core.log.error(wrapped_err)
+        if err == "connection refused" then
+            return nil, err
+        end
+        return nil, wrapped_err
     end
 
     -- 响应格式正常，错误码 404，表示应用不存在

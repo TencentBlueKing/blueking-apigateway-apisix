@@ -63,6 +63,17 @@ describe(
                 )
 
                 it(
+                    "connection refused", function()
+                        response = nil
+                        response_err = "connection refused"
+
+                        local result, err = ssm.verify_access_token("fake-access-token")
+                        assert.is_nil(result)
+                        assert.equals(err, "connection refused")
+                    end
+                )
+
+                it(
                     "code is not 0", function()
                         response = {
                             status = 200,

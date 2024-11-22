@@ -18,6 +18,7 @@
 local core = require("apisix.core")
 local bkauth_component = require("apisix.plugins.bk-components.bkauth")
 local table_concat = table.concat
+local lru_new = require("resty.lrucache").new
 
 local VERIFY_APP_SECRET_CACHE_TTL = 600
 local VERIFY_APP_SECRET_CACHE_COUNT = 1000
@@ -29,6 +30,9 @@ local verify_app_secret_lrucache = core.lrucache.new(
         invalid_stale = true,
     }
 )
+local VERIFY_APP_SECRET_FALLBACK_CACHE_TTL = 60 * 60 * 24
+local VERIFY_APP_SECRET_FALLBACK_CACHE_COUNT = 2000
+local verify_app_secret_fallback_lrucache = lru_new(VERIFY_APP_SECRET_FALLBACK_CACHE_COUNT)
 
 local APP_CODE_APP_SECRETS_CACHE_TTL = 600
 local APP_CODE_APP_SECRETS_CACHE_COUNT = 1000
@@ -50,7 +54,34 @@ function _M.verify_app_secret(app_code, app_secret)
             app_secret,
         }, ":"
     )
-    return verify_app_secret_lrucache(key, nil, bkauth_component.verify_app_secret, app_code, app_secret)
+    local result, err = verify_app_secret_lrucache(key, nil, bkauth_component.verify_app_secret, app_code, app_secret)
+    if result == nil then
+        -- if the service is down(100% down), we can use the fallback cache, make the dp robust
+        if err == "connection refused" then
+            -- try to use the fallback cache
+            result = verify_app_secret_fallback_lrucache:get(key)
+            if result ~= nil then
+                core.log.error("the bkauth down, error: ", err, " use the fallback cache. ",
+                               "key=", key, " result=", core.json.delay_encode(result))
+                return result, nil
+            -- else
+            --     core.log.error("the bkauth down, but also miss in fallback cache, error: ", err, " key=", key)
+            end
+
+            err = "verify_app_secret failed, error: " .. err
+        end
+
+        return nil, err
+    end
+
+    -- if the service is ok, update the fallback cache, keep it the newest
+    -- if the app_code/app_secret been updated, the service is ok, then the data in the fallback cache would be updated
+
+    -- NOTE: here we don't know if the result is from the cache or the real request,
+    --       so we update the fallback cache every time, which may not so efficient?
+    verify_app_secret_fallback_lrucache:set(key, result, VERIFY_APP_SECRET_FALLBACK_CACHE_TTL)
+
+    return result, err
 end
 
 function _M.list_app_secrets(app_code)
@@ -58,4 +89,9 @@ function _M.list_app_secrets(app_code)
     return app_code_app_secrets_lrucache(key, nil, bkauth_component.list_app_secrets, app_code)
 end
 
+if _TEST then -- luacheck: ignore
+    _M._verify_app_secret_fallback_lrucache = verify_app_secret_fallback_lrucache
+end
+
 return _M
+

@@ -63,6 +63,17 @@ describe(
                 )
 
                 it(
+                    "connection refused", function()
+                        response = nil
+                        response_err = "connection refused"
+
+                        local result, err = bkauth.verify_app_secret("fake-app-code", "fake-app-secret")
+                        assert.is_nil(result)
+                        assert.equals(err, "connection refused")
+                    end
+                )
+
+                it(
                     "status 404", function()
                         response = {
                             status = 404,

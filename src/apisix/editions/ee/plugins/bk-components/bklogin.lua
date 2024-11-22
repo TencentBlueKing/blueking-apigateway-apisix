@@ -56,6 +56,30 @@ function _M.get_username_by_bk_token(bk_token)
         }
     )
 
+    -- retry if some connection error, while the bklogin in bk-user 2.x
+    if err == "closed" or err == "connection reset by peer" then
+        res, err = http_client:request_uri(
+            url, {
+                method = "GET",
+                query = core.string.encode_args(
+                    {
+                        bk_token = bk_token,
+                    }
+                ),
+                ssl_verify = false,
+                headers = {
+                    ["Content-Type"] = "application/x-www-form-urlencoded",
+                },
+            }
+        )
+    end
+
+    -- if the ssm is down, return the raw error
+    if err == "connection refused" then
+        core.log.error("failed to request url: %s, err: %s, response: nil", url, err)
+        return nil, err
+    end
+
     local result, _err = bk_components_utils.parse_response(res, err, true)
     if result == nil then
         core.log.error(

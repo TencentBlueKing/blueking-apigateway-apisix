@@ -89,6 +89,38 @@ describe(
                         assert.stub(bklogin_component.get_username_by_bk_token).was_called(3)
                     end
                 )
+
+                it(
+                    "connection refused, miss in fallback cache", function()
+                        get_username_by_bk_token_result = nil
+                        get_username_by_bk_token_err = "connection refused"
+
+                        local bk_token = uuid.generate_v4()
+                        local result, err = bk_token_cache.get_username_by_bk_token(bk_token)
+                        assert.is_nil(result)
+                        assert.is_equal(err, "get_username_by_bk_token failed, error: connection refused")
+                        assert.stub(bklogin_component.get_username_by_bk_token).was_called_with(bk_token)
+                    end
+                )
+
+                it(
+                    "connection refused, hit in fallback cache", function()
+                        local cached_get_username_by_bk_token_result = {
+                            username = "admin",
+                        }
+                        get_username_by_bk_token_result = nil
+                        get_username_by_bk_token_err = "connection refused"
+
+                        local bk_token = uuid.generate_v4()
+                        bk_token_cache._bk_token_fallback_lrucache:set(bk_token, cached_get_username_by_bk_token_result, 60 * 60 * 24)
+
+                        local result, err = bk_token_cache.get_username_by_bk_token(bk_token)
+                        assert.is_equal(result, "admin")
+                        assert.is_nil(err)
+                        assert.stub(bklogin_component.get_username_by_bk_token).was_called_with(bk_token)
+                    end
+                )
+
             end
         )
     end
