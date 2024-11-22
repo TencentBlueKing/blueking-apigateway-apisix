@@ -28,7 +28,6 @@
 --
 local core = require("apisix.core")
 local resty_lock = require("resty.lock")
-local log = require("apisix.core.log")
 local lru_new = require("resty.lrucache").new
 local tostring = tostring
 local ngx = ngx
@@ -128,11 +127,13 @@ function _M.get_with_fallback(self, ctx, key, version, create_obj_func, ...)
     --       https://github.com/openresty/lua-resty-lock#new
     local lock, create_lock_err = resty_lock:new(lock_shdict_name, {timeout = 6, exptime = 7})
     if not lock then
-        return nil, "failed to create lock, err: " .. create_lock_err
+        err = "failed to create lock, err: " .. create_lock_err
+        core.log.error(err)
+        return nil, err
     end
 
     local key_s = cache_key
-    log.info("try to lock with key ", key_s)
+    core.log.info("try to lock with key ", key_s)
 
     -- NOTE: possible problem here, if high concurrent, all requests may wait here except one
     --        and at that time, process one by one after the retrieve finished, some requests will timeout?
@@ -140,7 +141,9 @@ function _M.get_with_fallback(self, ctx, key, version, create_obj_func, ...)
     if not elapsed then
         -- FIXME: if lock err not timeout, should we use the cache data in shared_dict too? (Very rarely)
         if lock_err ~= "timeout" then
-            return nil, "failed to acquire the bk-cache-fallback lock, key: " .. key_s .. ", err: " .. lock_err
+            err = "failed to acquire the bk-cache-fallback lock, key: " .. key_s .. ", err: " .. lock_err
+            core.log.error(err)
+            return nil, err
         end
 
         -- NOTE: 2024-11-11 we met some timeout here, in the same apisix pod, the same cache_key,
@@ -152,7 +155,7 @@ function _M.get_with_fallback(self, ctx, key, version, create_obj_func, ...)
             if sd ~= nil then
                 local obj_decoded, json_err = core.json.decode(sd)
                 if json_err == nil then
-                    log.error("failed to acquire the bk-cache-fallback lock, key: " .. key_s ..
+                    core.log.error("failed to acquire the bk-cache-fallback lock, key: " .. key_s ..
                               ", fallback to get the data from shared_dict")
                     return obj_decoded, nil
                 end
@@ -171,7 +174,7 @@ function _M.get_with_fallback(self, ctx, key, version, create_obj_func, ...)
     cache_obj, _ = lru_obj:get(cache_key)
     if cache_obj then
         lock:unlock()
-        log.info("unlock with key ", key_s)
+        core.log.info("unlock with key ", key_s)
         return cache_obj.val
     end
 
@@ -182,7 +185,7 @@ function _M.get_with_fallback(self, ctx, key, version, create_obj_func, ...)
     local shared_data_dict = ngx_shared[self.plugin_shared_dict_name]
     if shared_data_dict == nil then
         lock:unlock()
-        log.info("unlock with key ", key_s)
+        core.log.info("unlock with key ", key_s)
 
         return nil, "failed to get shared_dict: " .. self.plugin_shared_dict_name
     end
@@ -212,7 +215,7 @@ function _M.get_with_fallback(self, ctx, key, version, create_obj_func, ...)
         end
 
         lock:unlock()
-        log.info("unlock with key ", key_s)
+        core.log.info("unlock with key ", key_s)
         return obj, err
     else
         -- NOTE: we should not expose the real create_obj_err to the user
@@ -240,11 +243,12 @@ function _M.get_with_fallback(self, ctx, key, version, create_obj_func, ...)
             )
 
             lock:unlock()
-            log.info("unlock with key ", key_s)
+            core.log.info("unlock with key ", key_s)
             return obj_decoded, nil
         else
             -- else, treat as shared_dict miss
-            log.error("shared_data_dict:get failed: the obj can not be decoded from json: ", json_err, ", obj: ", sd)
+            core.log.error("shared_data_dict:get failed: the obj can not be decoded from json: ",
+                            json_err, ", obj: ", sd)
         end
     end
 
@@ -261,7 +265,7 @@ function _M.get_with_fallback(self, ctx, key, version, create_obj_func, ...)
     )
 
     lock:unlock()
-    log.info("unlock with key ", key_s)
+    core.log.info("unlock with key ", key_s)
     return nil, self.plugin_name_with_colon .. fallback_missing_err
 end
 
