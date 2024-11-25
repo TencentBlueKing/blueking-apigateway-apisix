@@ -20,12 +20,14 @@ test-busted:
 	-v ${ROOT_DIR}/plugins:/bkgateway/apisix/plugins \
 	apisix-test-busted "/run-test-busted.sh"
 
+# make test-nginx
+# make test-nginx CASE_FILE=bk-traffic-label.t
 .PHONY: test-nginx
 test-nginx:
 	@docker run --rm ${RUN_WITH_IT} \
 	-v ${ROOT_DIR}/t:/bkgateway/t/ \
 	-v ${ROOT_DIR}/plugins:/bkgateway/apisix/plugins \
-	apisix-test-nginx "/run-test-nginx.sh"
+	apisix-test-nginx "/run-test-nginx.sh" $(if $(CASE_FILE),$(CASE_FILE))
 
 .PHONY: apisix-test-images
 apisix-test-images: apisix-test-busted apisix-test-nginx
