@@ -55,6 +55,7 @@ describe(
                         assert.is_equal(ctx.headers["X-Bk-Tenant-Id"], nil)
                         plugin.rewrite(conf, ctx)
                         assert.is_equal(ctx.headers["X-Bk-Tenant-Id"], "default")
+                        assert.is_equal(ctx.var.bk_tenant_id, "default")
                     end
                 )
 
@@ -64,6 +65,7 @@ describe(
                         assert.is_equal(ctx.headers["X-Bk-Tenant-Id"], "other")
                         plugin.rewrite(conf, ctx)
                         assert.is_equal(ctx.headers["X-Bk-Tenant-Id"], "default")
+                        assert.is_equal(ctx.var.bk_tenant_id, "default")
                     end
                 )
             end
