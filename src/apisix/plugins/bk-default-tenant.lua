@@ -39,6 +39,7 @@ end
 
 function _M.rewrite(conf, ctx)
     core.request.set_header(ctx, "X-Bk-Tenant-Id", "default")
+    ctx.var.bk_tenant_id = "default"
 end
 
 return _M
