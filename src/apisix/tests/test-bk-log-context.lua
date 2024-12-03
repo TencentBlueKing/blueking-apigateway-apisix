@@ -31,6 +31,7 @@ describe(
                         should_log_response_body = true,
                     }
                 )
+                ctx.headers = {}
             end
         )
 
@@ -118,6 +119,20 @@ describe(
                         assert.is_equal(ctx.var.bk_log_request_body, "")
                     end
                 )
+
+                it(
+                    "should log bk_tenant_id when present", function()
+                        ctx.headers["X-Bk-Tenant-Id"] = "tenant123"
+                        assert.is_equal(ctx.var.bk_tenant_id, "tenant123")
+                    end
+                )
+
+                it(
+                    "should log empty bk_tenant_id when missing", function()
+                        assert.is_equal(ctx.var.bk_tenant_id, "")
+                    end
+                )
+
             end
         )
 
