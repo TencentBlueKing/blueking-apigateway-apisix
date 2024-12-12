@@ -194,6 +194,20 @@ function _M.new_app_no_permission()
     return setmetatable(error, mt)
 end
 
+function _M.new_cross_tenant_forbidden()
+    local error = {
+        error = {
+            code = 1640302,
+            code_name = "CROSS_TENANT_FORBIDDEN",
+            message = "Cross tenant forbidden",
+            result = false,
+            data = cjson_null,
+        },
+        status = ngx.HTTP_FORBIDDEN,
+    }
+    return setmetatable(error, mt)
+end
+
 function _M.new_invalid_args()
     local error = {
         error = {
