@@ -185,4 +185,10 @@ core.ctx.register_var(
     end
 )
 
+core.ctx.register_var(
+    "bk_tenant_id", function(ctx)
+        return core.request.header(ctx, "X-Bk-Tenant-Id") or ""
+    end
+)
+
 return _M
