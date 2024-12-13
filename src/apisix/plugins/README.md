@@ -45,6 +45,8 @@
 - bk-body-limit                             # priority: 17690
 - bk-auth-validate                          # priority: 17680
 - bk-user-restriction                       # priority: 17679
+- bk-tenant-verify                          # priority: 17675
+- bk-tenant-validate                        # priority: 17674
 - bk-jwt                                    # priority: 17670
 - bk-ip-restriction                         # priority: 17662
 - bk-ip-group-restriction                   # priority: 17661 (will be deprecated)

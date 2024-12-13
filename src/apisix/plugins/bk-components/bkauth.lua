@@ -27,7 +27,7 @@ local ipairs = ipairs
 
 local VERIFY_APP_SECRET_URL = "/api/v1/apps/%s/access-keys/verify"
 local LIST_APP_SECRETS_URL = "/api/v1/apps/%s/access-keys"
-local VERIFY_ACCESS_TOKEN_URL = "/api/v1/oauth/tokens/verify"
+local GET_APP_URL = "/api/v1/apps/%s"
 
 local BKAUTH_TIMEOUT_MS = 3 * 1000
 
@@ -222,79 +222,111 @@ function _M.list_app_secrets(app_code)
     }
 end
 
-function _M.verify_access_token(access_token)
+function _M.get_app_tenant_info(app_code)
     if pl_types.is_empty(_M.host) then
         return nil, "server error: bkauth host is not configured."
     end
 
-    local url = bk_core.url.url_single_joining_slash(_M.host, VERIFY_ACCESS_TOKEN_URL)
+    local url = bk_core.url.url_single_joining_slash(_M.host, string_format(GET_APP_URL, app_code))
 
     local http_client = http.new()
     http_client:set_timeout(BKAUTH_TIMEOUT_MS)
+
     local request_id = uuid.generate_v4()
     local res, err = http_client:request_uri(
         url, {
-            method = "POST",
-            body = core.json.encode(
-                {
-                    access_token = access_token,
-                }
-            ),
+            method = "GET",
             ssl_verify = false,
+
             headers = {
                 ["X-Bk-App-Code"] = _M.app_code,
                 ["X-Bk-App-Secret"] = _M.app_secret,
                 ["X-Request-Id"] = request_id,
-                -- ["Authorization"] = "Bearer " .. self.bkauth_access_token
                 ["Content-Type"] = "application/json",
             },
         }
     )
 
+    -- if got timeout, retry here
+    if err == "timeout" then
+        res, err = http_client:request_uri(
+            url, {
+                method = "GET",
+                ssl_verify = false,
+
+                headers = {
+                    ["X-Bk-App-Code"] = _M.app_code,
+                    ["X-Bk-App-Secret"] = _M.app_secret,
+                    ["X-Request-Id"] = request_id,
+                    ["Content-Type"] = "application/json",
+                },
+            }
+        )
+    end
+
     if not (res and res.body) then
-        err = string_format("failed to request third-party api, url: %s, request_id: %s, err: %s, response: nil", url,
-            request_id, err)
-        core.log.error(err)
-        return nil, err
+        local wrapped_err = string_format(
+            "failed to request third-party api, url: %s, request_id: %s, err: %s, response: nil",
+            url, request_id, err
+        )
+        core.log.error(wrapped_err)
+        if err == "connection refused" then
+            return nil, err
+        end
+        return nil, wrapped_err
+    end
+
+    -- 响应格式正常，错误码 404，表示应用不存在
+    -- note: here we return an {} instead of err, because the lrucache should cache this result as well
+    if res.status == 404 then
+        return {
+            error_message="the app not exists"
+        }, nil
     end
 
     local result = core.json.decode(res.body)
     if result == nil then
         core.log.error(
             string_format(
-                "failed to request %s, request_id: %s, response is not valid json, status: %s, response: %s", url,
-                request_id, res.status, res.body
+                "failed to request %s, request_id: %s, response is not valid json, status: %s, response: %s",
+                url, request_id, res.status, res.body
             )
         )
         return nil, string_format(
-            "failed to request third-party api, response is not valid json, url: %s, request_id: %s, status: %s", url,
-            request_id, res.status
+            "failed to request third-party api, response is not valid json, url: %s, request_id: %s, status: %s",
+            url, request_id, res.status
         )
     end
 
     if result.code ~= 0 or res.status ~= 200 then
+        core.log.error(
+            string_format(
+                "failed to request %s, request_id: %s, result.code!=0 or status!=200, status: %s, response: %s",
+                url, request_id, res.status, res.body
+            )
+        )
         return nil, string_format(
-            "bkauth error message: %s, url: %s, request_id: %s, status: %s, code: %s",
+            "failed to request third-party api, bkauth error message: %s, url: %s, \
+             request_id: %s, status: %s, code: %s",
             result.message, url, request_id, res.status, result.code
         )
     end
 
-    -- data example
-    -- {
-    --     "token_type": "",
-    --     "grant_type": "",
-    --     "bk_app_code": "",
-    --     "expires_in": 10,
-    --     "username": "admin",
-    --     "target_id": "",
-    --     "scope": ""
+    -- data = {
+    --     "app_code": "demo",
+    --     "name": "demo",
+    --     "description": "xxxx",
+    --     "tenant": {
+    --         "mode": "single",
+    --         "id": "hello"
+    --     }
     -- }
-
     return {
-        bk_app_code = result.data.bk_app_code,
-        username = result.data.username,
-        expires_in = result.data.expires_in,
-    }
+        tenant_mode=result.data.tenant.mode,
+        tenant_id=result.data.tenant.id,
+        error_message=nil,
+    }, nil
 end
+
 
 return _M

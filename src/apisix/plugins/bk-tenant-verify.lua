@@ -26,7 +26,8 @@
 
 
 local core = require("apisix.core")
-
+local bk_cache = require("apisix.plugins.bk-cache.init")
+local errorx = require("apisix.plugins.bk-core.errorx")
 
 local BKAPI_TENANT_ID_HEADER = "X-Bk-Tenant-Id"
 
@@ -50,20 +51,29 @@ end
 
 function _M.rewrite(conf, ctx) -- luacheck: ignore
     -- 1. get tenant_id from header: X-Bk-Tenant-Id
-    local header_tenant_id = core.request.header(ctx, BKAPI_TENANT_ID_HEADER)
-    ctx.var.header_tenant_id = header_tenant_id
+    ctx.var.bk_tenant_id = core.request.header(ctx, BKAPI_TENANT_ID_HEADER)
 
+    local app_code = ctx.var.bk_app:get_app_code()
     -- 2. get tenant_id from bkauth(app.tenant_mode/app.tenant_id)
-    if ctx.var.bk_app:get_app_code() ~= "" and ctx.var.bk_app:is_verified() then
-        -- FIXME: get tenant_mode and tenant_id from bkauth
-        ctx.var.bk_app.tenant_mode = "single"
-        ctx.var.bk_app.tenant_id = "hello"
+    if app_code ~= "" and ctx.var.bk_app:is_verified() then
+        local app_tenant_info, err = bk_cache.get_app_tenant_info(app_code)
+        if err ~= nil then
+            return errorx.exit_with_apigw_err(ctx, errorx.new_internal_server_error():with_field("reason", err), _M)
+        end
+
+        ctx.var.bk_app.tenant_mode = app_tenant_info.tenant_mode
+        ctx.var.bk_app.tenant_id = app_tenant_info.tenant_id
     end
 
     -- 3. get tenant_id from bkuser(user.tenant_id)
-    if ctx.var.bk_user:get_username() ~= "" and ctx.var.bk_user:is_verified() then
-        -- FIXME: get tenant_id from bkuser
-        ctx.var.bk_user.tenant_id = "hello"
+    local username = ctx.var.bk_user:get_username()
+    if username ~= "" and ctx.var.bk_user:is_verified() then
+        local user_tenant_info, err = bk_cache.get_user_tenant_info(username)
+        if err ~= nil then
+            return errorx.exit_with_apigw_err(ctx, errorx.new_internal_server_error():with_field("reason", err), _M)
+        end
+
+        ctx.var.bk_user.tenant_id = user_tenant_info.tenant_id
     end
 end
 
