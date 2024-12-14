@@ -24,7 +24,7 @@ local bk_components_utils = require("apisix.plugins.bk-components.utils")
 
 local string_format = string.format
 
-local IS_LOGIN_URL = "/login/api/v2/is_login/"
+local VERIFY_BK_TOKEN_URL = "/api/v3/apigw/bk-tokens/verify/"
 
 local BKLOGIN_TIMEOUT_MS = 5 * 1000
 
@@ -37,12 +37,10 @@ function _M.get_username_by_bk_token(bk_token)
         return nil, "server error: login host is not configured."
     end
 
-    local url = bk_core.url.url_single_joining_slash(_M.host, IS_LOGIN_URL)
+    local url = bk_core.url.url_single_joining_slash(_M.host, VERIFY_BK_TOKEN_URL)
 
     local http_client = http.new()
-    http_client:set_timeout(BKLOGIN_TIMEOUT_MS)
-    local res, err = http_client:request_uri(
-        url, {
+    local params = {
             method = "GET",
             query = core.string.encode_args(
                 {
@@ -53,25 +51,13 @@ function _M.get_username_by_bk_token(bk_token)
             headers = {
                 ["Content-Type"] = "application/x-www-form-urlencoded",
             },
-        }
-    )
+    }
+    http_client:set_timeout(BKLOGIN_TIMEOUT_MS)
+    local res, err = http_client:request_uri(url, params)
 
     -- retry if some connection error, while the bklogin in bk-user 2.x
     if err == "closed" or err == "connection reset by peer" then
-        res, err = http_client:request_uri(
-            url, {
-                method = "GET",
-                query = core.string.encode_args(
-                    {
-                        bk_token = bk_token,
-                    }
-                ),
-                ssl_verify = false,
-                headers = {
-                    ["Content-Type"] = "application/x-www-form-urlencoded",
-                },
-            }
-        )
+        res, err = http_client:request_uri(url, params)
     end
 
     -- if the ssm is down, return the raw error
@@ -89,12 +75,6 @@ function _M.get_username_by_bk_token(bk_token)
             )
         )
         return nil, string_format("failed to request third-party api, url: %s, err: %s", url, _err)
-    end
-
-    if result.bk_error_code ~= 0 then
-        return {
-            error_message = string_format("bk_token is invalid, url: %s, code: %s", url, result.bk_error_code),
-        }
     end
 
     return {

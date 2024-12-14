@@ -47,28 +47,18 @@ local function bk_apigateway_core_do_get(instance_id, instance_secret, host, pat
     -- send a request
     local client = http.new()
     client:set_timeout(BKCORE_TIMEOUT_MS)
-    local res, err = client:request_uri(url,
-        {
+    local params = {
             method = "GET",
             headers = {
                 ["X-Bk-Micro-Gateway-Instance-Id"] = instance_id,
                 ["X-Bk-Micro-Gateway-Instance-Secret"] = instance_secret,
             },
             query = query
-        }
-    )
+    }
+    local res, err = client:request_uri(url, params)
 
     if err == "timeout" then
-        res, err = client:request_uri(url,
-            {
-                method = "GET",
-                headers = {
-                    ["X-Bk-Micro-Gateway-Instance-Id"] = instance_id,
-                    ["X-Bk-Micro-Gateway-Instance-Secret"] = instance_secret,
-                },
-                query = query
-            }
-        )
+        res, err = client:request_uri(url, params)
     end
 
     if not res then

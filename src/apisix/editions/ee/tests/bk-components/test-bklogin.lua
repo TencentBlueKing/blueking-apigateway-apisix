@@ -74,27 +74,6 @@ describe(
                 )
 
                 it(
-                    "bk_error_code is not 0", function()
-                        response = {
-                            status = 200,
-                            body = core.json.encode(
-                                {
-                                    bk_error_code = 1,
-                                    bk_error_msg = "error",
-                                    data = {},
-                                }
-                            ),
-                        }
-                        response_err = nil
-
-                        local result, err = bklogin.get_username_by_bk_token("fake-bk-token")
-                        assert.is_nil(result.username)
-                        assert.is_true(core.string.has_prefix(result.error_message, "bk_token is invalid"))
-                        assert.is_nil(err)
-                    end
-                )
-
-                it(
                     "success", function()
                         response = {
                             status = 200,

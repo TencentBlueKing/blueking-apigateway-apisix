@@ -51,8 +51,7 @@ function _M.verify_app_secret(app_code, app_secret)
     http_client:set_timeout(BKAUTH_TIMEOUT_MS)
 
     local request_id = uuid.generate_v4()
-    local res, err = http_client:request_uri(
-        url, {
+    local params = {
             method = "POST",
             body = core.json.encode(
                 {
@@ -67,29 +66,12 @@ function _M.verify_app_secret(app_code, app_secret)
                 ["X-Request-Id"] = request_id,
                 ["Content-Type"] = "application/json",
             },
-        }
-    )
+    }
+    local res, err = http_client:request_uri(url, params)
 
     -- if got timeout, retry here
     if err == "timeout" then
-        res, err = http_client:request_uri(
-            url, {
-                method = "POST",
-                body = core.json.encode(
-                    {
-                        bk_app_secret = app_secret,
-                    }
-                ),
-                ssl_verify = false,
-
-                headers = {
-                    ["X-Bk-App-Code"] = _M.app_code,
-                    ["X-Bk-App-Secret"] = _M.app_secret,
-                    ["X-Request-Id"] = request_id,
-                    ["Content-Type"] = "application/json",
-                },
-            }
-        )
+        res, err = http_client:request_uri(url, params)
     end
 
     if not (res and res.body) then
@@ -233,8 +215,7 @@ function _M.get_app_tenant_info(app_code)
     http_client:set_timeout(BKAUTH_TIMEOUT_MS)
 
     local request_id = uuid.generate_v4()
-    local res, err = http_client:request_uri(
-        url, {
+    local params = {
             method = "GET",
             ssl_verify = false,
 
@@ -244,24 +225,12 @@ function _M.get_app_tenant_info(app_code)
                 ["X-Request-Id"] = request_id,
                 ["Content-Type"] = "application/json",
             },
-        }
-    )
+    }
+    local res, err = http_client:request_uri(url, params)
 
     -- if got timeout, retry here
     if err == "timeout" then
-        res, err = http_client:request_uri(
-            url, {
-                method = "GET",
-                ssl_verify = false,
-
-                headers = {
-                    ["X-Bk-App-Code"] = _M.app_code,
-                    ["X-Bk-App-Secret"] = _M.app_secret,
-                    ["X-Request-Id"] = request_id,
-                    ["Content-Type"] = "application/json",
-                },
-            }
-        )
+        res, err = http_client:request_uri(url, params)
     end
 
     if not (res and res.body) then
