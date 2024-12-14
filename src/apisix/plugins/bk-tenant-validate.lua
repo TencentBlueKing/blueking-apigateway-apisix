@@ -62,6 +62,9 @@ local function is_empty(value)
     return value == nil or value == ""
 end
 
+local function is_not_empty(value)
+    return value ~= nil and value ~= ""
+end
 
 local function reject_cross_tenant(err_msg)
     return errorx.new_cross_tenant_forbidden():with_field("reason", err_msg)
@@ -93,7 +96,7 @@ local function validate_app_tenant_id(
             local err_msg = string.format(
                 "Cross-tenant calls are not allowed: current header X-Bk-Tenant-Id=%s, "..
                 "app %s belongs to tenant %s(tenant_mode=%s). [AH]",
-                header_tenant_id, app_tenant_id, app_tenant_mode
+                header_tenant_id, ctx.var.bk_app:get_app_code(), app_tenant_id, app_tenant_mode
             )
             return reject_cross_tenant(err_msg)
         end
@@ -103,8 +106,8 @@ local function validate_app_tenant_id(
             local err_msg = string.format(
                 "Cross-tenant calls are not allowed: gateway %s belongs to tenant %s, " ..
                 "app %s belongs to tenant %s. [GA]",
-                ctx.var.bk_gateway_name,gateway_tenant_id,
-                ctx.var.bk_app:get_app_code(),app_tenant_id
+                ctx.var.bk_gateway_name, gateway_tenant_id,
+                ctx.var.bk_app:get_app_code(), app_tenant_id
             )
             return reject_cross_tenant(err_msg)
         end
@@ -125,7 +128,7 @@ local function validate_user_tenant_id(ctx, gateway_tenant_mode, gateway_tenant_
     end
 
     -- 开启了应用认证，那么应用只能使用本租户的用户态
-    if app_tenant_mode ~= nil and app_tenant_mode ~= "" then
+    if is_not_empty(app_tenant_mode) then
         --【禁止跨租户，单租户应用只能处理使用本租户用户的应用态】
         if app_tenant_mode ~= "global" and app_tenant_id ~= user_tenant_id then
             local err_msg = string.format(
@@ -140,7 +143,7 @@ local function validate_user_tenant_id(ctx, gateway_tenant_mode, gateway_tenant_
 end
 
 local function validate_header_tenant_id(ctx, gateway_tenant_mode, gateway_tenant_id, header_tenant_id)
-    if header_tenant_id ~= nil and header_tenant_id ~= "" then
+    if is_not_empty(header_tenant_id ) then
         if gateway_tenant_mode ~= "global" and gateway_tenant_id ~= header_tenant_id then
             local err_msg = string.format(
                 "Cross-tenant calls are not allowed: gateway belongs to tenant %s, header tenant_id is %s. [GH]",
@@ -198,10 +201,11 @@ end
 
 if _TEST then -- luacheck: ignore
     _M._is_empty = is_empty
+    _M._is_not_empty = is_not_empty
     _M._reject_cross_tenant = reject_cross_tenant
     _M._validate_app_tenant_id = validate_app_tenant_id
     _M._validate_user_tenant_id = validate_user_tenant_id
-    _M._validate_header_tenant_id = validate_user_tenant_id
+    _M._validate_header_tenant_id = validate_header_tenant_id
 end
 
 return _M

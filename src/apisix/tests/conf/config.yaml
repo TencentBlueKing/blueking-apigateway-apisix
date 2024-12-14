@@ -53,3 +53,5 @@ bk_gateway:
       addr: "http://ssm.example.com"
     bkcore:
       addr: "http://bkcore.example.com"
+    bkuser:
+      addr: "http://bkuser.example.com"

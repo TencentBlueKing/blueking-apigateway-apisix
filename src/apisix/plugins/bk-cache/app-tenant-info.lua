@@ -53,7 +53,7 @@ function _M.get_app_tenant_info(app_code)
             --     core.log.error("the bkauth down, but also miss in fallback cache, error: ", err, " key=", key)
             end
 
-            err = "verify_app_secret failed, error: " .. err
+            err = "get_app_tenant_info failed, error: " .. err
         end
 
         return nil, err
