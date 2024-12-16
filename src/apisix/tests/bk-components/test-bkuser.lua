@@ -17,8 +17,9 @@
 --
 
 local core = require("apisix.core")
-local http = require("resty.http")
 local bkuser = require("apisix.plugins.bk-components.bkuser")
+local bk_components_utils = require("apisix.plugins.bk-components.utils")
+
 
 describe(
     "bkuser", function()
@@ -30,14 +31,8 @@ describe(
                 response_err = nil
 
                 stub(
-                    http, "new", function()
-                        return {
-                            set_timeout = function(self, timeout)
-                            end,
-                            request_uri = function(self, url, params)
-                                return response, response_err
-                            end,
-                        }
+                    bk_components_utils, "handle_request", function()
+                        return response, response_err
                     end
                 )
             end
@@ -45,7 +40,7 @@ describe(
 
         after_each(
             function()
-                http.new:revert()
+                bk_components_utils.handle_request:revert()
             end
         )
 

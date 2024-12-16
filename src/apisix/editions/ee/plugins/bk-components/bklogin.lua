@@ -15,8 +15,8 @@
 -- We undertake not to change the open source license (MIT license) applicable
 -- to the current version of the project delivered to anyone in the future.
 --
+local uuid = require("resty.jit-uuid")
 local pl_types = require("pl.types")
-local http = require("resty.http")
 local core = require("apisix.core")
 
 local bk_core = require("apisix.plugins.bk-core.init")
@@ -32,14 +32,44 @@ local _M = {
     host = bk_core.config.get_login_addr(),
 }
 
-function _M.get_username_by_bk_token(bk_token)
-    if pl_types.is_empty(_M.host) then
+local function bklogin_do_request(host, path, params, request_id)
+    if pl_types.is_empty(host) then
         return nil, "server error: login host is not configured."
     end
 
-    local url = bk_core.url.url_single_joining_slash(_M.host, VERIFY_BK_TOKEN_URL)
+    local url = bk_core.url.url_single_joining_slash(host, path)
+    local res, err = bk_components_utils.handle_request(url, params, BKLOGIN_TIMEOUT_MS, true)
+    if err ~= nil then
+        -- if connection refused, return directly, without wrap(for the fallback cache upon layer)
+        if err == "connection refused" then
+            core.log.error("failed to request third-party api, url: %s, err: %s, response: nil", url, err)
+            return nil, err
+        end
 
-    local http_client = http.new()
+        local new_err = string_format(
+            "failed to request third-party api, url: %s, request_id: %s, err: %s",
+            url, request_id, err
+        )
+        core.log.error(new_err)
+        return nil, new_err
+    end
+
+    local result, _err = bk_components_utils.parse_response_json(res.body)
+    if err ~= nil then
+        local new_err = string_format(
+            "failed to request third-party api, %s, request_id: %s, status: %s, response: %s, err: %s",
+            url, request_id, res.status, res.body, _err
+        )
+        core.log.error(new_err)
+        return nil, new_err
+    end
+
+    return result, nil
+end
+
+function _M.get_username_by_bk_token(bk_token)
+    local request_id = uuid.generate_v4()
+    local path = VERIFY_BK_TOKEN_URL
     local params = {
             method = "GET",
             query = core.string.encode_args(
@@ -52,29 +82,17 @@ function _M.get_username_by_bk_token(bk_token)
                 ["Content-Type"] = "application/x-www-form-urlencoded",
             },
     }
-    http_client:set_timeout(BKLOGIN_TIMEOUT_MS)
-    local res, err = http_client:request_uri(url, params)
 
-    -- retry if some connection error, while the bklogin in bk-user 2.x
-    if err == "closed" or err == "connection reset by peer" then
-        res, err = http_client:request_uri(url, params)
-    end
-
-    -- if the ssm is down, return the raw error
-    if err == "connection refused" then
-        core.log.error("failed to request url: %s, err: %s, response: nil", url, err)
+    local result, err = bklogin_do_request(_M.host, path, params, request_id)
+    if err ~= nil then
         return nil, err
     end
 
-    local result, _err = bk_components_utils.parse_response(res, err, true)
-    if result == nil then
-        core.log.error(
-            string_format(
-                "failed to request %s, err: %s, status: %s, response: %s", url, _err, res and res.status,
-                res and res.body
-            )
-        )
-        return nil, string_format("failed to request third-party api, url: %s, err: %s", url, _err)
+    if result.bk_error_code ~= 0 then
+        return {
+            error_message = string_format("bk_token is invalid,host: %s, path: %s, code: %s",
+                                           _M.host, path, result.bk_error_code),
+        }
     end
 
     return {

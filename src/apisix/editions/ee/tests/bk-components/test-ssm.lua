@@ -18,6 +18,7 @@
 local core = require("apisix.core")
 local http = require("resty.http")
 local ssm = require("apisix.plugins.bk-components.ssm")
+local bk_components_utils = require("apisix.plugins.bk-components.utils")
 
 describe(
     "ssm", function()
@@ -30,14 +31,8 @@ describe(
                 response_err = nil
 
                 stub(
-                    http, "new", function()
-                        return {
-                            set_timeout = function(self, timeout)
-                            end,
-                            request_uri = function(self, url, params)
-                                return response, response_err
-                            end,
-                        }
+                    bk_components_utils, "handle_request", function()
+                        return response, response_err
                     end
                 )
             end
@@ -45,7 +40,7 @@ describe(
 
         after_each(
             function()
-                http.new:revert()
+                bk_components_utils.handle_request:revert()
             end
         )
 
@@ -89,7 +84,8 @@ describe(
 
                         local result, err = ssm.verify_access_token("fake-access-token")
                         assert.is_nil(result)
-                        assert.is_true(core.string.has_prefix(err, "ssm error message: error"))
+                        -- assert.equals(err, "abc")
+                        assert.is_true(core.string.has_prefix(err, "failed to request third-party api"))
                     end
                 )
 

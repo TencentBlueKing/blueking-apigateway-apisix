@@ -19,10 +19,11 @@
 --
 -- 这个模块使用 http 调用 apigateway-core 获取数据
 -- 注意这里使用的是新版的 HTTP 协议(标准 HTTP 状态码 + response body 定义)
-local http = require("resty.http")
 local core = require("apisix.core")
+local uuid = require("resty.jit-uuid")
 local bk_core = require("apisix.plugins.bk-core.init")
 local string_format = string.format
+local bk_components_utils = require("apisix.plugins.bk-components.utils")
 
 local QUERY_PERMISSION_URL = "/api/v1/micro-gateway/%s/permissions/"
 local QUERY_PUBLIC_KEY_URL = "/api/v1/micro-gateway/%s/public_keys/"
@@ -43,43 +44,45 @@ local function bk_apigateway_core_do_get(instance_id, instance_secret, host, pat
     --   "error": {}
     -- }
     local url = bk_core.url.url_single_joining_slash(host, path)
-
+    local request_id = uuid.generate_v4()
     -- send a request
-    local client = http.new()
-    client:set_timeout(BKCORE_TIMEOUT_MS)
     local params = {
         method = "GET",
         headers = {
             ["X-Bk-Micro-Gateway-Instance-Id"] = instance_id,
             ["X-Bk-Micro-Gateway-Instance-Secret"] = instance_secret,
+            ["X-Request-Id"] = request_id,
         },
         query = query
     }
-    local res, err = client:request_uri(url, params)
+    local res, err = bk_components_utils.handle_request(url, params, BKCORE_TIMEOUT_MS, true)
+    if err ~= nil then
+        -- if connection refused, return directly, without wrap(for the fallback cache upon layer)
+        if err == "connection refused" then
+            core.log.error("failed to request third-party api, url: %s, err: %s, response: nil", url, err)
+            return nil, err
+        end
 
-    if err == "timeout" then
-        res, err = client:request_uri(url, params)
+        local new_err = string_format(
+            "failed to request third-party api, url: %s, request_id: %s, err: %s",
+            url, request_id, err
+        )
+        core.log.error(new_err)
+        return nil, new_err
     end
 
-    if not res then
-        return nil, "request failed, err: " .. err
+    local result
+    result, err = bk_components_utils.parse_response_json(res.body)
+    if err ~= nil then
+        local new_err = string_format(
+            "failed to request third-party api, url: %s, request_id: %s, status: %s, response: %s, err: %s",
+            url, request_id, res.status, res.body, err
+        )
+        core.log.error(new_err)
+        return nil, new_err
     end
 
-    if res.status ~= ngx.HTTP_OK then
-        return nil, "response status not 200, status: " .. res.status .. ", body: " .. res.body
-    end
-
-    if res.body == nil then
-        return nil, "response status is 200 but body is empty"
-    end
-
-    local body, json_err = core.json.decode(res.body)
-    -- if json_err ~= nil then
-    if not body then
-        return nil, "response body is not a valid json, err: " ..  json_err .. ", body: " .. res.body
-    end
-
-    return body.data, nil
+    return result.data, nil
 end
 
 ---@param gateway_name string @the name of the gateway
