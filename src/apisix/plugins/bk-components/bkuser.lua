@@ -48,13 +48,12 @@ function _M.get_user_tenant_info(app_code)
 
     local request_id = uuid.generate_v4()
     local params = {
-            method = "GET",
-            ssl_verify = false,
-
-            headers = {
-                ["X-Request-Id"] = request_id,
-                ["Content-Type"] = "application/json",
-            },
+        method = "GET",
+        ssl_verify = false,
+        headers = {
+            ["X-Request-Id"] = request_id,
+            ["Content-Type"] = "application/json",
+        },
     }
     local res, err = http_client:request_uri(url, params)
 

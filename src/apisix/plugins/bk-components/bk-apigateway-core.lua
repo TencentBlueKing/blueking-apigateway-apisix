@@ -48,12 +48,12 @@ local function bk_apigateway_core_do_get(instance_id, instance_secret, host, pat
     local client = http.new()
     client:set_timeout(BKCORE_TIMEOUT_MS)
     local params = {
-            method = "GET",
-            headers = {
-                ["X-Bk-Micro-Gateway-Instance-Id"] = instance_id,
-                ["X-Bk-Micro-Gateway-Instance-Secret"] = instance_secret,
-            },
-            query = query
+        method = "GET",
+        headers = {
+            ["X-Bk-Micro-Gateway-Instance-Id"] = instance_id,
+            ["X-Bk-Micro-Gateway-Instance-Secret"] = instance_secret,
+        },
+        query = query
     }
     local res, err = client:request_uri(url, params)
 
@@ -62,25 +62,21 @@ local function bk_apigateway_core_do_get(instance_id, instance_secret, host, pat
     end
 
     if not res then
-        err = "request failed, err: " .. err
-        return nil, err
+        return nil, "request failed, err: " .. err
     end
 
     if res.status ~= ngx.HTTP_OK then
-        err = "response status not 200, status: " .. res.status .. ", body: " .. res.body
-        return nil, err
+        return nil, "response status not 200, status: " .. res.status .. ", body: " .. res.body
     end
 
     if res.body == nil then
-        err = "response status is 200 but body is empty"
-        return nil, err
+        return nil, "response status is 200 but body is empty"
     end
 
     local body, json_err = core.json.decode(res.body)
     -- if json_err ~= nil then
     if not body then
-        err = "response body is not a valid json, err: " ..  json_err .. ", body: " .. res.body
-        return nil, err
+        return nil, "response body is not a valid json, err: " ..  json_err .. ", body: " .. res.body
     end
 
     return body.data, nil
