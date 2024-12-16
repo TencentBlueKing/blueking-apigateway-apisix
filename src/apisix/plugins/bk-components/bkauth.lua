@@ -123,6 +123,7 @@ function _M.verify_app_secret(app_code, app_secret)
     }
     local result, err = bkauth_do_request(_M.host, path, params, request_id)
     if err ~= nil then
+        -- as cached data, we should return {} instead of err
         if err == err_status_404 then
             return { existed = false, verified = false }, nil
         end
@@ -150,6 +151,7 @@ function _M.list_app_secrets(app_code)
     }
     local result, err = bkauth_do_request(_M.host, path, params, request_id)
     if err ~= nil then
+        -- as cached data, we should return {} instead of err
         if err == err_status_404 then
             return { app_secrets = {} }, nil
         end
@@ -181,6 +183,7 @@ function _M.get_app_tenant_info(app_code)
     }
     local result, err = bkauth_do_request(_M.host, path, params, request_id)
     if err ~= nil then
+        -- as cached data, we should return {} instead of err
         if err == err_status_404 then
             return { error_message="the app not exists" }, nil
         end

@@ -56,17 +56,14 @@ local function handle_request(url, params, timeout, raise_for_status)
     client:set_timeout(timeout or 5000)
 
     -- set request_id into params.headers, if not exists
-    local request_id
     if not params.headers then
-        request_id = uuid.generate_v4()
         params.headers = {
-            ["X-Request-Id"] = request_id,
+            ["X-Request-Id"] = uuid.generate_v4(),
             ["Content-Type"] = "application/json",
         }
     else
         if not params.headers["X-Request-Id"] then
-            request_id = uuid.generate_v4()
-            params.headers["X-Request-Id"] = request_id
+            params.headers["X-Request-Id"] = uuid.generate_v4()
         -- else
         --     request_id = params.headers["X-Request-Id"]
         end
@@ -75,7 +72,7 @@ local function handle_request(url, params, timeout, raise_for_status)
     -- call the api
     local res, err = client:request_uri(url, params)
 
-    -- if timeout, retry
+    -- if timeout/closed/connection reset by peer, retry
     if err == "timeout" or err == "closed" or err == "connection reset by peer" then
         res, err = client:request_uri(url, params)
     end

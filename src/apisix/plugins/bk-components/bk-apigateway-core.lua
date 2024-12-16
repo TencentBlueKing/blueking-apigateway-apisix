@@ -82,14 +82,14 @@ local function bk_apigateway_core_do_get(instance_id, instance_secret, host, pat
         return nil, new_err
     end
 
-    return result.data, nil
+    return result, nil
 end
 
 ---@param gateway_name string @the name of the gateway
 ---@param resource_name string @the name of the resource
 ---@param app_code string @the name of the app_code
 function _M.query_permission(gateway_name, stage_name, resource_name, app_code)
-    -- qurey params: bk_gateway_name, bk_resource_name, bk_app_code
+    -- query params: bk_gateway_name, bk_resource_name, bk_app_code
     -- response body:
     -- {
     --   "data": {
@@ -105,16 +105,16 @@ function _M.query_permission(gateway_name, stage_name, resource_name, app_code)
         bk_app_code = app_code,
     }
     local path = string_format(QUERY_PERMISSION_URL, _M.instance_id)
-    local data, err = bk_apigateway_core_do_get(_M.instance_id, _M.instance_secret, _M.host, path, query)
+    local result, err = bk_apigateway_core_do_get(_M.instance_id, _M.instance_secret, _M.host, path, query)
     if err ~= nil then
         core.log.error(err)
     end
-    return data, err
+    return result.data, err
 end
 
 ---@param gateway_name string @the name of the gateway
 function _M.get_apigw_public_key(gateway_name)
-    -- qurey params: bk_gateway_name, bk_resource_name, bk_app_code
+    -- query params: bk_gateway_name, bk_resource_name, bk_app_code
     -- response body:
     -- {
     --   "data": {
@@ -126,11 +126,11 @@ function _M.get_apigw_public_key(gateway_name)
         bk_gateway_name = gateway_name,
     }
     local path = string_format(QUERY_PUBLIC_KEY_URL, _M.instance_id)
-    local data, err = bk_apigateway_core_do_get(_M.instance_id, _M.instance_secret, _M.host, path, query)
+    local result, err = bk_apigateway_core_do_get(_M.instance_id, _M.instance_secret, _M.host, path, query)
     if err ~= nil then
         core.log.error(err)
     end
-    return data, err
+    return result.data, err
 end
 
 return _M

@@ -54,11 +54,12 @@ local function bklogin_do_request(host, path, params, request_id)
         return nil, new_err
     end
 
-    local result, _err = bk_components_utils.parse_response_json(res.body)
+    local result
+    result, err = bk_components_utils.parse_response_json(res.body)
     if err ~= nil then
         local new_err = string_format(
             "failed to request third-party api, %s, request_id: %s, status: %s, response: %s, err: %s",
-            url, request_id, res.status, res.body, _err
+            url, request_id, res.status, res.body, err
         )
         core.log.error(new_err)
         return nil, new_err

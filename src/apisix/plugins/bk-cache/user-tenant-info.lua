@@ -31,7 +31,7 @@ local user_tenant_info_lrucache = core.lrucache.new(
 )
 local USER_TENANT_ID_FALLBACK_CACHE_TTL = 60 * 60 * 24
 local USER_TENANT_ID_FALLBACK_CACHE_COUNT = 2000
-local user_tenant_id_fallback_lrucache = lru_new(USER_TENANT_ID_FALLBACK_CACHE_COUNT)
+local user_tenant_info_fallback_lrucache = lru_new(USER_TENANT_ID_FALLBACK_CACHE_COUNT)
 
 
 local _M = {}
@@ -44,7 +44,7 @@ function _M.get_user_tenant_info(username)
         -- if the service is down(100% down), we can use the fallback cache, make the dp robust
         if err == "connection refused" then
             -- try to use the fallback cache
-            result = user_tenant_id_fallback_lrucache:get(key)
+            result = user_tenant_info_fallback_lrucache:get(key)
             if result ~= nil then
                 core.log.error("the bkuser down, error: ", err, " use the fallback cache. ",
                                "key=", key, " result=", core.json.delay_encode(result))
@@ -61,13 +61,13 @@ function _M.get_user_tenant_info(username)
 
     -- NOTE: here we don't know if the result is from the cache or the real request,
     --       so we update the fallback cache every time, which may not so efficient?
-    user_tenant_id_fallback_lrucache:set(key, result, USER_TENANT_ID_FALLBACK_CACHE_TTL)
+    user_tenant_info_fallback_lrucache:set(key, result, USER_TENANT_ID_FALLBACK_CACHE_TTL)
 
     return result, result.error_message
 end
 
 if _TEST then -- luacheck: ignore
-    _M._user_tenant_id_fallback_lrucache = user_tenant_id_fallback_lrucache
+    _M._user_tenant_info_fallback_lrucache = user_tenant_info_fallback_lrucache
 end
 
 return _M

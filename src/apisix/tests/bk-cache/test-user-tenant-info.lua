@@ -116,7 +116,9 @@ describe(
                         get_user_tenant_info_err = 'connection refused'
 
                         local username = uuid.generate_v4()
-                        user_tenant_info_cache._user_tenant_id_fallback_lrucache:set(username, cached_get_user_tenant_info_result, 60 * 60 * 24)
+                        user_tenant_info_cache._user_tenant_info_fallback_lrucache:set(username,
+                            cached_get_user_tenant_info_result, 60 * 60 * 24
+                        )
 
                         local result, err = user_tenant_info_cache.get_user_tenant_info(username)
                         assert.is_same(result, cached_get_user_tenant_info_result)
