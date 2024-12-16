@@ -148,7 +148,7 @@ function _M.list_app_secrets(app_code)
             ["Content-Type"] = "application/x-www-form-urlencoded",
         },
     }
-    local result, err = bkauth_do_request(_M.host, path, params, request_id, status_404_result)
+    local result, err = bkauth_do_request(_M.host, path, params, request_id)
     if err ~= nil then
         if err == err_status_404 then
             return { app_secrets = {} }, nil
