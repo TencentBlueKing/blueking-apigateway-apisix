@@ -79,6 +79,11 @@ function _M.get_bkauth_addr()
     return core.table.try_read_attr(conf, "bk_gateway", "hosts", "bkauth", "addr")
 end
 
+function _M.get_bkuser_addr()
+    local conf = core.config.local_conf()
+    return core.table.try_read_attr(conf, "bk_gateway", "hosts", "bkuser", "addr")
+end
+
 function _M.get_bkauth_legacy_addr()
     local conf = core.config.local_conf()
     return core.table.try_read_attr(conf, "bk_gateway", "hosts", "bkauth-legacy", "addr")

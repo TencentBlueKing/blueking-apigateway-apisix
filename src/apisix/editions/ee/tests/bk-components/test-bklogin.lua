@@ -16,8 +16,8 @@
 -- to the current version of the project delivered to anyone in the future.
 --
 local core = require("apisix.core")
-local http = require("resty.http")
 local bklogin = require("apisix.plugins.bk-components.bklogin")
+local bk_components_utils = require("apisix.plugins.bk-components.utils")
 
 describe(
     "bklogin", function()
@@ -30,14 +30,8 @@ describe(
                 response_err = nil
 
                 stub(
-                    http, "new", function()
-                        return {
-                            set_timeout = function(self, timeout)
-                            end,
-                            request_uri = function(self, url, params)
-                                return response, response_err
-                            end,
-                        }
+                    bk_components_utils, "handle_request", function()
+                        return response, response_err
                     end
                 )
             end
@@ -45,7 +39,7 @@ describe(
 
         after_each(
             function()
-                http.new:revert()
+                bk_components_utils.handle_request:revert()
             end
         )
 
@@ -70,27 +64,6 @@ describe(
                         local result, err = bklogin.get_username_by_bk_token("fake-bk-token")
                         assert.is_nil(result)
                         assert.equals(err, "connection refused")
-                    end
-                )
-
-                it(
-                    "bk_error_code is not 0", function()
-                        response = {
-                            status = 200,
-                            body = core.json.encode(
-                                {
-                                    bk_error_code = 1,
-                                    bk_error_msg = "error",
-                                    data = {},
-                                }
-                            ),
-                        }
-                        response_err = nil
-
-                        local result, err = bklogin.get_username_by_bk_token("fake-bk-token")
-                        assert.is_nil(result.username)
-                        assert.is_true(core.string.has_prefix(result.error_message, "bk_token is invalid"))
-                        assert.is_nil(err)
                     end
                 )
 

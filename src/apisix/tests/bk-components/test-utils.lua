@@ -79,5 +79,154 @@ describe(
                 )
             end
         )
+
+        context(
+            "parse_response_json",
+            function()
+                it(
+                    "body is nil",
+                    function()
+                        local result, err = utils.parse_response_json(nil)
+                        assert.is_nil(result)
+                        assert.is_equal(err, "response body is empty")
+                    end
+                )
+
+                it(
+                    "body is not valid json",
+                    function()
+                        local result, err = utils.parse_response_json("not valid json")
+                        assert.is_nil(result)
+                        assert.is_equal(err, "response is not valid json")
+                    end
+                )
+
+                it(
+                    "body is valid json",
+                    function()
+                        local result, err = utils.parse_response_json('{"foo": "bar"}')
+                        assert.is_same(result, {foo = "bar"})
+                        assert.is_nil(err)
+                    end
+                )
+            end
+        )
+
+        context(
+            "handle_request",
+            function()
+                local response, response_err
+
+                before_each(
+                    function()
+                        response = nil
+                        response_err = nil
+
+                        stub(
+                            http, "new", function()
+                                return {
+                                    set_timeout = function() end,
+                                    request_uri = function()
+                                        return response, response_err
+                                    end,
+                                }
+                            end
+                        )
+                    end
+                )
+
+                after_each(
+                    function()
+                        http.new:revert()
+                    end
+                )
+
+                it(
+                    "request returns timeout and retries",
+                    function()
+                        local call_count = 0
+                        stub(http, "new", function()
+                            return {
+                                set_timeout = function() end,
+                                request_uri = function()
+                                    call_count = call_count + 1
+                                    if call_count == 1 then
+                                        return nil, "timeout"
+                                    else
+                                        return {status = 200, body = '{"foo": "bar"}'}, nil
+                                    end
+                                end,
+                            }
+                        end)
+
+                        local res, err = utils.handle_request("http://example.com", {}, 5000, true)
+                        assert.is_same(res, {status = 200, body = '{"foo": "bar"}'})
+                        assert.is_nil(err)
+
+                    end
+                )
+
+
+                it(
+                    "request returns connection refused",
+                    function()
+                        response = nil
+                        response_err = "connection refused"
+
+                        local res, err = utils.handle_request("http://example.com", {}, 5000, true)
+                        assert.is_nil(res)
+                        assert.is_equal(err, "connection refused")
+                    end
+                )
+
+                it(
+                    "request returns error",
+                    function()
+                        response = nil
+                        response_err = "mocked error"
+
+                        local res, err = utils.handle_request("http://example.com", {}, 5000, true)
+                        assert.is_nil(res)
+                        assert.is_equal(err, "mocked error, response: nil")
+                    end
+                )
+
+                it(
+                    "request returns non-200 status with raise_for_status",
+                    function()
+                        response = {status = 500, body = '{"foo": "bar"}'}
+                        response_err = nil
+
+                        local res, err = utils.handle_request("http://example.com", {}, 5000, true)
+                        assert.is_nil(res)
+                        assert.is_equal(err, "status is 500, not 200")
+                    end
+                )
+
+                it(
+                    "request returns non-200 status without raise_for_status",
+                    function()
+                        response = {status = 500, body = '{"foo": "bar"}'}
+                        response_err = nil
+
+                        local res, err = utils.handle_request("http://example.com", {}, 5000, false)
+                        assert.is_same(res, {status = 500, body = '{"foo": "bar"}'})
+                        assert.is_nil(err)
+                    end
+                )
+
+                it(
+                    "request returns 200 status",
+                    function()
+                        response = {status = 200, body = '{"foo": "bar"}'}
+                        response_err = nil
+
+                        local res, err = utils.handle_request("http://example.com", {}, 5000, true)
+                        assert.is_same(res, {status = 200, body = '{"foo": "bar"}'})
+                        assert.is_nil(err)
+                    end
+                )
+            end
+        )
     end
 )

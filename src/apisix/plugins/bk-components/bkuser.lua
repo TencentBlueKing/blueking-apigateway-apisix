@@ -20,35 +20,23 @@ local uuid = require("resty.jit-uuid")
 local core = require("apisix.core")
 local bk_core = require("apisix.plugins.bk-core.init")
 local bk_components_utils = require("apisix.plugins.bk-components.utils")
-
 local string_format = string.format
-local table_insert = table.insert
-local ipairs = ipairs
 
-local VERIFY_APP_SECRET_URL = "/api/v1/apps/%s/access-keys/verify"
-local LIST_APP_SECRETS_URL = "/api/v1/apps/%s/access-keys"
-local GET_APP_URL = "/api/v1/apps/%s"
-
-local BKAUTH_TIMEOUT_MS = 3 * 1000
+-- FIXME: change to api/v3
+local GET_USER_URL = "/api/v2/profiles/%s"
+local BKUSER_TIMEOUT_MS = 3 * 1000
 
 local bkapp = bk_core.config.get_bkapp() or {}
 
 local err_status_404 = "status 404"
 
-local _M = {
-    host = bk_core.config.get_bkauth_addr(),
-    app_code = bkapp.bk_app_code,
-    app_secret = bkapp.bk_app_secret,
-    -- bkauth_access_token = bkapp.bkauth_access_token,
-}
-
-local function bkauth_do_request(host, path, params, request_id)
+local function bkuser_do_request(host, path, params, request_id)
     if pl_types.is_empty(host) then
-        return nil, "server error: bkauth host is not configured."
+        return nil, "server error: bkuser host is not configured."
     end
 
     local url = bk_core.url.url_single_joining_slash(host, path)
-    local res, err = bk_components_utils.handle_request(url, params, BKAUTH_TIMEOUT_MS, false)
+    local res, err = bk_components_utils.handle_request(url, params, BKUSER_TIMEOUT_MS, false)
     if err ~= nil then
         -- if connection refused, return directly, without wrap(for the fallback cache upon layer)
         if err == "connection refused" then
@@ -90,9 +78,10 @@ local function bkauth_do_request(host, path, params, request_id)
         return nil, new_err
     end
 
+    -- FIXME: api/v3 would not check result.code
     if result.code ~= 0 then
         local new_err = string_format(
-                "failed to request third-party api, url: %s, request_id: %s, result.code!=0, status: %s, response: %s",
+                "failed to request third-party api, %s, request_id: %s, result.code!=0, status: %s, response: %s",
                 url, request_id, res.status, res.body
         )
         core.log.error(new_err)
@@ -102,105 +91,36 @@ local function bkauth_do_request(host, path, params, request_id)
     return result, nil
 end
 
-function _M.verify_app_secret(app_code, app_secret)
-    local request_id = uuid.generate_v4()
-    local path = string_format(VERIFY_APP_SECRET_URL, app_code)
-    local params = {
-            method = "POST",
-            body = core.json.encode(
-                {
-                    bk_app_secret = app_secret,
-                }
-            ),
-            ssl_verify = false,
+local _M = {
+    host = bk_core.config.get_bkuser_addr(),
+    app_code = bkapp.bk_app_code,
+    app_secret = bkapp.bk_app_secret,
+}
 
-            headers = {
-                ["X-Bk-App-Code"] = _M.app_code,
-                ["X-Bk-App-Secret"] = _M.app_secret,
-                ["X-Request-Id"] = request_id,
-                ["Content-Type"] = "application/json",
-            },
-    }
-    local result, err = bkauth_do_request(_M.host, path, params, request_id)
-    if err ~= nil then
-        -- as cached data, we should return {} instead of err
-        if err == err_status_404 then
-            return { existed = false, verified = false }, nil
-        end
-        return nil, err
-    end
-
-    return {
-        existed = true,
-        verified = result.data.is_match,
-    }
-end
-
-function _M.list_app_secrets(app_code)
-    local path = string_format(LIST_APP_SECRETS_URL, app_code)
+function _M.get_user_tenant_info(app_code)
+    local path = string_format(GET_USER_URL, app_code)
     local request_id = uuid.generate_v4()
     local params = {
         method = "GET",
         ssl_verify = false,
         headers = {
-            ["X-Bk-App-Code"] = _M.app_code,
-            ["X-Bk-App-Secret"] = _M.app_secret,
-            ["X-Request-Id"] = request_id,
-            ["Content-Type"] = "application/x-www-form-urlencoded",
-        },
-    }
-    local result, err = bkauth_do_request(_M.host, path, params, request_id)
-    if err ~= nil then
-        -- as cached data, we should return {} instead of err
-        if err == err_status_404 then
-            return { app_secrets = {} }, nil
-        end
-        return nil, err
-    end
-
-    local app_secrets = {}
-    for _, app in ipairs(result.data) do
-        table_insert(app_secrets, app.bk_app_secret)
-    end
-
-    return {
-        app_secrets = app_secrets,
-    }
-end
-
-function _M.get_app_tenant_info(app_code)
-    local request_id = uuid.generate_v4()
-    local path = string_format(GET_APP_URL, app_code)
-    local params = {
-        method = "GET",
-        ssl_verify = false,
-        headers = {
-            ["X-Bk-App-Code"] = _M.app_code,
-            ["X-Bk-App-Secret"] = _M.app_secret,
             ["X-Request-Id"] = request_id,
             ["Content-Type"] = "application/json",
         },
     }
-    local result, err = bkauth_do_request(_M.host, path, params, request_id)
+    local result, err = bkuser_do_request(_M.host, path, params, request_id)
     if err ~= nil then
-        -- as cached data, we should return {} instead of err
         if err == err_status_404 then
-            return { error_message="the app not exists" }, nil
+            return { error_message="the user not exists" }, nil
         end
         return nil, err
     end
+
     -- data = {
-    --     "app_code": "demo",
-    --     "name": "demo",
-    --     "description": "xxxx",
-    --     "tenant": {
-    --         "mode": "single",
-    --         "id": "hello"
-    --     }
+    --
     -- }
     return {
-        tenant_mode=result.data.tenant.mode,
-        tenant_id=result.data.tenant.id,
+        tenant_id=result.data.tenant_id,
         error_message=nil,
     }, nil
 end
