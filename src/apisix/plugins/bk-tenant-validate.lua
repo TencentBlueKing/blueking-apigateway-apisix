@@ -83,7 +83,7 @@ local function validate_app_tenant_id(
         if is_empty(header_tenant_id) then
             local err_msg = string.format(
                 "Cross-tenant calls are not allowed: header X-Bk-Tenant-Id is required and should not be empty. " ..
-                "the app %s tenant_mode=%s. [AH]",
+                "the app %s tenant_mode=%s. [AH1]",
                 ctx.var.bk_app:get_app_code(), app_tenant_mode
             )
             return reject_cross_tenant(err_msg)
@@ -95,7 +95,7 @@ local function validate_app_tenant_id(
         if app_tenant_id ~= header_tenant_id then
             local err_msg = string.format(
                 "Cross-tenant calls are not allowed: current header X-Bk-Tenant-Id=%s, "..
-                "app %s belongs to tenant %s(tenant_mode=%s). [AH]",
+                "app %s belongs to tenant %s(tenant_mode=%s). [AH2]",
                 header_tenant_id, ctx.var.bk_app:get_app_code(), app_tenant_id, app_tenant_mode
             )
             return reject_cross_tenant(err_msg)
@@ -143,7 +143,7 @@ local function validate_user_tenant_id(ctx, gateway_tenant_mode, gateway_tenant_
 end
 
 local function validate_header_tenant_id(ctx, gateway_tenant_mode, gateway_tenant_id, header_tenant_id)
-    if is_not_empty(header_tenant_id ) then
+    if is_not_empty(header_tenant_id) then
         if gateway_tenant_mode ~= "global" and gateway_tenant_id ~= header_tenant_id then
             local err_msg = string.format(
                 "Cross-tenant calls are not allowed: gateway belongs to tenant %s, header tenant_id is %s. [GH]",
