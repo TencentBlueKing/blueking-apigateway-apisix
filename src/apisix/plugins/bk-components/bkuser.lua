@@ -97,8 +97,8 @@ local _M = {
     app_secret = bkapp.bk_app_secret,
 }
 
-function _M.get_user_tenant_info(app_code)
-    local path = string_format(GET_USER_URL, app_code)
+function _M.get_user_tenant_info(username)
+    local path = string_format(GET_USER_URL, username)
     local request_id = uuid.generate_v4()
     local params = {
         method = "GET",

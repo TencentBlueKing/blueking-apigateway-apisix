@@ -24,7 +24,7 @@ local bk_components_utils = require("apisix.plugins.bk-components.utils")
 
 local string_format = string.format
 
-local VERIFY_BK_TOKEN_URL = "/api/v3/apigw/bk-tokens/verify/"
+local VERIFY_BK_TOKEN_URL = "/login/api/v3/apigw/bk-tokens/verify/"
 
 local BKLOGIN_TIMEOUT_MS = 5 * 1000
 
@@ -88,13 +88,7 @@ function _M.get_username_by_bk_token(bk_token)
     if err ~= nil then
         return nil, err
     end
-
-    if result.bk_error_code ~= 0 then
-        return {
-            error_message = string_format("bk_token is invalid,host: %s, path: %s, code: %s",
-                                           _M.host, path, result.bk_error_code),
-        }
-    end
+    -- {"data": {"bk_username": "cpyjg3xo3ta0op6t", "tenant_id": "system"}}
 
     return {
         username = result.data.bk_username,
