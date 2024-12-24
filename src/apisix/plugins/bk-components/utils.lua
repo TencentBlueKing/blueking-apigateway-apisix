@@ -86,7 +86,7 @@ local function handle_request(url, params, timeout, raise_for_status)
         return nil, err .. ", response: nil"
     end
 
-    if raise_for_status and  res.status ~= ngx.HTTP_OK then
+    if raise_for_status and res.status ~= ngx.HTTP_OK then
         return nil, string_format("status is %s, not 200", res.status)
     end
 

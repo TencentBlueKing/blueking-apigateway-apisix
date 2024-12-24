@@ -28,8 +28,11 @@ local VERIFY_BK_TOKEN_URL = "/login/api/v3/apigw/bk-tokens/verify/"
 
 local BKLOGIN_TIMEOUT_MS = 5 * 1000
 
+local err_status_400 = "status 400, bk_token is not valid"
+
 local _M = {
     host = bk_core.config.get_login_addr(),
+    token = bk_core.config.get_login_token(),
 }
 
 local function bklogin_do_request(host, path, params, request_id)
@@ -38,7 +41,7 @@ local function bklogin_do_request(host, path, params, request_id)
     end
 
     local url = bk_core.url.url_single_joining_slash(host, path)
-    local res, err = bk_components_utils.handle_request(url, params, BKLOGIN_TIMEOUT_MS, true)
+    local res, err = bk_components_utils.handle_request(url, params, BKLOGIN_TIMEOUT_MS, false)
     if err ~= nil then
         -- if connection refused, return directly, without wrap(for the fallback cache upon layer)
         if err == "connection refused" then
@@ -50,6 +53,21 @@ local function bklogin_do_request(host, path, params, request_id)
             "failed to request third-party api, url: %s, request_id: %s, err: %s",
             url, request_id, err
         )
+        core.log.error(new_err)
+        return nil, new_err
+    end
+
+    -- 响应格式正常，错误码 400，表示 bk_token 非法
+    -- note: here we return an {} instead of err, because the lrucache should cache this result as well
+    if res.status == 400 then
+        return nil, err_status_400
+    end
+
+    if res.status ~= 200 then
+        local new_err = string_format(
+                "failed to request third-party api, url: %s, request_id: %s, status!=200, status: %s, response: %s",
+                url, request_id, res.status, res.body
+            )
         core.log.error(new_err)
         return nil, new_err
     end
@@ -81,18 +99,24 @@ function _M.get_username_by_bk_token(bk_token)
             ssl_verify = false,
             headers = {
                 ["Content-Type"] = "application/x-www-form-urlencoded",
+                -- use bearer token to connect bklogin
+                ["Authorization"] = "Bearer " .. _M.token,
             },
     }
 
     local result, err = bklogin_do_request(_M.host, path, params, request_id)
     if err ~= nil then
+        if err == err_status_400 then
+            return {error_message="bk_token is not valid"}, nil
+        end
+
         return nil, err
     end
     -- {"data": {"bk_username": "cpyjg3xo3ta0op6t", "tenant_id": "system"}}
 
     return {
         username = result.data.bk_username,
-    }
+    }, nil
 end
 
 return _M

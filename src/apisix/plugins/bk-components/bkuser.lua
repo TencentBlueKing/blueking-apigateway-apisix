@@ -22,8 +22,7 @@ local bk_core = require("apisix.plugins.bk-core.init")
 local bk_components_utils = require("apisix.plugins.bk-components.utils")
 local string_format = string.format
 
--- FIXME: change to api/v3
-local GET_USER_URL = "/api/v2/profiles/%s"
+local GET_USER_URL = "/api/v3/apigw/tenant-users/%s/"
 local BKUSER_TIMEOUT_MS = 3 * 1000
 
 local bkapp = bk_core.config.get_bkapp() or {}
@@ -78,21 +77,12 @@ local function bkuser_do_request(host, path, params, request_id)
         return nil, new_err
     end
 
-    -- FIXME: api/v3 would not check result.code
-    if result.code ~= 0 then
-        local new_err = string_format(
-                "failed to request third-party api, %s, request_id: %s, result.code!=0, status: %s, response: %s",
-                url, request_id, res.status, res.body
-        )
-        core.log.error(new_err)
-        return nil, new_err
-    end
-
     return result, nil
 end
 
 local _M = {
     host = bk_core.config.get_bkuser_addr(),
+    token = bk_core.config.get_bkuser_token(),
     app_code = bkapp.bk_app_code,
     app_secret = bkapp.bk_app_secret,
 }
@@ -106,6 +96,8 @@ function _M.get_user_tenant_info(username)
         headers = {
             ["X-Request-Id"] = request_id,
             ["Content-Type"] = "application/json",
+            -- use bearer token to connect bkuser
+            ["Authorization"] = "Bearer " .. _M.token,
         },
     }
     local result, err = bkuser_do_request(_M.host, path, params, request_id)
