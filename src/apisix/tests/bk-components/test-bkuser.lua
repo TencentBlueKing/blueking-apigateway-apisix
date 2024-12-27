@@ -107,28 +107,6 @@ describe(
                     end
                 )
 
-                it(
-                    "code is not equal to 0", function()
-                        response = {
-                            status = 200,
-                            body = core.json.encode(
-                                {
-                                    code = 1,
-                                    message = "error",
-                                    data = {
-                                        tenant_id = nil,
-                                    },
-                                }
-                            ),
-                        }
-                        response_err = nil
-
-                        local result, err = bkuser.get_user_tenant_info("fake-app-code")
-                        assert.is_nil(result)
-                        assert.is_true(core.string.has_prefix(err, "failed to request third-party api"))
-                        assert.is_true(core.string.find(err, "request_id") ~= nil)
-                    end
-                )
 
                 it(
                     "status is not 200", function()

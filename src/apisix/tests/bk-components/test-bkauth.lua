@@ -435,7 +435,7 @@ describe(
                                 {
                                     code = 0,
                                     data = {
-                                        tenant = {
+                                        bk_tenant = {
                                             mode = "single",
                                             id = "tenant-id",
                                         },

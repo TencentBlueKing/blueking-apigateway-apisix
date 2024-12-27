@@ -199,8 +199,8 @@ function _M.get_app_tenant_info(app_code)
     --     }
     -- }
     return {
-        tenant_mode=result.data.tenant.mode,
-        tenant_id=result.data.tenant.id,
+        tenant_mode=result.data.bk_tenant.mode,
+        tenant_id=result.data.bk_tenant.id,
         error_message=nil,
     }, nil
 end

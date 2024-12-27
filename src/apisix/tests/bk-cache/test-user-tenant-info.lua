@@ -17,7 +17,7 @@
 --
 
 local user_tenant_info_cache = require("apisix.plugins.bk-cache.user-tenant-info")
-local bkauth_component = require("apisix.plugins.bk-components.bkauth")
+local bkuser_component = require("apisix.plugins.bk-components.bkuser")
 local uuid = require("resty.jit-uuid")
 
 describe(
@@ -32,7 +32,7 @@ describe(
                 get_user_tenant_info_err = nil
 
                 stub(
-                    bkauth_component, "get_user_tenant_info", function()
+                    bkuser_component, "get_user_tenant_info", function()
                         return get_user_tenant_info_result, get_user_tenant_info_err
                     end
                 )
@@ -41,7 +41,7 @@ describe(
 
         after_each(
             function()
-                bkauth_component.get_user_tenant_info:revert()
+                bkuser_component.get_user_tenant_info:revert()
             end
         )
 
@@ -61,15 +61,15 @@ describe(
                                 tenant_id = "tenant-123",
                             }
                         )
-                        assert.stub(bkauth_component.get_user_tenant_info).was_called_with(username)
+                        assert.stub(bkuser_component.get_user_tenant_info).was_called_with(username)
 
                         -- get from cache
                         user_tenant_info_cache.get_user_tenant_info(username)
-                        assert.stub(bkauth_component.get_user_tenant_info).was_called(1)
+                        assert.stub(bkuser_component.get_user_tenant_info).was_called(1)
 
                         -- get from func
                         user_tenant_info_cache.get_user_tenant_info(uuid.generate_v4())
-                        assert.stub(bkauth_component.get_user_tenant_info).was_called(2)
+                        assert.stub(bkuser_component.get_user_tenant_info).was_called(2)
                     end
                 )
 
@@ -82,15 +82,15 @@ describe(
                         local result, err = user_tenant_info_cache.get_user_tenant_info(username)
                         assert.is_nil(result)
                         assert.is_equal(err, "error")
-                        assert.stub(bkauth_component.get_user_tenant_info).was_called_with(username)
+                        assert.stub(bkuser_component.get_user_tenant_info).was_called_with(username)
 
                         -- has err, no cache
                         user_tenant_info_cache.get_user_tenant_info(username)
-                        assert.stub(bkauth_component.get_user_tenant_info).was_called(2)
+                        assert.stub(bkuser_component.get_user_tenant_info).was_called(2)
 
                         -- get from func
                         user_tenant_info_cache.get_user_tenant_info(uuid.generate_v4())
-                        assert.stub(bkauth_component.get_user_tenant_info).was_called(3)
+                        assert.stub(bkuser_component.get_user_tenant_info).was_called(3)
                     end
                 )
 
@@ -103,7 +103,7 @@ describe(
                         local result, err = user_tenant_info_cache.get_user_tenant_info(username)
                         assert.is_nil(result)
                         assert.is_equal(err, 'get_user_tenant_info failed, error: connection refused')
-                        assert.stub(bkauth_component.get_user_tenant_info).was_called_with(username)
+                        assert.stub(bkuser_component.get_user_tenant_info).was_called_with(username)
                     end
                 )
 
@@ -123,7 +123,7 @@ describe(
                         local result, err = user_tenant_info_cache.get_user_tenant_info(username)
                         assert.is_same(result, cached_get_user_tenant_info_result)
                         assert.is_nil(err)
-                        assert.stub(bkauth_component.get_user_tenant_info).was_called_with(username)
+                        assert.stub(bkuser_component.get_user_tenant_info).was_called_with(username)
                     end
                 )
             end

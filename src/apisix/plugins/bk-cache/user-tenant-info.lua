@@ -16,7 +16,7 @@
 -- to the current version of the project delivered to anyone in the future.
 --
 local core = require("apisix.core")
-local bkauth_component = require("apisix.plugins.bk-components.bkauth")
+local bkuser_component = require("apisix.plugins.bk-components.bkuser")
 local lru_new = require("resty.lrucache").new
 
 local USER_TENANT_ID_CACHE_TTL = 600
@@ -39,7 +39,7 @@ local _M = {}
 function _M.get_user_tenant_info(username)
     local key = username
 
-    local result, err = user_tenant_info_lrucache(key, nil, bkauth_component.get_user_tenant_info, username)
+    local result, err = user_tenant_info_lrucache(key, nil, bkuser_component.get_user_tenant_info, username)
     if result == nil then
         -- if the service is down(100% down), we can use the fallback cache, make the dp robust
         if err == "connection refused" then

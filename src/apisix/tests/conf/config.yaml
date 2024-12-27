@@ -49,9 +49,11 @@ bk_gateway:
       addr: "http://login-tencent.example.com"
     login:
       addr: "http://login.example"
+      token: "abcdefg"
     ssm:
       addr: "http://ssm.example.com"
     bkcore:
       addr: "http://bkcore.example.com"
     bkuser:
       addr: "http://bkuser.example.com"
+      token: "abcdefg"
