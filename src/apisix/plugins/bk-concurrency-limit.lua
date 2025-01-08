@@ -80,7 +80,13 @@ function _M.access(conf, ctx)
         return
     end
 
-    return errorx.exit_with_apigw_err(ctx, errorx.new_concurrency_limit_restriction(), _M)
+    return errorx.exit_with_apigw_err(
+        ctx, errorx.new_concurrency_limit_restriction():with_fields(
+            {
+                key = ctx.var.bk_concurrency_limit_key,
+            }
+        ), _M
+    )
 end
 
 function _M.log(conf, ctx)
@@ -91,6 +97,9 @@ function _M.log(conf, ctx)
         return
     end
 
+    -- FIXME: if return 500 in the access phase, the decrease will not be executed
+    --        so we need to decrease it
+    -- reference: https://github.com/apache/apisix/issues/11868
     return limiter.decrease(metadata.value, ctx)
 end
 
