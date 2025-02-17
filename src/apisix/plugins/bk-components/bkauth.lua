@@ -29,7 +29,7 @@ local VERIFY_APP_SECRET_URL = "/api/v1/apps/%s/access-keys/verify"
 local LIST_APP_SECRETS_URL = "/api/v1/apps/%s/access-keys"
 local GET_APP_URL = "/api/v1/apps/%s"
 
-local BKAUTH_TIMEOUT_MS = 3 * 1000
+local BKAUTH_TIMEOUT_MS = 5 * 1000
 
 local bkapp = bk_core.config.get_bkapp() or {}
 
