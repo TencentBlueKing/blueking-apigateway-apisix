@@ -162,6 +162,8 @@ describe(
                     end
                 )
 
+                -- FIXME: add inner-jwt-verifier
+
                 it(
                     "legacy verifier", function()
                         local verifier = bk_auth_verify:get_real_verifier()
