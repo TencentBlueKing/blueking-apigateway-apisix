@@ -16,6 +16,15 @@
 -- to the current version of the project delivered to anyone in the future.
 --
 
+
+-- verified the inner jwt token signed by bk-apigateway
+-- X-Bkapi-Authorization: {"inner_jwt": ""}
+-- currently it only be used in the mcp-proxy, which will proxy the request from agent to the real apigateway api
+-- so, after the bk-apigateway verified the app and user, it generate the inner_jwt and call the real apigateway api
+-- the app_code in inner_jwt is not the real app_code, but a virtual app_code(like mcp_{mcp_service_id}_app_code)
+-- so the permission can be controlled by the virtual app_code,
+-- which not exists in the real PaaS, so no security concern.
+
 local bk_app_define = require("apisix.plugins.bk-define.app")
 local bk_user_define = require("apisix.plugins.bk-define.user")
 local jwt_utils = require("apisix.plugins.bk-auth-verify.jwt-utils")
@@ -50,7 +59,7 @@ function _M.verify_app(self)
 
     local app_info = jwt_obj.payload.app
     if app_info == nil then
-        return nil, string_format("parameter jwt does not indicate app information")
+        return nil, "parameter jwt does not indicate app information"
     end
     if app_info.verified ~= true then
         return nil, "the app indicated by jwt is not verified"

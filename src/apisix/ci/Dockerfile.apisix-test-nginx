@@ -2,7 +2,7 @@ ARG APISIX_VERSION="3.2.1"
 FROM apache/apisix:$APISIX_VERSION-centos
 
 # note: uncomment below if it's slow to build image
-# RUN mv /etc/yum.repos.d/CentOS-Base.repo /etc/yum.repos.d/CentOS-Base.repo.backup && \ 
+# RUN mv /etc/yum.repos.d/CentOS-Base.repo /etc/yum.repos.d/CentOS-Base.repo.backup && \
 #     curl -o /etc/yum.repos.d/CentOS-Base.repo http://mirrors.cloud.tencent.com/repo/centos7_base.repo && \
 #     yum clean all
 
@@ -22,10 +22,12 @@ RUN wget https://github.com/apache/apisix/archive/refs/tags/${APISIX_VERSION}.ta
 ARG CODE_DIR=/codes/apisix-${APISIX_VERSION}
 RUN sed -i 's#yum install -y openresty openresty-debug openresty-openssl111-debug-devel pcre pcre-devel#yum install -y openresty openresty-debug-1.25.3.2-1.el7.x86_64 openresty-openssl111-debug-devel pcre pcre-devel --skip-broken#g' ${CODE_DIR}/ci/centos7-ci.sh
 RUN sed -i 's|https://registry.npm.taobao.org|https://registry.npmmirror.com|g' ${CODE_DIR}/t/plugin/grpc-web/package-lock.json
+# fix archived libs in luarocks
+RUN sed -i 's|lualdap = 1.2.6-1|lualdap = 1.4.0-1|g' ${CODE_DIR}/rockspec/apisix-master-0.rockspec
 RUN cd ${CODE_DIR} &&  bash ./ci/centos7-ci.sh install_dependencies
 RUN cp -r ${CODE_DIR}/t /usr/local/apisix/
 
-# the t/APISIX.pm:add_cleanup_handler will call it if the FLUSH_ETCD=1 
+# the t/APISIX.pm:add_cleanup_handler will call it if the FLUSH_ETCD=1
 RUN ln -s /usr/local/apisix/deps/bin /usr/local/apisix/bin
 
 # install etcd, we need to run in the container
