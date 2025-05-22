@@ -24,6 +24,8 @@
 -- the app_code in inner_jwt is not the real app_code, but a virtual app_code(like mcp_{mcp_service_id}_app_code)
 -- so the permission can be controlled by the virtual app_code,
 -- which not exists in the real PaaS, so no security concern.
+-- NOTE: the design of verifier is not so good, so here we parse_bk_jwt_token twice
+--       only refactor it if the performance is a problem
 
 local bk_app_define = require("apisix.plugins.bk-define.app")
 local bk_user_define = require("apisix.plugins.bk-define.user")
