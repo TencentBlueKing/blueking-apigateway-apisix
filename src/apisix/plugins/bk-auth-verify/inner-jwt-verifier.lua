@@ -44,6 +44,10 @@ function _M.verify_app(self)
         return nil, string_format("parameter jwt is invalid: %s", err)
     end
 
+    if jwt_obj.header.kid ~= "bk-apigateway" then
+        return nil, "invalid kid, only bk-apigateway is supported"
+    end
+
     local app_info = jwt_obj.payload.app
     if app_info == nil then
         return nil, string_format("parameter jwt does not indicate app information")
@@ -67,6 +71,10 @@ function _M.verify_user(self)
         return nil, string_format("parameter jwt is invalid: %s", err)
     end
 
+    if jwt_obj.header.kid ~= "bk-apigateway" then
+        return nil, "invalid kid, only bk-apigateway is supported"
+    end
+
     local user_info = jwt_obj.payload.user
     if user_info == nil then
         return nil, "parameter jwt does not indicate user information"
@@ -80,7 +88,7 @@ function _M.verify_user(self)
         {
             username = user_info.username,
             verified = true,
-            source_type = "jwt",
+            source_type = "inner_jwt",
         }
     )
 end
