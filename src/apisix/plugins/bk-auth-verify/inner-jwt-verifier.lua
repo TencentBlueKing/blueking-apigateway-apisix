@@ -21,7 +21,7 @@
 -- X-Bkapi-Authorization: {"inner_jwt": ""}
 -- currently it only be used in the mcp-proxy, which will proxy the request from agent to the real apigateway api
 -- so, after the bk-apigateway verified the app and user, it generate the inner_jwt and call the real apigateway api
--- the app_code in inner_jwt is not the real app_code, but a virtual app_code(like mcp_{mcp_service_id}_app_code)
+-- the app_code in inner_jwt is not the real app_code, but a virtual app_code(like v_mcp_{mcp_service_id}_{app_code})
 -- so the permission can be controlled by the virtual app_code,
 -- which not exists in the real PaaS, so no security concern.
 -- NOTE: the design of verifier is not so good, so here we parse_bk_jwt_token twice
