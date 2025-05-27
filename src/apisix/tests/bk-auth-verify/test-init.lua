@@ -163,6 +163,15 @@ describe(
                 )
 
                 it(
+                    "inner-jwt-verifier", function()
+                        auth_params.inner_jwt = "fake-inner-jwt"
+
+                        local verifier = bk_auth_verify:get_real_verifier()
+                        assert.is_equal(verifier.name, "inner-jwt")
+                    end
+                )
+
+                it(
                     "legacy verifier", function()
                         local verifier = bk_auth_verify:get_real_verifier()
                         assert.is_equal(verifier.name, "legacy")

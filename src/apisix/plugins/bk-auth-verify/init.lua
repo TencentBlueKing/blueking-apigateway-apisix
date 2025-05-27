@@ -19,6 +19,7 @@
 local pl_types = require("pl.types")
 local access_token_verifier = require("apisix.plugins.bk-auth-verify.access-token-verifier")
 local jwt_verifier = require("apisix.plugins.bk-auth-verify.jwt-verifier")
+local inner_jwt_verifier = require("apisix.plugins.bk-auth-verify.inner-jwt-verifier")
 local legacy_verifier = require("apisix.plugins.bk-auth-verify.legacy-verifier")
 local bk_user_define = require("apisix.plugins.bk-define.user")
 local setmetatable = setmetatable
@@ -69,12 +70,16 @@ end
 function _M.get_real_verifier(self)
     local jwt_token = self.auth_params:get_string("jwt")
     local access_token = self.auth_params:get_string("access_token")
+    local inner_jwt_token = self.auth_params:get_string("inner_jwt")
 
     if not pl_types.is_empty(jwt_token) then
         return jwt_verifier.new(jwt_token, access_token)
 
     elseif not pl_types.is_empty(access_token) then
         return access_token_verifier.new(access_token, self.bk_app)
+
+    elseif not pl_types.is_empty(inner_jwt_token) then
+        return inner_jwt_verifier.new(inner_jwt_token)
 
     else
         return legacy_verifier.new(self.bk_app, self.bk_api_auth, self.auth_params)
