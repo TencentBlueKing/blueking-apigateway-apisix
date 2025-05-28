@@ -71,7 +71,7 @@ local function get_auth_params_from_header(ctx)
 
     local auth_params = core.json.decode(authorization)
     if type(auth_params) ~= "table" then
-        core.log.error("the invalid X-Bkapi-Authorization: ", core.json.delay_encode(authorization))
+        core.log.warn("the invalid X-Bkapi-Authorization: ", core.json.delay_encode(authorization))
         return nil, "request header X-Bkapi-Authorization is not a valid JSON"
     end
 
