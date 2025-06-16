@@ -10,8 +10,9 @@
 插件优先级说明
 
 - 参考 apisix 官方插件优先级，蓝鲸插件优先级范围推荐：17000 ~ 19000
-- 插件 ext-plugin-pre-req 中可能执行用户自定义 external plugin，因此蓝鲸官方的认证，校验逻辑插件优先级需高于此插件
-- 插件 bk-permission 优先级需高于 ext-plugin-pre-req
+- 已经去除 external plugin
+  - ~~插件 ext-plugin-pre-req 中可能执行用户自定义 external plugin，因此蓝鲸官方的认证，校验逻辑插件优先级需高于此插件~~
+  - ~~插件 bk-permission 优先级需高于 ext-plugin-pre-req~~
 - 上下文注入、认证阶段不能终结请求
 
 插件优先级设置
@@ -19,21 +20,21 @@
 上下文注入，优先级：18000 ~ 19000
 
 - bk-legacy-invalid-params                  # priority: 18880  # 用于兼容老版本 go1.16 使用 `;` 作为 query string 分隔符
-- bk-opentelemetry                          # priority: 18870  # 这个插件用于 opentelemetry, 需要尽量精准统计全局的耗时，同时需要注入 trace_id/span_id 作为后面所有插件自定义 opentelemetry 上报的 trace_id 即 parent span_id (abandonned, will be replaced by another plugin)
+- ~~bk-opentelemetry                          # priority: 18870  # 这个插件用于 opentelemetry, 需要尽量精准统计全局的耗时，同时需要注入 trace_id/span_id 作为后面所有插件自定义 opentelemetry 上报的 trace_id 即 parent span_id (abandonned, will be replaced by another plugin)~~
 - bk-not-found-handler                      # priority: 18860  # 该插件仅适用于由 operator 创建的默认根路由，用以规范化 404 消息。该插件以较高优先级结束请求返回 404 错误信息
 - bk-request-id                             # priority: 18850
 - bk-stage-context                          # priority: 18840
-- bk-service-context                        # priority: 18830 (abandonned)
+- ~~bk-service-context                        # priority: 18830 (abandonned)~~
 - bk-resource-context                       # priority: 18820
-- bk-status-rewrite                         # priority: 18815
+- bk-status-rewrite                         # priority: 18815 (will be deprecated)
 - bk-verified-user-exempted-apps            # priority: 18810 (will be deprecated)
 - bk-real-ip                                # priority: 18809
 - bk-log-context                            # priority: 18800 # 该插件应默认应用于所有路由。该插件需要以较高优先级运行于请求响应及 log 阶段，目的在于：1. 在 body_filter 阶段获取后端返回的纯净 body；2. 在 log 阶段为 log 插件注入相应日志变量
 
 认证：
 
-- bk-workflow-parameters                    # priority: 18750 (abandonned)
-- bk-auth-parameters                        # priority: 18740 (abandonned)
+- ~~bk-workflow-parameters                    # priority: 18750 (abandonned)~~
+- ~~bk-auth-parameters                        # priority: 18740 (abandonned)~~
 - bk-auth-verify                            # priority: 18730
 
 执行 - 响应：优先级：17500 ~ 18000
@@ -47,12 +48,12 @@
 - bk-user-restriction                       # priority: 17679
 - bk-jwt                                    # priority: 17670
 - bk-ip-restriction                         # priority: 17662
-- bk-ip-group-restriction                   # priority: 17661 (will be deprecated)
-- bk-concurrency-limit                      # priority: 17660
+- ~~bk-ip-group-restriction                   # priority: 17661 (1.18 removed)~~
+- bk-concurrency-limit                      # priority: 17660 (disabled by default, should fix the bug of bk-concurrency-limit)
 - bk-resource-rate-limit                    # priority: 17653
 - bk-stage-rate-limit                       # priority: 17652
-- bk-global-rate-limit                      # priority: 17651 (will be removed)
-- bk-stage-global-rate-limit                # priority: 17650 (change it back to 17651 after bk-global-rate-limit is removed)
+- ~~bk-global-rate-limit                      # priority: 17651 (1.18 removed)~~
+- bk-stage-global-rate-limit                # priority: 17651 (not used, but just keep in codebase, maybe will be used in the future)
 - bk-permission                             # priority: 17640
 
 proxy 预处理：17000 ~ 17500
@@ -70,13 +71,15 @@ proxy 预处理：17000 ~ 17500
 - fault-injection                           # priority: 11000
 - request-validation                        # priority: 2800
 - api-breaker                               # priority: 1005
+- redirect                                  # priority: 900
+- response-rewrite                          # priority: 899
 - prometheus                                # priority: 500
 - file-logger (priority update)             # priority: 399
 
 响应后处理：
 
 - bk-response-check                         # priority: 153
-- bk-time-cost                              # priority: 150
+- ~~bk-time-cost                              # priority: 150 (not implemented)~~
 - bk-debug                                  # priority: 145
 - bk-error-wrapper                          # priority: 0 # 该插件应默认应用于所有路由
 
