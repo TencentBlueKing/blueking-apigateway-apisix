@@ -235,6 +235,7 @@ describe(
                         assert.is_equal(user.username, "admin")
                         assert.is_true(user.verified)
                         -- 1:admin:true:
+                        -- NOTE: ee is ok, but te is different acf1ec2b10cdb53bb7ee2f6ccee23df4
                         assert.is_equal(user:uid(), "16f662fd0e0528543ea773816c33879a")
                     end
                 )
