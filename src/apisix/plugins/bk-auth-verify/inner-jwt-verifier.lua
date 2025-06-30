@@ -88,11 +88,15 @@ function _M.verify_user(self)
 
     local user_info = jwt_obj.payload.user
     if user_info == nil then
-        return nil, "parameter jwt does not indicate user information"
+        return bk_user_define.new_anonymous_user(
+        "auth parameter does not indicate user information, verified by inner-jwt-verifier"
+        )
     end
 
     if user_info.verified ~= true then
-        return nil, "the user indicated by jwt is not verified"
+        return bk_user_define.new_anonymous_user(
+        "the user indicated by auth parameter is not verified, verified by inner-jwt-verifier"
+        )
     end
 
     return bk_user_define.new_user(

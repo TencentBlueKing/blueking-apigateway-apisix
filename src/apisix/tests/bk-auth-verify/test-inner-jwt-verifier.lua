@@ -179,7 +179,7 @@ describe(
                 )
 
                 it(
-                    "user is nil", function()
+                    "user is nil, use anonymous user", function()
                         parse_jwt_token_result = {
                             header = {
                                 kid = "bk-apigateway"
@@ -189,8 +189,10 @@ describe(
                         parse_jwt_token_err = nil
 
                         local user, err = inner_jwt_verifier.new("fake-jwt-token"):verify_user()
-                        assert.is_equal(err, "parameter jwt does not indicate user information")
-                        assert.is_nil(user)
+                        assert.is_nil(err)
+                        assert.is_equal(user.username, "")
+                        assert.is_false(user.verified)
+                        assert.is_equal(user.valid_error_message, "auth parameter does not indicate user information, verified by inner-jwt-verifier")
                     end
                 )
 
@@ -210,8 +212,10 @@ describe(
                         parse_jwt_token_err = nil
 
                         local user, err = inner_jwt_verifier.new("fake-jwt-token"):verify_user()
-                        assert.is_equal(err, "the user indicated by jwt is not verified")
-                        assert.is_nil(user)
+                        assert.is_nil(err)
+                        assert.is_equal(user.username, "")
+                        assert.is_false(user.verified)
+                        assert.is_equal(user.valid_error_message, "the user indicated by auth parameter is not verified, verified by inner-jwt-verifier")
                     end
                 )
 
