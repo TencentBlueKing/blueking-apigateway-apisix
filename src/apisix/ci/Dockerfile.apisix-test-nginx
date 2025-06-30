@@ -24,7 +24,7 @@ RUN sed -i 's#yum install -y openresty openresty-debug openresty-openssl111-debu
 RUN sed -i 's|https://registry.npm.taobao.org|https://registry.npmmirror.com|g' ${CODE_DIR}/t/plugin/grpc-web/package-lock.json
 # fix archived libs in luarocks
 RUN sed -i 's|lualdap = 1.2.6-1|lualdap = 1.4.0-1|g' ${CODE_DIR}/rockspec/apisix-master-0.rockspec
-RUN cd ${CODE_DIR} &&  bash ./ci/centos7-ci.sh install_dependencies
+RUN cd ${CODE_DIR} && sed -i 's/3.8.0/3.12.0/g' utils/linux-install-luarocks.sh && bash ./ci/centos7-ci.sh install_dependencies
 RUN cp -r ${CODE_DIR}/t /usr/local/apisix/
 
 # the t/APISIX.pm:add_cleanup_handler will call it if the FLUSH_ETCD=1
