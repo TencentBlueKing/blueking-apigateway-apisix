@@ -39,7 +39,6 @@ describe(
         end
 
         local match_uri = function(router, uri)
-            local match_opts = {}
             local ctx = {
                 var = {
                     request_method = "GET",
@@ -49,8 +48,8 @@ describe(
                 }
             }
 
-            local result = base_router.match_uri(router, match_opts, ctx)
-            return result, match_opts
+            local result = base_router.match_uri(router,  ctx)
+            return result
         end
 
         context(
@@ -61,6 +60,7 @@ describe(
                     function()
                         local router = new_router("/api/v1/users/:id/", true)
 
+                        -- FIXME: failed here, the 3.2.1 is_ture
                         assert.is_true(match_uri(router, "/api/v1/users/1"))
                         assert.is_nil(match_uri(router, "/api/v1/users/1/"))
                     end
@@ -130,7 +130,7 @@ describe(
                 assert.is_equal("a", splited[4])
             end
         )
-        
+
         it(
             "ending slash",
             function ()

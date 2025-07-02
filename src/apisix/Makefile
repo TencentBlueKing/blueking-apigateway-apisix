@@ -4,7 +4,7 @@ RUN_WITH_IT ?= -it
 
 .PHONY: apisix-test-busted
 apisix-test-busted:
-	docker build -t apisix-test-busted -f ci/Dockerfile.apisix-test-busted .
+	docker build -t apisix-test-busted-313 -f ci/Dockerfile.apisix-test-busted .
 
 .PHONY: apisix-test-nginx
 apisix-test-nginx:
@@ -18,7 +18,7 @@ test-busted:
 	-v ${ROOT_DIR}/logs/:/bkgateway/logs/ \
 	-v ${ROOT_DIR}/tests/conf/nginx.conf:/bkgateway/conf/nginx.conf \
 	-v ${ROOT_DIR}/plugins:/bkgateway/apisix/plugins \
-	apisix-test-busted "/run-test-busted.sh"
+	apisix-test-busted-313 "/run-test-busted.sh"
 
 # make test-nginx
 # make test-nginx CASE_FILE=bk-traffic-label.t

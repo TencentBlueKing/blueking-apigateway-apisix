@@ -1,16 +1,11 @@
-ARG APISIX_VERSION="3.2.1"
-FROM apache/apisix:$APISIX_VERSION-centos
+ARG APISIX_VERSION="3.11.0"
+FROM apache/apisix:$APISIX_VERSION-redhat
 
-# in github action, change the source of yum is not ok
-# note: uncomment below if it's slow to build image
-# RUN mv /etc/yum.repos.d/CentOS-Base.repo /etc/yum.repos.d/CentOS-Base.repo.backup && \
-#     curl -o /etc/yum.repos.d/CentOS-Base.repo http://mirrors.cloud.tencent.com/repo/centos7_base.repo && \
-#     yum clean all
+# RUN sed -i 's/mirrorlist/#mirrorlist/g' /etc/yum.repos.d/CentOS-*
+# RUN sed -i 's|#baseurl=http://mirror.centos.org|baseurl=http://vault.centos.org|g' /etc/yum.repos.d/CentOS-*
 
-RUN sed -i 's/mirrorlist/#mirrorlist/g' /etc/yum.repos.d/CentOS-*
-RUN sed -i 's|#baseurl=http://mirror.centos.org|baseurl=http://vault.centos.org|g' /etc/yum.repos.d/CentOS-*
+RUN yum install -y sudo make gcc wget unzip git # valgrind
 
-RUN yum install -y sudo make gcc curl wget unzip git valgrind
 
 ARG APISIX_VERSION
 RUN wget https://raw.githubusercontent.com/apache/apisix/${APISIX_VERSION}/utils/linux-install-luarocks.sh && sed -i 's/3.8.0/3.12.0/g' linux-install-luarocks.sh &&  bash linux-install-luarocks.sh
