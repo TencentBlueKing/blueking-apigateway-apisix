@@ -67,8 +67,8 @@ local function check_schema(conf, schema_type)
     end
     if conf.allow_origins_by_regex then
         for i, re_rule in ipairs(conf.allow_origins_by_regex) do
-            local ok, err = re_compile(re_rule, "j")
-            if not ok then
+            local ok2, err = re_compile(re_rule, "j")
+            if not ok2 then
                 return false, err
             end
         end
@@ -76,8 +76,8 @@ local function check_schema(conf, schema_type)
 
     if conf.timing_allow_origins_by_regex then
         for i, re_rule in ipairs(conf.timing_allow_origins_by_regex) do
-            local ok, err = re_compile(re_rule, "j")
-            if not ok then
+            local ok3, err = re_compile(re_rule, "j")
+            if not ok3 then
                 return false, err
             end
         end
