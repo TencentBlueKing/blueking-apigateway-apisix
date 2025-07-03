@@ -6,19 +6,22 @@ nohup etcd >/tmp/etcd.log 2>&1 &
 sleep 1
 
 echo "copy the plugins/*"
-cp -r /bkgateway/apisix/plugins/* /usr/local/apisix/apisix/plugins/
 # cp --verbose -r /bkgateway/apisix/plugins/* /usr/local/apisix/apisix/plugins/
+cp -r /bkgateway/apisix/plugins/* /usr/local/apisix/apisix/plugins/
 
 echo "copy the t/*"
 # cp --verbose -r /bkgateway/t/* /usr/local/apisix/t/
 cp -r /bkgateway/t/* /usr/local/apisix/t/
 
 echo "register the bk-* plugins"
+# FIXME: try to dynamic update the config.lua?  or just add into the append yaml below
 # append the bk plugins into the plugin list
-ls /usr/local/apisix/apisix/plugins |
-    egrep "bk-.*.lua" | awk -F '.' '{print "  - "$1}' |
-    sed '1i\temp:' |
-    yq ea -iPM '. as $item ireduce({}; . * $item) | .plugins += .temp | del(.temp)' /usr/local/apisix/conf/config-default.yaml -
+# ls /usr/local/apisix/apisix/plugins |
+#     egrep "bk-.*.lua" | awk -F '.' '{print "  - "$1}' |
+#     sed '1i\temp:' |
+#     yq ea -iPM '. as $item ireduce({}; . * $item) | .plugins += .temp | del(.temp)' /usr/local/apisix/conf/config.yaml -
+
+# cat /usr/local/apisix/conf/config.yaml
 
 # why: bk-components/*.lua will error if the settings below is absent
 echo "append the bk-apigateway config into user_yaml_config"
@@ -64,12 +67,13 @@ EOF
 
 echo "run test"
 
-export PATH=/usr/local/openresty/nginx/sbin:$PATH
 
-# why: ci/centos7-ci.sh run_case
-export OPENRESTY_PREFIX="/usr/local/openresty-debug"
-export APISIX_MAIN="https://raw.githubusercontent.com/apache/incubator-apisix/master/rockspec/apisix-master-0.rockspec"
+export OPENRESTY_PREFIX="/usr/local/openresty"
+
 export PATH=$OPENRESTY_PREFIX/nginx/sbin:$OPENRESTY_PREFIX/luajit/bin:$OPENRESTY_PREFIX/bin:$PATH
+export OPENSSL_PREFIX=$OPENRESTY_PREFIX/openssl3
+export OPENSSL_BIN=$OPENSSL_PREFIX/bin/openssl
+
 
 if [ -n "$1" ]; then
     CASE_FILE=$1
