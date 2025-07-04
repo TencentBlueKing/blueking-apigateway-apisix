@@ -42,6 +42,7 @@ describe(
                         default_conn_delay = 0.01,
                         key_type = "var",
                         key = "bk_concurrency_limit_key",
+                        policy = "local",
                     },
                 }
 
@@ -190,7 +191,6 @@ describe(
                 it(
                     "should accept the request", function()
                         local result = concurrency_limit.access({}, ctx)
-
                         assert.is_nil(result)
                     end
                 )
