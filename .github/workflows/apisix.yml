@@ -36,13 +36,17 @@ jobs:
     - if: ${{ steps.cache-images.outputs.cache-hit == 'true' }}
       name: Load saved docker images
       run: |
-        if [[ -f docker-images-backup/apisix-images.tar ]]; then
-          docker load --input docker-images-backup/apisix-test-nginx-busted.tar
-          docker load --input docker-images-backup/apisix-test-nginx-images.tar
+        if [[ -f docker-images-backup/apisix-test-busted-images.tar ]]; then
+          docker load --input docker-images-backup/apisix-test-busted-images.tar
           rm docker-images-backup/apisix-test-busted-images.tar
-          rm docker-images-backup/apisix-test-nginx-images.tar
-          echo "loaded docker images"
+          echo "loaded docker images apisix-test-busted"
         fi
+        if [[ -f docker-images-backup/apisix-test-nginx-images.tar ]]; then
+          docker load --input docker-images-backup/apisix-test-nginx-images.tar
+          rm docker-images-backup/apisix-test-nginx-images.tar
+          echo "loaded docker images apisix-test-nginx"
+        fi
+        docker images | grep apisix-test
     - if: ${{ steps.cache-images.outputs.cache-hit != 'true' }}
       name: Build test image
       run: cd src/apisix && make apisix-test-images
