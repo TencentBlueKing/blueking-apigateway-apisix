@@ -31,13 +31,14 @@ jobs:
         cache-name: cache-apisix-docker-images
       with:
         path: docker-images-backup
-        key: ${{ runner.os }}-${{ env.cache-name }}-${{ hashFiles('./src/apisix/ci/Dockerfile.apisix-test-nginx', './src/apisix/ci/run-test-nginx.sh') }}
+        key: ${{ runner.os }}-${{ env.cache-name }}-${{ hashFiles('./src/apisix/ci/Dockerfile.apisix-test-busted', './src/apisix/ci/run-test-busted.sh', './src/apisix/ci/Dockerfile.apisix-test-nginx', './src/apisix/ci/run-test-nginx.sh') }}
 
     - if: ${{ steps.cache-images.outputs.cache-hit == 'true' }}
       name: Load saved docker images
       run: |
         if [[ -f docker-images-backup/apisix-images.tar ]]; then
-          docker load --input docker-images-backup/apisix-images.tar
+          docker load --input docker-images-backup/apisix-test-nginx-busted.tar
+          docker load --input docker-images-backup/apisix-test-nginx-images.tar
           echo "loaded docker images"
         fi
     - name: Build test image
@@ -50,5 +51,6 @@ jobs:
       name: Save docker images
       run: |
         echo "start backing up, $(date)"
-        docker save apisix-test-nginx-313 -o docker-images-backup/apisix-images.tar
+        docker save apisix-test-busted-313 -o docker-images-backup/apisix-test-busted-images.tar
+        docker save apisix-test-nginx-313 -o docker-images-backup/apisix-test-nginx-images.tar
         echo "docker save done, time: $(date)"
