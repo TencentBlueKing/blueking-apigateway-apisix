@@ -43,7 +43,8 @@ jobs:
           rm docker-images-backup/apisix-test-nginx-images.tar
           echo "loaded docker images"
         fi
-    - name: Build test image
+    - if: ${{ steps.cache-images.outputs.cache-hit != 'true' }}
+      name: Build test image
       run: cd src/apisix && make apisix-test-images
     - name: Lint
       run: cd src/apisix && make lint RUN_WITH_IT=""
