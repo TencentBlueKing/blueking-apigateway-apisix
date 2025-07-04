@@ -5,7 +5,8 @@ FROM apache/apisix:$APISIX_VERSION-redhat
 # - https://github.com/apache/apisix/blob/release/3.11/.github/workflows/redhat-ci.yaml
 # - https://github.com/apache/apisix/blob/release/3.11/ci/redhat-ci.sh
 
-RUN yum install -y sudo make gcc curl wget unzip git vim cpanminus perl diffutils
+# RUN yum install -y sudo make gcc curl wget unzip git vim cpanminus perl diffutils
+RUN yum install -y wget tar
 # FIXME: it's installed in redhat-ci.sh?  check and remove the duplicated commands
 # RUN cpanm --notest Test::Nginx IPC::Run IPC::Cmd LWP::Protocol::https > build.log 2>&1 || (cat build.log && exit 1)
 
@@ -17,14 +18,14 @@ RUN wget https://github.com/apache/apisix/archive/refs/tags/${APISIX_VERSION}.ta
 
 # install dependencies
 ARG CODE_DIR=/codes/apisix-${APISIX_VERSION}
-RUN sed -i 's|https://registry.npm.taobao.org|https://registry.npmmirror.com|g' ${CODE_DIR}/t/plugin/grpc-web/package-lock.json
+# RUN sed -i 's|https://registry.npm.taobao.org|https://registry.npmmirror.com|g' ${CODE_DIR}/t/plugin/grpc-web/package-lock.json
 # fix archived libs in luarocks
 RUN sed -i 's|lualdap = 1.2.6-1|lualdap = 1.4.0-1|g' ${CODE_DIR}/apisix-master-0.rockspec
 COPY ci/redhat-ci.sh ${CODE_DIR}/ci/redhat-ci.sh
 RUN cd ${CODE_DIR} && sed -i 's/3.8.0/3.12.0/g' utils/linux-install-luarocks.sh && \
     bash ./ci/redhat-ci.sh install_dependencies
     # sed -i 's/yum install -y openresty-pcre-devel openresty-zlib-devel/#yum install -y openresty-pcre-devel openresty-zlib-devel/g' ./ci/redhat-ci.sh && \ 
-RUN ls -alrt /usr/local/apisix/
+# RUN ls -alrt /usr/local/apisix/
 RUN cp -r ${CODE_DIR}/t /usr/local/apisix/
 
 # the t/APISIX.pm:add_cleanup_handler will call it if the FLUSH_ETCD=1
@@ -53,7 +54,7 @@ COPY ci/requirements-dev-0.rockspec /
 RUN luarocks install --deps-only /requirements-dev-0.rockspec --server https://luarocks.cn
 
 # clean up
-RUN rm -rf /var/cache/yum && \
+RUN yum clean all && rm -rf /var/cache/yum && \
     rm -rf /root/.cache/luarocks/ || echo "no /root/.cache/luarocks to clean" &&  \
     rm -rf /codes/
 
@@ -62,5 +63,5 @@ RUN cd /usr/local/apisix && rm -rf logs && mkdir -p logs && touch logs/access.lo
 RUN mkdir -p /bkgateway/apisix/plugins /bkgateway/t/
 COPY ci/run-test-nginx.sh /
 # FIXME: move into run-test-nginx.sh, dynamic load the plugins
-COPY ci/config.lua /usr/local/apisix/apisix/cli
+# COPY ci/config.lua /usr/local/apisix/apisix/cli
 CMD ["/run-test-nginx.sh"]

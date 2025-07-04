@@ -13,9 +13,9 @@ jobs:
   build:
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@v3
+    - uses: actions/checkout@v4
     - name: Set up Python
-      uses: actions/setup-python@v4
+      uses: actions/setup-python@v5
       with:
         python-version: '3.10.16'
         cache: 'pip'
@@ -24,9 +24,31 @@ jobs:
       run: pip install -r src/apisix/requirements.txt -i https://pypi.org/simple/
     - name: Change Edition
       run: make edition-ee
+    - name: Cache images
+      id: cache-images
+      uses: actions/cache@v4
+      env:
+        cache-name: cache-apisix-docker-images
+      with:
+        path: docker-images-backup
+        key: ${{ runner.os }}-${{ env.cache-name }}-${{ hashFiles('./src/apisix/ci/Dockerfile.apisix-test-nginx', './src/apisix/ci/run-test-nginx.sh') }}
+
+    - if: ${{ steps.cache-images.outputs.cache-hit == 'true' }}
+      name: Load saved docker images
+      run: |
+        if [[ -f docker-images-backup/apisix-images.tar ]]; then
+          docker load --input docker-images-backup/apisix-images.tar
+          echo "loaded docker images"
+        fi
     - name: Build test image
       run: cd src/apisix && make apisix-test-images
     - name: Lint
       run: cd src/apisix && make lint RUN_WITH_IT=""
     - name: Test
       run: cd src/apisix && make test RUN_WITH_IT=""
+    - if: ${{ steps.cache-images.outputs.cache-hit != 'true' }}
+      name: Save docker images
+      run: |
+        echo "start backing up, $(date)"
+        docker save apisix-test-nginx-313 -o docker-images-backup/apisix-images.tar
+        echo "docker save done, time: $(date)"
