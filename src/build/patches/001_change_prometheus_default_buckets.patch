@@ -1,38 +1,21 @@
 diff --git a/apisix/plugins/prometheus/exporter.lua b/apisix/plugins/prometheus/exporter.lua
-index 45ff94c3..6a9ff8eb 100644
+index d34ab873..dd9d446b 100644
 --- a/apisix/plugins/prometheus/exporter.lua
 +++ b/apisix/plugins/prometheus/exporter.lua
-@@ -168,10 +168,15 @@ function _M.http_init(prometheus_enabled_in_stream)
-             {"code", "route", "matched_uri", "matched_host", "service", "consumer", "node",
-             unpack(extra_labels("http_status"))})
- 
-+    local buckets = DEFAULT_BUCKETS
-+    if attr and attr.default_buckets then
-+        buckets = attr.default_buckets
-+    end
-+
-     metrics.latency = prometheus:histogram("http_latency",
-         "HTTP request latency in milliseconds per service in APISIX",
-         {"type", "route", "service", "consumer", "node", unpack(extra_labels("http_latency"))},
--        DEFAULT_BUCKETS)
-+        buckets)
- 
-     metrics.bandwidth = prometheus:counter("bandwidth",
-             "Total bandwidth in bytes consumed per service in APISIX",
-@@ -208,6 +213,12 @@ end
+@@ -235,6 +235,12 @@ end
  
  
  function _M.http_log(conf, ctx)
 +    local attr = plugin.plugin_attr("prometheus")
 +    local official
 +    if attr and attr.official then
-+      official = attr.official
++        official = attr.official
 +    end
 +
      local vars = ctx.var
  
      local route_id = ""
-@@ -235,11 +246,17 @@ function _M.http_log(conf, ctx)
+@@ -262,11 +268,17 @@ function _M.http_log(conf, ctx)
          matched_host = ctx.curr_req_matched._host or ""
      end
  
@@ -50,7 +33,7 @@ index 45ff94c3..6a9ff8eb 100644
      local latency, upstream_latency, apisix_latency = latency_details(ctx)
      local latency_extra_label_values = extra_labels("http_latency", ctx)
  
-@@ -257,6 +274,10 @@ function _M.http_log(conf, ctx)
+@@ -284,6 +296,10 @@ function _M.http_log(conf, ctx)
          gen_arr("apisix", route_id, service_id, consumer_name, balancer_ip,
          unpack(latency_extra_label_values)))
  
@@ -61,7 +44,7 @@ index 45ff94c3..6a9ff8eb 100644
      local bandwidth_extra_label_values = extra_labels("bandwidth", ctx)
  
      metrics.bandwidth:inc(vars.request_length,
-@@ -266,6 +287,8 @@ function _M.http_log(conf, ctx)
+@@ -293,6 +309,8 @@ function _M.http_log(conf, ctx)
      metrics.bandwidth:inc(vars.bytes_sent,
          gen_arr("egress", route_id, service_id, consumer_name, balancer_ip,
          unpack(bandwidth_extra_label_values)))
