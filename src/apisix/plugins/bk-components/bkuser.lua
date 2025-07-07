@@ -15,33 +15,27 @@
 -- We undertake not to change the open source license (MIT license) applicable
 -- to the current version of the project delivered to anyone in the future.
 --
-local uuid = require("resty.jit-uuid")
 local pl_types = require("pl.types")
+local uuid = require("resty.jit-uuid")
 local core = require("apisix.core")
-
 local bk_core = require("apisix.plugins.bk-core.init")
 local bk_components_utils = require("apisix.plugins.bk-components.utils")
-
 local string_format = string.format
 
-local VERIFY_BK_TOKEN_URL = "/login/api/v3/apigw/bk-tokens/verify/"
+local GET_USER_URL = "/api/v3/apigw/tenant-users/%s/"
+local BKUSER_TIMEOUT_MS = 3 * 1000
 
-local BKLOGIN_TIMEOUT_MS = 5 * 1000
+local bkapp = bk_core.config.get_bkapp() or {}
 
-local err_status_400 = "status 400, bk_token is not valid"
+local err_status_404 = "status 404"
 
-local _M = {
-    host = bk_core.config.get_login_addr(),
-    token = bk_core.config.get_login_token(),
-}
-
-local function bklogin_do_request(host, path, params, request_id)
+local function bkuser_do_request(host, path, params, request_id)
     if pl_types.is_empty(host) then
-        return nil, "server error: login host is not configured."
+        return nil, "server error: bkuser host is not configured."
     end
 
     local url = bk_core.url.url_single_joining_slash(host, path)
-    local res, err = bk_components_utils.handle_request(url, params, BKLOGIN_TIMEOUT_MS, false)
+    local res, err = bk_components_utils.handle_request(url, params, BKUSER_TIMEOUT_MS, false)
     if err ~= nil then
         -- if connection refused, return directly, without wrap(for the fallback cache upon layer)
         if err == "connection refused" then
@@ -57,10 +51,10 @@ local function bklogin_do_request(host, path, params, request_id)
         return nil, new_err
     end
 
-    -- 响应格式正常，错误码 400，表示 bk_token 非法
+    -- 响应格式正常，错误码 404，表示应用不存在
     -- note: here we return an {} instead of err, because the lrucache should cache this result as well
-    if res.status == 400 then
-        return nil, err_status_400
+    if res.status == 404 then
+        return nil, err_status_404
     end
 
     if res.status ~= 200 then
@@ -76,7 +70,7 @@ local function bklogin_do_request(host, path, params, request_id)
     result, err = bk_components_utils.parse_response_json(res.body)
     if err ~= nil then
         local new_err = string_format(
-            "failed to request third-party api, %s, request_id: %s, status: %s, response: %s, err: %s",
+            "failed to request third-party api, url: %s, request_id: %s, status: %s, response: %s, err: %s",
             url, request_id, res.status, res.body, err
         )
         core.log.error(new_err)
@@ -86,37 +80,42 @@ local function bklogin_do_request(host, path, params, request_id)
     return result, nil
 end
 
-function _M.get_username_by_bk_token(bk_token)
+local _M = {
+    host = bk_core.config.get_bkuser_addr(),
+    token = bk_core.config.get_bkuser_token(),
+    app_code = bkapp.bk_app_code,
+    app_secret = bkapp.bk_app_secret,
+}
+
+function _M.get_user_tenant_info(username)
+    local path = string_format(GET_USER_URL, username)
     local request_id = uuid.generate_v4()
-    local path = VERIFY_BK_TOKEN_URL
     local params = {
-            method = "GET",
-            query = core.string.encode_args(
-                {
-                    bk_token = bk_token,
-                }
-            ),
-            ssl_verify = false,
-            headers = {
-                ["Content-Type"] = "application/x-www-form-urlencoded",
-                -- use bearer token to connect bklogin
-                ["Authorization"] = "Bearer " .. _M.token,
-            },
+        method = "GET",
+        ssl_verify = false,
+        headers = {
+            ["X-Request-Id"] = request_id,
+            ["Content-Type"] = "application/json",
+            -- use bearer token to connect bkuser
+            ["Authorization"] = "Bearer " .. _M.token,
+        },
     }
-
-    local result, err = bklogin_do_request(_M.host, path, params, request_id)
+    local result, err = bkuser_do_request(_M.host, path, params, request_id)
     if err ~= nil then
-        if err == err_status_400 then
-            return {error_message="bk_token is not valid"}, nil
+        if err == err_status_404 then
+            return { error_message="the user not exists" }, nil
         end
-
         return nil, err
     end
-    -- {"data": {"bk_username": "cpyjg3xo3ta0op6t", "tenant_id": "system"}}
 
+    -- data = {
+    --
+    -- }
     return {
-        username = result.data.bk_username,
+        tenant_id=result.data.tenant_id,
+        error_message=nil,
     }, nil
 end
+
 
 return _M

@@ -15,14 +15,14 @@
 -- We undertake not to change the open source license (MIT license) applicable
 -- to the current version of the project delivered to anyone in the future.
 --
+
 local core = require("apisix.core")
-local http = require("resty.http")
-local ssm = require("apisix.plugins.bk-components.ssm")
+local bkuser = require("apisix.plugins.bk-components.bkuser")
 local bk_components_utils = require("apisix.plugins.bk-components.utils")
 
-describe(
-    "ssm", function()
 
+describe(
+    "bkuser", function()
         local response, response_err
 
         before_each(
@@ -45,15 +45,16 @@ describe(
         )
 
         context(
-            "verify_access_token", function()
+            "get_user_tenant_info", function()
                 it(
-                    "response error", function()
+                    "response nil", function()
                         response = nil
                         response_err = "error"
 
-                        local result, err = ssm.verify_access_token("fake-access-token")
+                        local result, err = bkuser.get_user_tenant_info("fake-app-code")
                         assert.is_nil(result)
-                        assert.is_true(core.string.has_prefix(err, "failed to request"))
+                        assert.is_true(core.string.has_prefix(err, "failed to request third-party api"))
+                        assert.is_true(core.string.find(err, "request_id") ~= nil)
                     end
                 )
 
@@ -62,30 +63,71 @@ describe(
                         response = nil
                         response_err = "connection refused"
 
-                        local result, err = ssm.verify_access_token("fake-access-token")
+                        local result, err = bkuser.get_user_tenant_info("fake-app-code")
                         assert.is_nil(result)
                         assert.equals(err, "connection refused")
                     end
                 )
 
                 it(
-                    "code is not 0", function()
+                    "status 404", function()
                         response = {
-                            status = 200,
+                            status = 404,
                             body = core.json.encode(
                                 {
-                                    code = 1,
+                                    code = 404,
                                     message = "error",
-                                    data = {},
                                 }
                             ),
                         }
                         response_err = nil
 
-                        local result, err = ssm.verify_access_token("fake-access-token")
+                        local result, err = bkuser.get_user_tenant_info("fake-app-code")
+                        assert.is_same(
+                            result, {
+                                error_message = "the user not exists",
+                            }
+                        )
+                        assert.is_nil(err)
+                    end
+                )
+
+                it(
+                    "response is not valid json", function()
+                        response = {
+                            status = 200,
+                            body = "not valid json",
+                        }
+                        response_err = nil
+
+                        local result, err = bkuser.get_user_tenant_info("fake-app-code")
                         assert.is_nil(result)
-                        -- assert.equals(err, "abc")
                         assert.is_true(core.string.has_prefix(err, "failed to request third-party api"))
+                        assert.is_true(core.string.find(err, "request_id") ~= nil)
+                    end
+                )
+
+
+                it(
+                    "status is not 200", function()
+                        response = {
+                            status = 401,
+                            body = core.json.encode(
+                                {
+                                    code = 0,
+                                    message = "error",
+                                    data = {
+                                        tenant_id = nil,
+                                    },
+                                }
+                            ),
+                        }
+                        response_err = nil
+
+                        local result, err = bkuser.get_user_tenant_info("fake-app-code")
+                        assert.is_nil(result)
+                        assert.is_true(core.string.has_prefix(err, "failed to request third-party api"))
+                        assert.is_true(core.string.find(err, "request_id") ~= nil)
                     end
                 )
 
@@ -96,26 +138,19 @@ describe(
                             body = core.json.encode(
                                 {
                                     code = 0,
-                                    message = "",
                                     data = {
-                                        bk_app_code = "my-app",
-                                        expires_in = 1200,
-                                        identity = {
-                                            username = "admin",
-                                            user_type = "bkuser",
-                                        },
+                                        tenant_id = "tenant-1",
                                     },
                                 }
                             ),
                         }
                         response_err = nil
 
-                        local result, err = ssm.verify_access_token("fake-access-token")
+                        local result, err = bkuser.get_user_tenant_info("fake-app-code")
                         assert.is_same(
                             result, {
-                                bk_app_code = "my-app",
-                                expires_in = 1200,
-                                username = "admin",
+                                tenant_id = "tenant-1",
+                                error_message = nil,
                             }
                         )
                         assert.is_nil(err)

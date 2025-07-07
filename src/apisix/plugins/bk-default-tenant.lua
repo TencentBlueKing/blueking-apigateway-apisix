@@ -1,3 +1,4 @@
+
 --
 -- TencentBlueKing is pleased to support the open source community by making
 -- 蓝鲸智云 - API 网关(BlueKing - APIGateway) available.
@@ -16,19 +17,29 @@
 -- to the current version of the project delivered to anyone in the future.
 --
 
-local access_token_cache = require("apisix.plugins.bk-cache.access-token")
-local app_account_cache = require("apisix.plugins.bk-cache.app-account")
-local jwt_key_cache = require("apisix.plugins.bk-cache.jwt-key")
-local bk_token_cache = require("apisix.plugins.bk-cache.bk-token")
-local bk_app_tenant_cache = require("apisix.plugins.bk-cache.app-tenant-info")
-local bk_user_tenant_cache = require("apisix.plugins.bk-cache.user-tenant-info")
+local core = require("apisix.core")
 
-return {
-    get_access_token = access_token_cache.get_access_token,
-    verify_app_secret = app_account_cache.verify_app_secret,
-    list_app_secrets = app_account_cache.list_app_secrets,
-    get_jwt_public_key = jwt_key_cache.get_jwt_public_key,
-    get_username_by_bk_token = bk_token_cache.get_username_by_bk_token,
-    get_user_tenant_info = bk_user_tenant_cache.get_user_tenant_info,
-    get_app_tenant_info = bk_app_tenant_cache.get_app_tenant_info,
+local plugin_name = "bk-default-tenant"
+
+local schema = {
+    type = "object",
+    properties = {},
 }
+
+local _M = {
+    version  = 0.1,
+    priority = 17425,
+    name     = plugin_name,
+    schema   = schema,
+}
+
+function _M.check_schema(conf)
+    return core.schema.check(schema, conf)
+end
+
+function _M.rewrite(conf, ctx)
+    core.request.set_header(ctx, "X-Bk-Tenant-Id", "default")
+    ctx.var.bk_tenant_id = "default"
+end
+
+return _M

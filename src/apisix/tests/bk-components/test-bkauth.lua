@@ -16,8 +16,8 @@
 -- to the current version of the project delivered to anyone in the future.
 --
 local core = require("apisix.core")
-local http = require("resty.http")
 local bkauth = require("apisix.plugins.bk-components.bkauth")
+local bk_components_utils = require("apisix.plugins.bk-components.utils")
 
 describe(
     "bkauth", function()
@@ -29,14 +29,8 @@ describe(
                 response_err = nil
 
                 stub(
-                    http, "new", function()
-                        return {
-                            set_timeout = function(self, timeout)
-                            end,
-                            request_uri = function(self, url, params)
-                                return response, response_err
-                            end,
-                        }
+                    bk_components_utils, "handle_request", function()
+                        return response, response_err
                     end
                 )
             end
@@ -44,7 +38,7 @@ describe(
 
         after_each(
             function()
-                http.new:revert()
+                bk_components_utils.handle_request:revert()
             end
         )
 
@@ -111,13 +105,36 @@ describe(
                 it(
                     "code is not equal to 0", function()
                         response = {
-                            status = 401,
+                            status = 200,
                             body = core.json.encode(
                                 {
                                     code = 1,
                                     message = "error",
                                     data = {
                                         is_match = false,
+                                    },
+                                }
+                            ),
+                        }
+                        response_err = nil
+
+                        local result, err = bkauth.verify_app_secret("fake-app-code", "fake-app-secret")
+                        assert.is_nil(result)
+                        assert.is_true(core.string.has_prefix(err, "failed to request third-party api"))
+                        assert.is_true(core.string.find(err, "request_id") ~= nil)
+                    end
+                )
+
+                it(
+                    "status is not 200", function()
+                        response = {
+                            status = 401,
+                            body = core.json.encode(
+                                {
+                                    code = 0,
+                                    message = "error",
+                                    data = {
+                                        is_match = true,
                                     },
                                 }
                             ),
@@ -231,13 +248,36 @@ describe(
                 it(
                     "code is not equal to 0", function()
                         response = {
-                            status = 401,
+                            status = 200,
                             body = core.json.encode(
                                 {
                                     code = 1,
                                     message = "error",
                                     data = {
                                         is_match = false,
+                                    },
+                                }
+                            ),
+                        }
+                        response_err = nil
+
+                        local result, err = bkauth.list_app_secrets("fake-app-code")
+                        assert.is_nil(result)
+                        assert.is_true(core.string.has_prefix(err, "failed to request third-party api"))
+                        assert.is_true(core.string.find(err, "request_id") ~= nil)
+                    end
+                )
+
+                it(
+                    "status is not 200", function()
+                        response = {
+                            status = 401,
+                            body = core.json.encode(
+                                {
+                                    code = 0,
+                                    message = "error",
+                                    data = {
+                                        is_match = true,
                                     },
                                 }
                             ),
@@ -289,13 +329,13 @@ describe(
         )
 
         context(
-            "verify_access_token", function()
+            "get_app_tenant_info", function()
                 it(
-                    "response is nil", function()
+                    "response nil", function()
                         response = nil
                         response_err = "error"
 
-                        local result, err = bkauth.verify_access_token("fake-token")
+                        local result, err = bkauth.get_app_tenant_info("fake-app-code")
                         assert.is_nil(result)
                         assert.is_true(core.string.has_prefix(err, "failed to request third-party api"))
                         assert.is_true(core.string.find(err, "request_id") ~= nil)
@@ -303,28 +343,44 @@ describe(
                 )
 
                 it(
-                    "response body is nil", function()
-                        response = {
-                            body = nil,
-                        }
-                        response_err = "error"
+                    "connection refused", function()
+                        response = nil
+                        response_err = "connection refused"
 
-                        local result, err = bkauth.verify_access_token("fake-token")
+                        local result, err = bkauth.get_app_tenant_info("fake-app-code")
                         assert.is_nil(result)
-                        assert.is_true(core.string.has_prefix(err, "failed to request third-party api"))
-                        assert.is_true(core.string.find(err, "request_id") ~= nil)
+                        assert.equals(err, "connection refused")
                     end
                 )
 
                 it(
-                    "response body is not json format", function()
+                    "status 404", function()
                         response = {
-                            body = "not json",
-                            status = 200,
+                            status = 404,
+                            body = core.json.encode(
+                                {
+                                    code = 404,
+                                    message = "error",
+                                }
+                            ),
                         }
                         response_err = nil
 
-                        local result, err = bkauth.verify_access_token("fake-token")
+                        local result, err = bkauth.get_app_tenant_info("fake-app-code")
+                        assert.is_same(result, { error_message = "the app not exists" })
+                        assert.is_nil(err)
+                    end
+                )
+
+                it(
+                    "response is not valid json", function()
+                        response = {
+                            status = 200,
+                            body = "not valid json",
+                        }
+                        response_err = nil
+
+                        local result, err = bkauth.get_app_tenant_info("fake-app-code")
                         assert.is_nil(result)
                         assert.is_true(core.string.has_prefix(err, "failed to request third-party api"))
                         assert.is_true(core.string.find(err, "request_id") ~= nil)
@@ -332,41 +388,41 @@ describe(
                 )
 
                 it(
-                    "response code is not 0", function()
+                    "code is not equal to 0", function()
                         response = {
+                            status = 200,
                             body = core.json.encode(
                                 {
                                     code = 1,
                                     message = "error",
                                 }
                             ),
-                            status = 200,
                         }
                         response_err = nil
 
-                        local result, err = bkauth.verify_access_token("fake-token")
+                        local result, err = bkauth.get_app_tenant_info("fake-app-code")
                         assert.is_nil(result)
-                        assert.is_true(core.string.has_prefix(err, "bkauth error message: error"))
+                        assert.is_true(core.string.has_prefix(err, "failed to request third-party api"))
                         assert.is_true(core.string.find(err, "request_id") ~= nil)
                     end
                 )
 
                 it(
-                    "response status is not 200", function()
+                    "status is not 200", function()
                         response = {
+                            status = 401,
                             body = core.json.encode(
                                 {
                                     code = 0,
                                     message = "error",
                                 }
                             ),
-                            status = 500,
                         }
                         response_err = nil
 
-                        local result, err = bkauth.verify_access_token("fake-token")
+                        local result, err = bkauth.get_app_tenant_info("fake-app-code")
                         assert.is_nil(result)
-                        assert.is_true(core.string.has_prefix(err, "bkauth error message: error"))
+                        assert.is_true(core.string.has_prefix(err, "failed to request third-party api"))
                         assert.is_true(core.string.find(err, "request_id") ~= nil)
                     end
                 )
@@ -379,23 +435,18 @@ describe(
                                 {
                                     code = 0,
                                     data = {
-                                        bk_app_code = "bk-color",
-                                        username = "admin",
-                                        expires_in = 10,
+                                        bk_tenant = {
+                                            mode = "single",
+                                            id = "tenant-id",
+                                        },
                                     },
                                 }
                             ),
                         }
                         response_err = nil
 
-                        local result, err = bkauth.verify_access_token("fake-token")
-                        assert.is_same(
-                            result, {
-                                bk_app_code = "bk-color",
-                                username = "admin",
-                                expires_in = 10,
-                            }
-                        )
+                        local result, err = bkauth.get_app_tenant_info("fake-app-code")
+                        assert.is_same(result, { tenant_mode = "single", tenant_id = "tenant-id", error_message = nil })
                         assert.is_nil(err)
                     end
                 )
