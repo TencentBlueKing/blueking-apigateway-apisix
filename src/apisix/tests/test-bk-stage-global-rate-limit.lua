@@ -56,7 +56,7 @@ describe(
 
         it(
             "should check schema", function()
-                assert.is_equal(plugin.priority, 17650)
+                assert.is_equal(plugin.priority, 17651)
                 assert.is_equal(plugin.name, "bk-stage-global-rate-limit")
 
                 assert.is_true(plugin.check_schema(conf))
