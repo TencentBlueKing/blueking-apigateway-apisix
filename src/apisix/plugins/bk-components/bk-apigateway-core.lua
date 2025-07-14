@@ -1,7 +1,7 @@
 --
 -- TencentBlueKing is pleased to support the open source community by making
 -- 蓝鲸智云 - API 网关(BlueKing - APIGateway) available.
--- Copyright (C) 2017 THL A29 Limited, a Tencent company. All rights reserved.
+-- Copyright (C) 2025 Tencent. All rights reserved.
 -- Licensed under the MIT License (the "License"); you may not use this file except
 -- in compliance with the License. You may obtain a copy of the License at
 --
@@ -19,10 +19,11 @@
 --
 -- 这个模块使用 http 调用 apigateway-core 获取数据
 -- 注意这里使用的是新版的 HTTP 协议(标准 HTTP 状态码 + response body 定义)
-local http = require("resty.http")
 local core = require("apisix.core")
+local uuid = require("resty.jit-uuid")
 local bk_core = require("apisix.plugins.bk-core.init")
 local string_format = string.format
+local bk_components_utils = require("apisix.plugins.bk-components.utils")
 
 local QUERY_PERMISSION_URL = "/api/v1/micro-gateway/%s/permissions/"
 local QUERY_PUBLIC_KEY_URL = "/api/v1/micro-gateway/%s/public_keys/"
@@ -43,64 +44,52 @@ local function bk_apigateway_core_do_get(instance_id, instance_secret, host, pat
     --   "error": {}
     -- }
     local url = bk_core.url.url_single_joining_slash(host, path)
-
+    local request_id = uuid.generate_v4()
     -- send a request
-    local client = http.new()
-    client:set_timeout(BKCORE_TIMEOUT_MS)
-    local res, err = client:request_uri(url,
-        {
-            method = "GET",
-            headers = {
-                ["X-Bk-Micro-Gateway-Instance-Id"] = instance_id,
-                ["X-Bk-Micro-Gateway-Instance-Secret"] = instance_secret,
-            },
-            query = query
-        }
-    )
+    local params = {
+        method = "GET",
+        headers = {
+            ["X-Bk-Micro-Gateway-Instance-Id"] = instance_id,
+            ["X-Bk-Micro-Gateway-Instance-Secret"] = instance_secret,
+            ["X-Request-Id"] = request_id,
+        },
+        query = query
+    }
+    local res, err = bk_components_utils.handle_request(url, params, BKCORE_TIMEOUT_MS, true)
+    if err ~= nil then
+        -- if connection refused, return directly, without wrap(for the fallback cache upon layer)
+        if err == "connection refused" then
+            core.log.error("failed to request third-party api, url: %s, err: %s, response: nil", url, err)
+            return nil, err
+        end
 
-    if err == "timeout" then
-        res, err = client:request_uri(url,
-            {
-                method = "GET",
-                headers = {
-                    ["X-Bk-Micro-Gateway-Instance-Id"] = instance_id,
-                    ["X-Bk-Micro-Gateway-Instance-Secret"] = instance_secret,
-                },
-                query = query
-            }
+        local new_err = string_format(
+            "failed to request third-party api, url: %s, request_id: %s, err: %s",
+            url, request_id, err
         )
+        core.log.error(new_err)
+        return nil, new_err
     end
 
-    if not res then
-        err = "request failed, err: " .. err
-        return nil, err
+    local result
+    result, err = bk_components_utils.parse_response_json(res.body)
+    if err ~= nil then
+        local new_err = string_format(
+            "failed to request third-party api, url: %s, request_id: %s, status: %s, response: %s, err: %s",
+            url, request_id, res.status, res.body, err
+        )
+        core.log.error(new_err)
+        return nil, new_err
     end
 
-    if res.status ~= ngx.HTTP_OK then
-        err = "response status not 200, status: " .. res.status .. ", body: " .. res.body
-        return nil, err
-    end
-
-    if res.body == nil then
-        err = "response status is 200 but body is empty"
-        return nil, err
-    end
-
-    local body, json_err = core.json.decode(res.body)
-    -- if json_err ~= nil then
-    if not body then
-        err = "response body is not a valid json, err: " ..  json_err .. ", body: " .. res.body
-        return nil, err
-    end
-
-    return body.data, nil
+    return result, nil
 end
 
 ---@param gateway_name string @the name of the gateway
 ---@param resource_name string @the name of the resource
 ---@param app_code string @the name of the app_code
 function _M.query_permission(gateway_name, stage_name, resource_name, app_code)
-    -- qurey params: bk_gateway_name, bk_resource_name, bk_app_code
+    -- query params: bk_gateway_name, bk_resource_name, bk_app_code
     -- response body:
     -- {
     --   "data": {
@@ -116,16 +105,16 @@ function _M.query_permission(gateway_name, stage_name, resource_name, app_code)
         bk_app_code = app_code,
     }
     local path = string_format(QUERY_PERMISSION_URL, _M.instance_id)
-    local data, err = bk_apigateway_core_do_get(_M.instance_id, _M.instance_secret, _M.host, path, query)
+    local result, err = bk_apigateway_core_do_get(_M.instance_id, _M.instance_secret, _M.host, path, query)
     if err ~= nil then
         core.log.error(err)
     end
-    return data, err
+    return result.data, err
 end
 
 ---@param gateway_name string @the name of the gateway
 function _M.get_apigw_public_key(gateway_name)
-    -- qurey params: bk_gateway_name, bk_resource_name, bk_app_code
+    -- query params: bk_gateway_name, bk_resource_name, bk_app_code
     -- response body:
     -- {
     --   "data": {
@@ -137,11 +126,11 @@ function _M.get_apigw_public_key(gateway_name)
         bk_gateway_name = gateway_name,
     }
     local path = string_format(QUERY_PUBLIC_KEY_URL, _M.instance_id)
-    local data, err = bk_apigateway_core_do_get(_M.instance_id, _M.instance_secret, _M.host, path, query)
+    local result, err = bk_apigateway_core_do_get(_M.instance_id, _M.instance_secret, _M.host, path, query)
     if err ~= nil then
         core.log.error(err)
     end
-    return data, err
+    return result.data, err
 end
 
 return _M

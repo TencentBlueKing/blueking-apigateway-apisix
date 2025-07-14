@@ -46,6 +46,8 @@
 - bk-body-limit                             # priority: 17690
 - bk-auth-validate                          # priority: 17680
 - bk-user-restriction                       # priority: 17679
+- bk-tenant-verify                          # priority: 17675
+- bk-tenant-validate                        # priority: 17674
 - bk-jwt                                    # priority: 17670
 - bk-ip-restriction                         # priority: 17662
 - ~~bk-ip-group-restriction                   # priority: 17661 (1.18 removed)~~
@@ -62,6 +64,7 @@ proxy 预处理：17000 ~ 17500
 - bk-delete-sensitive                       # priority: 17450
 - bk-delete-cookie                          # priority: 17440
 - bk-proxy-rewrite                          # priority: 17430 # 该插件供 operator 进行后端地址转换使用
+- bk-default-tenant                         # priority: 17425
 - bk-stage-header-rewrite                   # priority: 17421
 - bk-resource-header-rewrite                # priority: 17420
 - bk-mock                                   # priority: 17150

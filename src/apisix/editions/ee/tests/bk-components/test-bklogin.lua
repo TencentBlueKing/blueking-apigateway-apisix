@@ -1,7 +1,7 @@
 --
 -- TencentBlueKing is pleased to support the open source community by making
 -- 蓝鲸智云 - API 网关(BlueKing - APIGateway) available.
--- Copyright (C) 2017 THL A29 Limited, a Tencent company. All rights reserved.
+-- Copyright (C) 2025 Tencent. All rights reserved.
 -- Licensed under the MIT License (the "License"); you may not use this file except
 -- in compliance with the License. You may obtain a copy of the License at
 --
@@ -16,8 +16,8 @@
 -- to the current version of the project delivered to anyone in the future.
 --
 local core = require("apisix.core")
-local http = require("resty.http")
 local bklogin = require("apisix.plugins.bk-components.bklogin")
+local bk_components_utils = require("apisix.plugins.bk-components.utils")
 
 describe(
     "bklogin", function()
@@ -30,14 +30,8 @@ describe(
                 response_err = nil
 
                 stub(
-                    http, "new", function()
-                        return {
-                            set_timeout = function(self, timeout)
-                            end,
-                            request_uri = function(self, url, params)
-                                return response, response_err
-                            end,
-                        }
+                    bk_components_utils, "handle_request", function()
+                        return response, response_err
                     end
                 )
             end
@@ -45,7 +39,7 @@ describe(
 
         after_each(
             function()
-                http.new:revert()
+                bk_components_utils.handle_request:revert()
             end
         )
 
@@ -73,24 +67,47 @@ describe(
                     end
                 )
 
+
                 it(
-                    "bk_error_code is not 0", function()
+                    "status 400", function()
                         response = {
-                            status = 200,
+                            status = 400,
                             body = core.json.encode(
                                 {
-                                    bk_error_code = 1,
-                                    bk_error_msg = "error",
-                                    data = {},
+                                    bk_error_code = 400,
+                                    bk_error_msg = "bk_token is not valid",
                                 }
                             ),
                         }
                         response_err = nil
 
                         local result, err = bklogin.get_username_by_bk_token("fake-bk-token")
-                        assert.is_nil(result.username)
-                        assert.is_true(core.string.has_prefix(result.error_message, "bk_token is invalid"))
+                        assert.is_same(
+                            result, {
+                                error_message = "bk_token is not valid",
+                            }
+                        )
                         assert.is_nil(err)
+                    end
+                )
+
+                it(
+                    "status not 200", function()
+                        response = {
+                            status = 500,
+                            body = core.json.encode(
+                                {
+                                    bk_error_code = 500,
+                                    bk_error_msg = "internal server error",
+                                }
+                            ),
+                        }
+                        response_err = nil
+
+                        local result, err = bklogin.get_username_by_bk_token("fake-bk-token")
+                        assert.is_nil(result)
+                        assert.is_true(core.string.has_prefix(err, "failed to request third-party api"))
+                        assert.is_true(core.string.find(err, "request_id") ~= nil)
                     end
                 )
 
@@ -115,6 +132,7 @@ describe(
                         assert.is_nil(err)
                     end
                 )
+
             end
         )
     end

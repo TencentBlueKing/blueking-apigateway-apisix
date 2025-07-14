@@ -1,7 +1,7 @@
 --
 -- TencentBlueKing is pleased to support the open source community by making
 -- 蓝鲸智云 - API 网关(BlueKing - APIGateway) available.
--- Copyright (C) 2017 THL A29 Limited, a Tencent company. All rights reserved.
+-- Copyright (C) 2025 Tencent. All rights reserved.
 -- Licensed under the MIT License (the "License"); you may not use this file except
 -- in compliance with the License. You may obtain a copy of the License at
 --
@@ -88,11 +88,15 @@ function _M.verify_user(self)
 
     local user_info = jwt_obj.payload.user
     if user_info == nil then
-        return nil, "parameter jwt does not indicate user information"
+        return bk_user_define.new_anonymous_user(
+        "auth parameter does not indicate user information, verified by inner-jwt-verifier"
+        )
     end
 
     if user_info.verified ~= true then
-        return nil, "the user indicated by jwt is not verified"
+        return bk_user_define.new_anonymous_user(
+        "the user indicated by auth parameter is not verified, verified by inner-jwt-verifier"
+        )
     end
 
     return bk_user_define.new_user(

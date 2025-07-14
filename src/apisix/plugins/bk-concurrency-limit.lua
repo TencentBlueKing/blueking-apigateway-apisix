@@ -1,7 +1,7 @@
 --
 -- TencentBlueKing is pleased to support the open source community by making
 -- 蓝鲸智云 - API 网关(BlueKing - APIGateway) available.
--- Copyright (C) 2017 THL A29 Limited, a Tencent company. All rights reserved.
+-- Copyright (C) 2025 Tencent. All rights reserved.
 -- Licensed under the MIT License (the "License"); you may not use this file except
 -- in compliance with the License. You may obtain a copy of the License at
 --
@@ -80,7 +80,13 @@ function _M.access(conf, ctx)
         return
     end
 
-    return errorx.exit_with_apigw_err(ctx, errorx.new_concurrency_limit_restriction(), _M)
+    return errorx.exit_with_apigw_err(
+        ctx, errorx.new_concurrency_limit_restriction():with_fields(
+            {
+                key = ctx.var.bk_concurrency_limit_key,
+            }
+        ), _M
+    )
 end
 
 function _M.log(conf, ctx)
@@ -91,6 +97,9 @@ function _M.log(conf, ctx)
         return
     end
 
+    -- FIXME: if return 500 in the access phase, the decrease will not be executed
+    --        so we need to decrease it
+    -- reference: https://github.com/apache/apisix/issues/11868
     return limiter.decrease(metadata.value, ctx)
 end
 
