@@ -1,7 +1,7 @@
 --
 -- TencentBlueKing is pleased to support the open source community by making
 -- 蓝鲸智云 - API 网关(BlueKing - APIGateway) available.
--- Copyright (C) 2017 THL A29 Limited, a Tencent company. All rights reserved.
+-- Copyright (C) 2025 Tencent. All rights reserved.
 -- Licensed under the MIT License (the "License"); you may not use this file except
 -- in compliance with the License. You may obtain a copy of the License at
 --
@@ -239,6 +239,7 @@ describe(
                         assert.is_equal(user.username, "admin")
                         assert.is_true(user.verified)
                         -- 1:admin:true:
+                        -- NOTE: ee is ok, but te is different acf1ec2b10cdb53bb7ee2f6ccee23df4
                         assert.is_equal(user:uid(), "16f662fd0e0528543ea773816c33879a")
                     end
                 )

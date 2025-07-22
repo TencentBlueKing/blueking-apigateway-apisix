@@ -1,7 +1,7 @@
 --
 -- TencentBlueKing is pleased to support the open source community by making
 -- 蓝鲸智云 - API 网关(BlueKing - APIGateway) available.
--- Copyright (C) 2017 THL A29 Limited, a Tencent company. All rights reserved.
+-- Copyright (C) 2025 Tencent. All rights reserved.
 -- Licensed under the MIT License (the "License"); you may not use this file except
 -- in compliance with the License. You may obtain a copy of the License at
 --
@@ -20,6 +20,8 @@ local access_token_cache = require("apisix.plugins.bk-cache.access-token")
 local app_account_cache = require("apisix.plugins.bk-cache.app-account")
 local jwt_key_cache = require("apisix.plugins.bk-cache.jwt-key")
 local bk_token_cache = require("apisix.plugins.bk-cache.bk-token")
+local bk_app_tenant_cache = require("apisix.plugins.bk-cache.app-tenant-info")
+local bk_user_tenant_cache = require("apisix.plugins.bk-cache.user-tenant-info")
 
 return {
     get_access_token = access_token_cache.get_access_token,
@@ -27,4 +29,6 @@ return {
     list_app_secrets = app_account_cache.list_app_secrets,
     get_jwt_public_key = jwt_key_cache.get_jwt_public_key,
     get_username_by_bk_token = bk_token_cache.get_username_by_bk_token,
+    get_user_tenant_info = bk_user_tenant_cache.get_user_tenant_info,
+    get_app_tenant_info = bk_app_tenant_cache.get_app_tenant_info,
 }

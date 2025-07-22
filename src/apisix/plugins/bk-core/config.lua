@@ -1,7 +1,7 @@
 --
 -- TencentBlueKing is pleased to support the open source community by making
 -- 蓝鲸智云 - API 网关(BlueKing - APIGateway) available.
--- Copyright (C) 2017 THL A29 Limited, a Tencent company. All rights reserved.
+-- Copyright (C) 2025 Tencent. All rights reserved.
 -- Licensed under the MIT License (the "License"); you may not use this file except
 -- in compliance with the License. You may obtain a copy of the License at
 --
@@ -59,6 +59,11 @@ function _M.get_login_addr()
     return core.table.try_read_attr(conf, "bk_gateway", "hosts", "login", "addr")
 end
 
+function _M.get_login_token()
+    local conf = core.config.local_conf()
+    return core.table.try_read_attr(conf, "bk_gateway", "hosts", "login", "token")
+end
+
 function _M.get_login_tencent_addr()
     local conf = core.config.local_conf()
     return core.table.try_read_attr(conf, "bk_gateway", "hosts", "login-tencent", "addr")
@@ -77,6 +82,16 @@ end
 function _M.get_bkauth_addr()
     local conf = core.config.local_conf()
     return core.table.try_read_attr(conf, "bk_gateway", "hosts", "bkauth", "addr")
+end
+
+function _M.get_bkuser_addr()
+    local conf = core.config.local_conf()
+    return core.table.try_read_attr(conf, "bk_gateway", "hosts", "bkuser", "addr")
+end
+
+function _M.get_bkuser_token()
+    local conf = core.config.local_conf()
+    return core.table.try_read_attr(conf, "bk_gateway", "hosts", "bkuser", "token")
 end
 
 function _M.get_bkauth_legacy_addr()

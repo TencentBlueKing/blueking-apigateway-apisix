@@ -1,7 +1,7 @@
 --
 -- TencentBlueKing is pleased to support the open source community by making
 -- 蓝鲸智云 - API 网关(BlueKing - APIGateway) available.
--- Copyright (C) 2017 THL A29 Limited, a Tencent company. All rights reserved.
+-- Copyright (C) 2025 Tencent. All rights reserved.
 -- Licensed under the MIT License (the "License"); you may not use this file except
 -- in compliance with the License. You may obtain a copy of the License at
 --
@@ -18,7 +18,6 @@
 -- bk-stage-global-rate-limit
 --
 -- rate limit for stage, without app_code dimension, global for all apps
--- note: this is a replacement for bk-global-rate-limit, which is deprecated
 --
 local core = require("apisix.core")
 local errorx = require("apisix.plugins.bk-core.errorx")
@@ -30,8 +29,7 @@ local plugin_name = "bk-stage-global-rate-limit"
 
 local _M = {
     version = 0.1,
-    -- TODO: change to 17651 after bk-global-rate-limit is removed
-    priority = 17650,
+    priority = 17651,
     name = plugin_name,
     schema = {
         type = "object",

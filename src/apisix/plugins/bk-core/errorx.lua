@@ -1,7 +1,7 @@
 --
 -- TencentBlueKing is pleased to support the open source community by making
 -- 蓝鲸智云 - API 网关(BlueKing - APIGateway) available.
--- Copyright (C) 2017 THL A29 Limited, a Tencent company. All rights reserved.
+-- Copyright (C) 2025 Tencent. All rights reserved.
 -- Licensed under the MIT License (the "License"); you may not use this file except
 -- in compliance with the License. You may obtain a copy of the License at
 --
@@ -186,6 +186,20 @@ function _M.new_app_no_permission()
             code = 1640301,
             code_name = "APP_NO_PERMISSION",
             message = "App has no permission to the resource",
+            result = false,
+            data = cjson_null,
+        },
+        status = ngx.HTTP_FORBIDDEN,
+    }
+    return setmetatable(error, mt)
+end
+
+function _M.new_cross_tenant_forbidden()
+    local error = {
+        error = {
+            code = 1640302,
+            code_name = "CROSS_TENANT_FORBIDDEN",
+            message = "Cross tenant forbidden",
             result = false,
             data = cjson_null,
         },
