@@ -16,7 +16,7 @@
 -- to the current version of the project delivered to anyone in the future.
 --
 
-local plugin = require("apisix.plugins.cors")
+local plugin = require("apisix.plugins.bk-cors")
 
 describe(
     "cors", function()
