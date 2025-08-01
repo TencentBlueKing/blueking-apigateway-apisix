@@ -88,6 +88,11 @@ function _M.rewrite(conf, ctx) -- luacheck: no unused
             return errorx.exit_with_apigw_err(ctx,
             errorx.new_invalid_args():with_field("reason", "No `X-API-KEY` header found in the request"), _M)
         end
+
+        if token == "" then
+            return errorx.exit_with_apigw_err(ctx,
+            errorx.new_invalid_args():with_field("reason", "The `X-API-KEY` header is empty"), _M)
+        end
     end
 
     local encoded_token = core.json.encode({

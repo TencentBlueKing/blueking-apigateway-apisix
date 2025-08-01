@@ -241,10 +241,10 @@ describe(
                 )
 
                 it(
-                    "should return error when X-API-KEY header is nil",
+                    "should return error when X-API-KEY header is empty",
                     function()
                         local conf = { source = "api_key" }
-                        ctx.headers = nil
+                        ctx.headers = { ["X-API-KEY"] = "" }
 
                         local status = plugin.rewrite(conf, ctx)
 
