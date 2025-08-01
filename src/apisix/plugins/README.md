@@ -35,6 +35,7 @@
 
 - ~~bk-workflow-parameters                    # priority: 18750 (abandonned)~~
 - ~~bk-auth-parameters                        # priority: 18740 (abandonned)~~
+- bk-access-token-source                    # priority: 18735
 - bk-auth-verify                            # priority: 18730
 
 执行 - 响应：优先级：17500 ~ 18000
