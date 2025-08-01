@@ -84,7 +84,7 @@ function _M.rewrite(conf, ctx) -- luacheck: no unused
         end
     end
 
-    if conf.source == "api_key" then
+    elseif conf.source == "api_key" then
         token = core.request.header(ctx, "X-API-KEY")
         if token == nil then
             return errorx.exit_with_apigw_err(ctx,
