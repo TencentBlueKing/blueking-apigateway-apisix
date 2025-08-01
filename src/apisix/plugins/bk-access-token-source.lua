@@ -75,7 +75,7 @@ end
 
 
 function _M.rewrite(conf, ctx) -- luacheck: no unused
-    local token = nil
+    local token
     if conf.source == "bearer" then
         local err
         token, err = get_bearer_token(ctx)
