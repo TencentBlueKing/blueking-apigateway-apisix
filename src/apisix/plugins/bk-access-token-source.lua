@@ -19,6 +19,7 @@
 --
 -- This plugin read the bearer token or X-API-KEY from the request header,
 -- and set the token to the `access_token` field of the X-Bkapi-Authorization header.
+-- note if the X-Bkapi-Authorization header is already set, this plugin will overwrite it.
 --
 -- This plugin would return 400 if there got no expected token in the request header.
 --
