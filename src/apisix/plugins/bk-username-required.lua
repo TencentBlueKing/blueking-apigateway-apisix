@@ -71,8 +71,9 @@ function _M.rewrite(conf, ctx) -- luacheck: no unused
         end
     -- if username is empty, return error
     elseif username == "" then
-        return errorx.exit_with_apigw_err( ctx,
-        errorx.new_invalid_args():with_field( "reason", "The `X-Bk-Username` header is empty"),
+        return errorx.exit_with_apigw_err(
+            ctx,
+            errorx.new_invalid_args():with_field("reason", "The `X-Bk-Username` header is empty"),
             _M)
     end
 
