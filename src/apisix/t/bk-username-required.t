@@ -2,7 +2,7 @@
 # TencentBlueKing is pleased to support the open source community by making
 # 蓝鲸智云 - API 网关(BlueKing - APIGateway) available.
 # Copyright (C) 2025 Tencent. All rights reserved.
-# Licensed under the MIT License (the "License"); you may not use this file except
+# Licensed under the MIT License (the "License") you may not use this file except
 # in compliance with the License. You may obtain a copy of the License at
 #
 #     http://opensource.org/licenses/MIT
@@ -12,7 +12,7 @@
 # either express or implied. See the License for the specific language governing permissions and
 # limitations under the License.
 #
-# We undertake not to change the open source license (MIT License) applicable
+# We undertake not to change the open source license (MIT license) applicable
 # to the current version of the project delivered to anyone in the future.
 #
 
@@ -33,13 +33,18 @@ add_block_preprocessor(sub {
 
 run_tests;
 
+# NOTE: while the priority of serverless-pre-function is 10000, and the priority of bk-username-required is 18725. so we should set the priority of serverless-pre-function to 20000 to make sure the bk-username-required plugin can be executed after the serverless-pre-function plugin.
+
+
 __DATA__
+
+
 
 === TEST 1: sanity check schema
 --- config
     location /t {
         content_by_lua_block {
-            local plugin = require("apisix.plugins.bk-access-token-source")
+            local plugin = require("apisix.plugins.bk-username-required")
             local ok, err = plugin.check_schema({})
             if not ok then
                 ngx.say(err)
@@ -51,45 +56,7 @@ __DATA__
 --- response_body
 done
 
-=== TEST 2: check schema with valid source
---- config
-    location /t {
-        content_by_lua_block {
-            local plugin = require("apisix.plugins.bk-access-token-source")
-            local ok, err = plugin.check_schema({source = "bearer"})
-            if not ok then
-                ngx.say(err)
-            end
-
-            local ok2, err2 = plugin.check_schema({source = "api_key"})
-            if not ok2 then
-                ngx.say(err2)
-            end
-
-            ngx.say("done")
-        }
-    }
---- response_body
-done
-
-=== TEST 3: check schema with invalid source
---- config
-    location /t {
-        content_by_lua_block {
-            local plugin = require("apisix.plugins.bk-access-token-source")
-            local ok, err = plugin.check_schema({source = "invalid"})
-            if not ok then
-                ngx.say("invalid source error: ", err)
-            end
-
-            ngx.say("done")
-        }
-    }
---- response_body
-invalid source error: property "source" validation failed: matches none of the enum values
-done
-
-=== TEST 4: add plugin with bearer source
+=== TEST 2: add route with bk-username-required plugin
 --- config
     location /t {
         content_by_lua_block {
@@ -98,9 +65,7 @@ done
                 ngx.HTTP_PUT,
                 [[{
                     "plugins": {
-                        "bk-access-token-source": {
-                            "source": "bearer"
-                        },
+                        "bk-username-required": {},
                         "bk-error-wrapper": {}
                     },
                     "upstream": {
@@ -122,38 +87,23 @@ done
 --- response_body
 passed
 
-=== TEST 5: test bearer token processing - valid bearer token
+=== TEST 3: case 1 - X-Bk-Username not empty, should pass
 --- request
 GET /echo
 --- more_headers
-Authorization: Bearer test-token-123
+X-Bk-Username: test-user
 --- response_headers
-X-Bkapi-Authorization: {"access_token":"test-token-123"}
+X-Bk-Username: test-user
 
-=== TEST 6: test bearer token processing - case insensitive bearer
+=== TEST 4: case 2 - X-Bk-Username empty, should return 400/INVALID_ARGS
 --- request
 GET /echo
 --- more_headers
-Authorization: bearer test-token-456
---- response_headers
-X-Bkapi-Authorization: {"access_token":"test-token-456"}
-
-=== TEST 7: test bearer token processing - missing authorization header
---- request
-GET /echo
+X-Bk-Username:
 --- error_code: 400
 --- response_body_like: "INVALID_ARGS"
 
-
-=== TEST 8: test bearer token processing - invalid authorization format
---- request
-GET /echo
---- more_headers
-Authorization: Basic dGVzdDp0ZXN0
---- error_code: 400
---- response_body_like: "INVALID_ARGS"
-
-=== TEST 9: update plugin to use api_key source
+=== TEST 5: case 3 - no X-Bk-Username but ctx.var.bk_username is not empty, should pass
 --- config
     location /t {
         content_by_lua_block {
@@ -162,10 +112,15 @@ Authorization: Basic dGVzdDp0ZXN0
                 ngx.HTTP_PUT,
                 [[{
                     "plugins": {
-                        "bk-access-token-source": {
-                            "source": "api_key"
-                        },
-                        "bk-error-wrapper": {}
+                        "bk-username-required": {},
+                        "bk-error-wrapper": {},
+                        "serverless-pre-function": {
+                            "_meta": {
+                                "priority": 20000
+                            },
+                            "phase": "rewrite",
+                            "functions" : ["return function(conf, ctx) ctx.var.bk_username = 'context-user'; end"]
+                        }
                     },
                     "upstream": {
                         "nodes": {
@@ -186,30 +141,13 @@ Authorization: Basic dGVzdDp0ZXN0
 --- response_body
 passed
 
-=== TEST 10: test api_key processing - valid api key
+=== TEST 6: test case 3 - no X-Bk-Username but ctx.var.bk_username is set
 --- request
 GET /echo
---- more_headers
-X-API-KEY: api-key-123
 --- response_headers
-X-Bkapi-Authorization: {"access_token":"api-key-123"}
+X-Bk-Username: context-user
 
-=== TEST 11: test api_key processing - missing api key header
---- request
-GET /echo
---- error_code: 400
---- response_body_like: "INVALID_ARGS"
-
-=== TEST 12: test header overwrite behavior
---- request
-GET /echo
---- more_headers
-X-API-KEY: new-api-key-456
-X-Bkapi-Authorization: {"access_token":"old-token"}
---- response_headers
-X-Bkapi-Authorization: {"access_token":"new-api-key-456"}
-
-=== TEST 13: test default source (bearer) when no source specified
+=== TEST 7: case 4 - no X-Bk-Username and ctx.var.bk_username is empty, should return 400/INVALID_ARGS
 --- config
     location /t {
         content_by_lua_block {
@@ -218,8 +156,15 @@ X-Bkapi-Authorization: {"access_token":"new-api-key-456"}
                 ngx.HTTP_PUT,
                 [[{
                     "plugins": {
-                        "bk-access-token-source": {},
-                        "bk-error-wrapper": {}
+                        "bk-username-required": {},
+                        "bk-error-wrapper": {},
+                        "serverless-pre-function": {
+                            "_meta": {
+                                "priority": 20000
+                            },
+                            "phase": "rewrite",
+                            "functions" : ["return function(conf, ctx) ctx.var.bk_username = ''; end"]
+                        }
                     },
                     "upstream": {
                         "nodes": {
@@ -240,23 +185,13 @@ X-Bkapi-Authorization: {"access_token":"new-api-key-456"}
 --- response_body
 passed
 
-=== TEST 14: test default bearer source with valid token
+=== TEST 8: test case 4 - no X-Bk-Username and ctx.var.bk_username is empty
 --- request
 GET /echo
---- more_headers
-Authorization: Bearer default-token-789
---- response_headers
-X-Bkapi-Authorization: {"access_token":"default-token-789"}
-
-=== TEST 15: test bearer token with empty token
---- request
-GET /echo
---- more_headers
-Authorization: Bearer
 --- error_code: 400
 --- response_body_like: "INVALID_ARGS"
 
-=== TEST 16: update plugin to use api_key source for empty key test
+=== TEST 9: test case 4 - no X-Bk-Username and ctx.var.bk_username is nil
 --- config
     location /t {
         content_by_lua_block {
@@ -265,10 +200,15 @@ Authorization: Bearer
                 ngx.HTTP_PUT,
                 [[{
                     "plugins": {
-                        "bk-access-token-source": {
-                            "source": "api_key"
-                        },
-                        "bk-error-wrapper": {}
+                        "bk-username-required": {},
+                        "bk-error-wrapper": {},
+                        "serverless-pre-function": {
+                            "_meta": {
+                                "priority": 20000
+                            },
+                            "phase": "rewrite",
+                            "functions" : ["return function(conf, ctx) ctx.var.bk_username = nil; end"]
+                        }
                     },
                     "upstream": {
                         "nodes": {
@@ -289,10 +229,55 @@ Authorization: Bearer
 --- response_body
 passed
 
-=== TEST 17: test api_key with empty value
+=== TEST 10: test case 4 - no X-Bk-Username and ctx.var.bk_username is nil
+--- request
+GET /echo
+--- error_code: 400
+--- response_body_like: "INVALID_ARGS"
+
+=== TEST 11: test priority - X-Bk-Username header should take precedence over ctx.var.bk_username
+--- config
+    location /t {
+        content_by_lua_block {
+            local t = require("lib.test_admin").test
+            local code, body = t('/apisix/admin/routes/1',
+                ngx.HTTP_PUT,
+                [[{
+                    "plugins": {
+                        "bk-username-required": {},
+                        "bk-error-wrapper": {},
+                        "serverless-pre-function": {
+                            "_meta": {
+                                "priority": 20000
+                            },
+                            "phase": "rewrite",
+                            "functions" : ["return function(conf, ctx) ctx.var.bk_username = 'context-user'; end"]
+                        }
+                    },
+                    "upstream": {
+                        "nodes": {
+                            "127.0.0.1:1980": 1
+                        },
+                        "type": "roundrobin"
+                    },
+                    "uri": "/echo"
+                }]]
+                )
+
+            if code >= 300 then
+                ngx.status = code
+            end
+            ngx.say(body)
+        }
+    }
+--- response_body
+passed
+
+=== TEST 12: test priority - header takes precedence
 --- request
 GET /echo
 --- more_headers
-X-API-KEY:
---- error_code: 400
---- response_body_like: "INVALID_ARGS"
+X-Bk-Username: header-user
+--- response_headers
+X-Bk-Username: header-user
+

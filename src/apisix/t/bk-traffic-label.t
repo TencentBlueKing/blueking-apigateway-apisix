@@ -70,8 +70,8 @@ done
         content_by_lua_block {
             local t = require("lib.test_admin").test
             local code, body = t('/apisix/admin/routes/1',
-                 ngx.HTTP_PUT,
-                 [[{
+                ngx.HTTP_PUT,
+                [[{
                     "plugins": {
                         "bk-proxy-rewrite": {
                             "uri": "/uri/plugin_proxy_rewrite"
@@ -80,7 +80,7 @@ done
                             "rules": [
                                 {
                                     "match": [
-                                      ["arg_env", "==", "prod"]
+                                        ["arg_env", "==", "prod"]
                                     ],
                                     "actions": [
                                         {"set_headers": {"X-Test-Header": "test"}}
@@ -134,8 +134,8 @@ x-real-ip: 127.0.0.1
         content_by_lua_block {
             local t = require("lib.test_admin").test
             local code, body = t('/apisix/admin/routes/1',
-                 ngx.HTTP_PUT,
-                 [[{
+                ngx.HTTP_PUT,
+                [[{
                     "plugins": {
                         "bk-proxy-rewrite": {
                             "uri": "/uri/plugin_proxy_rewrite"
@@ -144,7 +144,7 @@ x-real-ip: 127.0.0.1
                             "rules": [
                                 {
                                     "match": [
-                                      ["arg_env", "==", "prod"]
+                                        ["arg_env", "==", "prod"]
                                     ],
                                     "actions": [
                                         {"set_headers": {"X-Test-Header": "test"}, "weight": 1},
@@ -190,8 +190,8 @@ x-test-header: test
         content_by_lua_block {
             local t = require("lib.test_admin").test
             local code, body = t('/apisix/admin/routes/1',
-                 ngx.HTTP_PUT,
-                 [[{
+                ngx.HTTP_PUT,
+                [[{
                     "plugins": {
                         "bk-proxy-rewrite": {
                             "uri": "/uri/plugin_proxy_rewrite"
@@ -200,7 +200,7 @@ x-test-header: test
                             "rules": [
                                 {
                                     "match": [
-                                      ["arg_env", "==", "prod"]
+                                        ["arg_env", "==", "prod"]
                                     ],
                                     "actions": [
                                         {"set_headers": {"X-Test-Header": "test1"}, "weight": 0},
@@ -246,8 +246,8 @@ x-test-header: test2
         content_by_lua_block {
             local t = require("lib.test_admin").test
             local code, body = t('/apisix/admin/routes/1',
-                 ngx.HTTP_PUT,
-                 [[{
+                ngx.HTTP_PUT,
+                [[{
                     "plugins": {
                         "bk-proxy-rewrite": {
                             "uri": "/uri/plugin_proxy_rewrite"
@@ -256,7 +256,7 @@ x-test-header: test2
                             "rules": [
                                 {
                                     "match": [
-                                      ["arg_env", "==", "prod"]
+                                        ["arg_env", "==", "prod"]
                                     ],
                                     "actions": [
                                         {"set_headers": {"X-Test-Header-1": "test1"}, "weight": 0},
@@ -301,8 +301,8 @@ x-real-ip: 127.0.0.1
         content_by_lua_block {
             local t = require("lib.test_admin").test
             local code, body = t('/apisix/admin/routes/1',
-                 ngx.HTTP_PUT,
-                 [[{
+                ngx.HTTP_PUT,
+                [[{
                     "plugins": {
                         "bk-proxy-rewrite": {
                             "uri": "/uri/plugin_proxy_rewrite"
@@ -311,7 +311,7 @@ x-real-ip: 127.0.0.1
                             "rules": [
                                 {
                                     "match": [
-                                      ["arg_env", "==", "prod"]
+                                        ["arg_env", "==", "prod"]
                                     ],
                                     "actions": [
                                         {"set_headers": {"X-Test-Header-1": "test1"}}
@@ -319,7 +319,7 @@ x-real-ip: 127.0.0.1
                                 },
                                 {
                                     "match": [
-                                      ["arg_type", "==", "foo"]
+                                        ["arg_type", "==", "foo"]
                                     ],
                                     "actions": [
                                         {"set_headers": {"X-Test-Header-2": "test2"}}

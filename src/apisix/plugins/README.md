@@ -37,6 +37,7 @@
 - ~~bk-auth-parameters                        # priority: 18740 (abandonned)~~
 - bk-access-token-source                    # priority: 18735
 - bk-auth-verify                            # priority: 18730
+- bk-username-required                      # priority: 18725
 
 执行 - 响应：优先级：17500 ~ 18000
 
