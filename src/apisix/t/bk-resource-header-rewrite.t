@@ -62,8 +62,8 @@ done
         content_by_lua_block {
             local t = require("lib.test_admin").test
             local code, body = t('/apisix/admin/routes/1',
-                 ngx.HTTP_PUT,
-                 [[{
+                ngx.HTTP_PUT,
+                [[{
                     "plugins": {
                         "bk-resource-header-rewrite": {
                             "add": {
@@ -99,8 +99,8 @@ passed
         content_by_lua_block {
             local t = require("lib.test_admin").test
             local code, body = t('/apisix/admin/routes/1',
-                 ngx.HTTP_PUT,
-                 [[{
+                ngx.HTTP_PUT,
+                [[{
                     "plugins": {
                         "bk-resource-header-rewrite": {
                             "set": {
@@ -136,8 +136,8 @@ passed
         content_by_lua_block {
             local t = require("lib.test_admin").test
             local code, body = t('/apisix/admin/routes/1',
-                 ngx.HTTP_PUT,
-                 [[{
+                ngx.HTTP_PUT,
+                [[{
                     "plugins": {
                     },
                     "upstream": {
@@ -167,8 +167,8 @@ passed
         content_by_lua_block {
             local t = require("lib.test_admin").test
             local code, body = t('/apisix/admin/routes/1',
-                 ngx.HTTP_PUT,
-                 [[{
+                ngx.HTTP_PUT,
+                [[{
                         "plugins": {
                             "bk-proxy-rewrite": {
                                 "uri": "/uri/plugin_proxy_rewrite"
@@ -216,8 +216,8 @@ x-real-ip: 127.0.0.1
         content_by_lua_block {
             local t = require("lib.test_admin").test
             local code, body = t('/apisix/admin/routes/1',
-                 ngx.HTTP_PUT,
-                 [[{
+                ngx.HTTP_PUT,
+                [[{
                         "plugins": {
                             "bk-proxy-rewrite": {
                                 "uri": "/uri/plugin_proxy_rewrite"
@@ -265,8 +265,8 @@ x-real-ip: 127.0.0.1
         content_by_lua_block {
             local t = require("lib.test_admin").test
             local code, body = t('/apisix/admin/routes/1',
-                 ngx.HTTP_PUT,
-                 [[{
+                ngx.HTTP_PUT,
+                [[{
                         "plugins": {
                             "bk-proxy-rewrite": {
                                 "uri": "/uri/plugin_proxy_rewrite"
@@ -315,8 +315,8 @@ x-real-ip: 127.0.0.1
         content_by_lua_block {
             local t = require("lib.test_admin").test
             local code, body = t('/apisix/admin/routes/1',
-                 ngx.HTTP_PUT,
-                 [[{
+                ngx.HTTP_PUT,
+                [[{
                         "plugins": {
                             "bk-proxy-rewrite": {
                                 "uri": "/uri/plugin_proxy_rewrite"

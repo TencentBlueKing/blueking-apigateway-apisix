@@ -91,13 +91,26 @@ describe(
                             return nil
                         end)
 
+                        -- Mock core.request.set_header to capture the call
+                        local set_header_called = false
+                        local set_header_name, set_header_value
+                        stub(core.request, "set_header", function(ctx_param, header_name, header_value)
+                            set_header_called = true
+                            set_header_name = header_name
+                            set_header_value = header_value
+                        end)
+
                         -- Set ctx.var.bk_username
                         ctx.var.bk_username = "test-user-from-ctx"
 
                         local result = bk_username_required.rewrite(conf, ctx)
                         assert.is_nil(result)
+                        assert.is_true(set_header_called)
+                        assert.is_equal(set_header_name, "X-Bk-Username")
+                        assert.is_equal(set_header_value, "test-user-from-ctx")
 
                         core.request.header:revert()
+                        core.request.set_header:revert()
                     end
                 )
 
@@ -161,6 +174,67 @@ describe(
                         assert.is_equal(status, 400)
 
                         core.request.header:revert()
+                    end
+                )
+
+                it(
+                    "should set X-Bk-Username header when header is missing but ctx.var.bk_username is present", function()
+                        -- Mock core.request.header to return nil (no header)
+                        stub(core.request, "header", function(_, header_name)
+                            if header_name == "X-Bk-Username" then
+                                return nil
+                            end
+                            return nil
+                        end)
+
+                        -- Mock core.request.set_header to capture the call
+                        local set_header_called = false
+                        local set_header_name, set_header_value
+                        stub(core.request, "set_header", function(ctx_param, header_name, header_value)
+                            set_header_called = true
+                            set_header_name = header_name
+                            set_header_value = header_value
+                        end)
+
+                        -- Set ctx.var.bk_username
+                        ctx.var.bk_username = "test-user-from-ctx"
+
+                        local result = bk_username_required.rewrite(conf, ctx)
+                        assert.is_nil(result)
+                        assert.is_true(set_header_called)
+                        assert.is_equal(set_header_name, "X-Bk-Username")
+                        assert.is_equal(set_header_value, "test-user-from-ctx")
+
+                        core.request.header:revert()
+                        core.request.set_header:revert()
+                    end
+                )
+
+                it(
+                    "should not set header when X-Bk-Username header is already present", function()
+                        -- Mock core.request.header to return a valid username
+                        stub(core.request, "header", function(_, header_name)
+                            if header_name == "X-Bk-Username" then
+                                return "header-user"
+                            end
+                            return nil
+                        end)
+
+                        -- Mock core.request.set_header to ensure it's not called
+                        local set_header_called = false
+                        stub(core.request, "set_header", function(ctx_param, header_name, header_value)
+                            set_header_called = true
+                        end)
+
+                        -- Set ctx.var.bk_username to a different value
+                        ctx.var.bk_username = "ctx-user"
+
+                        local result = bk_username_required.rewrite(conf, ctx)
+                        assert.is_nil(result)
+                        assert.is_false(set_header_called)
+
+                        core.request.header:revert()
+                        core.request.set_header:revert()
                     end
                 )
 

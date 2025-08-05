@@ -66,6 +66,8 @@ function _M.rewrite(conf, ctx) -- luacheck: no unused
                 "reason",
                 "No `X-Bk-Username` header or no `bk_username` in the `X-Bkapi-Authorization` header"),
             _M)
+        else
+            core.request.set_header(ctx, BK_USERNAME_HEADER, ctx.var.bk_username)
         end
     -- if username is empty, return error
     elseif username == "" then

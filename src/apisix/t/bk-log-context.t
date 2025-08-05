@@ -61,8 +61,8 @@ done
         content_by_lua_block {
             local t = require("lib.test_admin").test
             local code, body = t('/apisix/admin/routes/1',
-                 ngx.HTTP_PUT,
-                 [[{
+                ngx.HTTP_PUT,
+                [[{
                         "plugins": {
                             "bk-log-context": {
                                 "log_2xx_response_body": true
@@ -109,8 +109,8 @@ should_log_response_body: true
         content_by_lua_block {
             local t = require("lib.test_admin").test
             local code, body = t('/apisix/admin/routes/1',
-                 ngx.HTTP_PUT,
-                 [[{
+                ngx.HTTP_PUT,
+                [[{
                         "plugins": {
                             "bk-log-context": {
                                 "log_2xx_response_body": true
@@ -159,8 +159,8 @@ backend_part_response_body: hello world
         content_by_lua_block {
             local t = require("lib.test_admin").test
             local code, body = t('/apisix/admin/routes/1',
-                 ngx.HTTP_PUT,
-                 [[{
+                ngx.HTTP_PUT,
+                [[{
                         "plugins": {
                             "bk-log-context": {
                                 "log_2xx_response_body": false
