@@ -17,7 +17,7 @@
 --
 -- # bk-username-required
 --
--- This plugin check the request header should contains the bk_username
+-- This plugin checks that the request header contains the bk_username
 -- Source:
 -- 1. header： X-Bk-Username
 -- 2. header: X-Bkapi-Authorization: {"bk_username"}
