@@ -119,7 +119,10 @@ function _M.get_enable_multi_tenant_mode()
     local conf = core.config.local_conf()
 
     local enable_multi_tenant_mode = core.table.try_read_attr(conf, "bk_gateway", "enable_multi_tenant_mode")
-    return string_lower(enable_multi_tenant_mode or "false") == "true"
+    if enable_multi_tenant_mode == nil then
+        return false
+    end
+    return enable_multi_tenant_mode
 end
 
 
