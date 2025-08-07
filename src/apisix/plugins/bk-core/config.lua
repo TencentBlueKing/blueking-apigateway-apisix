@@ -115,6 +115,13 @@ function _M.get_jwt_issuer()
     return core.table.try_read_attr(conf, "bk_gateway", "jwt_issuer")
 end
 
+function _M.get_enable_multi_tenant_mode()
+    local conf = core.config.local_conf()
+
+    local enable_multi_tenant_mode = core.table.try_read_attr(conf, "bk_gateway", "enable_multi_tenant_mode")
+    return string_lower(enable_multi_tenant_mode or "false") == "true"
+end
+
 
 function _M.is_cache_disabled()
     local conf = core.config.local_conf()
