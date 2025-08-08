@@ -24,7 +24,9 @@ local bk_components_utils = require("apisix.plugins.bk-components.utils")
 
 local string_format = string.format
 
+local LEGACY_VERIFY_BK_TOKEN_URL  = "/login/api/v2/is_login/"
 local VERIFY_BK_TOKEN_URL = "/login/api/v3/apigw/bk-tokens/verify/"
+
 
 local BKLOGIN_TIMEOUT_MS = 5 * 1000
 
@@ -33,6 +35,7 @@ local err_status_400 = "status 400, bk_token is not valid"
 local _M = {
     host = bk_core.config.get_login_addr(),
     token = bk_core.config.get_login_token(),
+    enable_multi_tenant_mode = bk_core.config.get_enable_multi_tenant_mode(),
 }
 
 local function bklogin_do_request(host, path, params, request_id)
@@ -88,7 +91,11 @@ end
 
 function _M.get_username_by_bk_token(bk_token)
     local request_id = uuid.generate_v4()
-    local path = VERIFY_BK_TOKEN_URL
+    local path = LEGACY_VERIFY_BK_TOKEN_URL
+    if _M.enable_multi_tenant_mode then
+        path = VERIFY_BK_TOKEN_URL
+    end
+
     local params = {
             method = "GET",
             query = core.string.encode_args(
@@ -120,3 +127,4 @@ function _M.get_username_by_bk_token(bk_token)
 end
 
 return _M
+
