@@ -39,7 +39,6 @@ describe(
         end
 
         local match_uri = function(router, uri)
-            local match_opts = {}
             local ctx = {
                 var = {
                     request_method = "GET",
@@ -49,8 +48,8 @@ describe(
                 }
             }
 
-            local result = base_router.match_uri(router, match_opts, ctx)
-            return result, match_opts
+            local result = base_router.match_uri(router,  ctx)
+            return result
         end
 
         context(
@@ -61,8 +60,14 @@ describe(
                     function()
                         local router = new_router("/api/v1/users/:id/", true)
 
-                        assert.is_true(match_uri(router, "/api/v1/users/1"))
-                        assert.is_nil(match_uri(router, "/api/v1/users/1/"))
+                        -- NOTE: 3.2.1, the result is different from 3.13
+                        -- assert.is_true(match_uri(router, "/api/v1/users/1"))
+                        -- assert.is_nil(match_uri(router, "/api/v1/users/1/"))
+
+                        -- the pr: https://github.com/api7/lua-resty-radixtree/commit/dd87111f4886ae0c67c32f964289250334613d59
+                        -- this is expected behavior
+                        assert.is_nil(match_uri(router, "/api/v1/users/1"))
+                        assert.is_true(match_uri(router, "/api/v1/users/1/"))
                     end
                 )
 

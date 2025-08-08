@@ -4,11 +4,11 @@ RUN_WITH_IT ?= -it
 
 .PHONY: apisix-test-busted
 apisix-test-busted:
-	docker build -t apisix-test-busted -f ci/Dockerfile.apisix-test-busted .
+	docker build -t apisix-test-busted-313 -f ci/Dockerfile.apisix-test-busted .
 
 .PHONY: apisix-test-nginx
 apisix-test-nginx:
-	docker build -t apisix-test-nginx -f ci/Dockerfile.apisix-test-nginx .
+	docker build -t apisix-test-nginx-313 -f ci/Dockerfile.apisix-test-nginx .
 
 .PHONY: test-busted
 test-busted:
@@ -18,7 +18,7 @@ test-busted:
 	-v ${ROOT_DIR}/logs/:/bkgateway/logs/ \
 	-v ${ROOT_DIR}/tests/conf/nginx.conf:/bkgateway/conf/nginx.conf \
 	-v ${ROOT_DIR}/plugins:/bkgateway/apisix/plugins \
-	apisix-test-busted "/run-test-busted.sh"
+	apisix-test-busted-313 "/run-test-busted.sh"
 
 # make test-nginx
 # make test-nginx CASE_FILE=bk-traffic-label.t
@@ -27,7 +27,7 @@ test-nginx:
 	@docker run --rm ${RUN_WITH_IT} \
 	-v ${ROOT_DIR}/t:/bkgateway/t/ \
 	-v ${ROOT_DIR}/plugins:/bkgateway/apisix/plugins \
-	apisix-test-nginx "/run-test-nginx.sh" $(if $(CASE_FILE),$(CASE_FILE))
+	apisix-test-nginx-313 "/run-test-nginx.sh" $(if $(CASE_FILE),$(CASE_FILE))
 
 .PHONY: apisix-test-images
 apisix-test-images: apisix-test-busted apisix-test-nginx
@@ -42,7 +42,7 @@ lint:
 	-v ${ROOT_DIR}/plugins:/bkgateway/apisix/plugins \
 	-v ${ROOT_DIR}/tests:/bkgateway/tests/ \
 	-w /bkgateway/apisix \
-	apisix-test-busted \
+	apisix-test-busted-313 \
 	luacheck --config /bkgateway/.luacheckrc ./plugins
 
 .PHONY: edition
