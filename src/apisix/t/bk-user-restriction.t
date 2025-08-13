@@ -60,8 +60,8 @@ done
         content_by_lua_block {
             local t = require("lib.test_admin").test
             local code, body = t('/apisix/admin/routes/1',
-                 ngx.HTTP_PUT,
-                 [[{
+                ngx.HTTP_PUT,
+                [[{
                         "plugins": {
                             "bk-user-restriction": {
                                 "whitelist": ["user1", "user2"],
@@ -112,8 +112,8 @@ hello world
         content_by_lua_block {
             local t = require("lib.test_admin").test
             local code, body = t('/apisix/admin/routes/1',
-                 ngx.HTTP_PUT,
-                 [[{
+                ngx.HTTP_PUT,
+                [[{
                         "plugins": {
                             "bk-user-restriction": {
                                 "whitelist": ["user1", "user2"],
@@ -163,8 +163,8 @@ GET /hello
         content_by_lua_block {
             local t = require("lib.test_admin").test
             local code, body = t('/apisix/admin/routes/1',
-                 ngx.HTTP_PUT,
-                 [[{
+                ngx.HTTP_PUT,
+                [[{
                         "plugins": {
                             "bk-user-restriction": {
                                 "blacklist": ["user3", "user4"],
@@ -214,8 +214,8 @@ GET /hello
         content_by_lua_block {
             local t = require("lib.test_admin").test
             local code, body = t('/apisix/admin/routes/1',
-                 ngx.HTTP_PUT,
-                 [[{
+                ngx.HTTP_PUT,
+                [[{
                         "plugins": {
                             "bk-user-restriction": {
                                 "blacklist": ["user3", "user4"],

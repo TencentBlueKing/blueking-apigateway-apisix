@@ -253,10 +253,10 @@ POST /echo
         content_by_lua_block {
             local t = require("lib.test_admin").test
             local code, body = t('/apisix/admin/routes/1',
-                 ngx.HTTP_PUT,
-                 [[{
+                ngx.HTTP_PUT,
+                [[{
                     "plugins": {
-                       "bk-stage-context": {
+                        "bk-stage-context": {
                             "bk_gateway_name": "demo",
                             "bk_stage_name": "prod",
                             "jwt_private_key": "dGhpcyBpcyBhIGZha2Ugand0IHByaXZhdGUga2V5",

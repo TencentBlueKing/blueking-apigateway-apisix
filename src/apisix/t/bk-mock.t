@@ -41,11 +41,11 @@ __DATA__
         content_by_lua_block {
             local plugin = require("apisix.plugins.bk-mock")
             local ok, err = plugin.check_schema({
-              response_status =  200,
-              response_example = 'Hello world',
-              response_headers = {
+                response_status =  200,
+                response_example = 'Hello world',
+                response_headers = {
                     ["Content-Type"] = "application/json"
-               }
+                }
             })
             if not ok then
                 ngx.say(err)
@@ -63,8 +63,8 @@ done
         content_by_lua_block {
             local t = require("lib.test_admin").test
             local code, body = t('/apisix/admin/routes/1',
-                 ngx.HTTP_PUT,
-                 [[{
+                ngx.HTTP_PUT,
+                [[{
                         "plugins": {
                             "bk-mock": {
                                 "response_status": 400,
