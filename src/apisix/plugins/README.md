@@ -25,6 +25,7 @@
 - bk-request-id                             # priority: 18850
 - bk-stage-context                          # priority: 18840
 - ~~bk-service-context                        # priority: 18830 (abandonned)~~
+- bk-backend-context                        # priority: 18825
 - bk-resource-context                       # priority: 18820
 - bk-status-rewrite                         # priority: 18815 (will be deprecated)
 - bk-verified-user-exempted-apps            # priority: 18810 (will be deprecated)
@@ -45,7 +46,6 @@
 
 - bk-cors                                   # priority: 17900
 - bk-break-recursive-call                   # priority: 17700  # 该插件应默认应用于所有路由
-- bk-body-limit                             # priority: 17690
 - bk-auth-validate                          # priority: 17680
 - bk-user-restriction                       # priority: 17679
 - bk-tenant-verify                          # priority: 17675
