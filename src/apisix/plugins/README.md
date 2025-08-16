@@ -45,7 +45,7 @@
 
 - bk-cors                                   # priority: 17900
 - bk-break-recursive-call                   # priority: 17700  # 该插件应默认应用于所有路由
-- bk-body-limit                             # priority: 17690
+- bk-request-size-limit                     # priority: 17690
 - bk-auth-validate                          # priority: 17680
 - bk-user-restriction                       # priority: 17679
 - bk-tenant-verify                          # priority: 17675
