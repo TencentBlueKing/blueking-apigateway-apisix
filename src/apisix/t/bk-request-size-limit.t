@@ -40,7 +40,7 @@ __DATA__
     location /t {
         content_by_lua_block {
             local plugin = require("apisix.plugins.bk-request-size-limit")
-            local ok, err = plugin.check_schema({size = 1024})
+            local ok, err = plugin.check_schema({max_body_size = 1024})
             if not ok then
                 ngx.say(err)
             end
@@ -61,7 +61,7 @@ done
                 [[{
                         "plugins": {
                             "bk-request-size-limit": {
-                                "size": 69
+                                "max_body_size": 69
                             },
                             "bk-error-wrapper": {}
                         },

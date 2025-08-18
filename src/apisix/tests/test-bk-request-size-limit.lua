@@ -43,7 +43,7 @@ describe(
                 )
 
                 it(
-                    "missing size field", function()
+                    "missing max_body_size field", function()
                         local invalid_conf = {}
                         local ok, err = plugin.check_schema(invalid_conf)
                         assert.is_false(ok)
@@ -52,7 +52,7 @@ describe(
                 )
 
                 it(
-                    "size field is not integer", function()
+                    "max_body_size field is not integer", function()
                         conf.max_body_size = "1024"
                         local ok, err = plugin.check_schema(conf)
                         assert.is_false(ok)
@@ -61,7 +61,7 @@ describe(
                 )
 
                 it(
-                    "size field is zero", function()
+                    "max_body_size field is zero", function()
                         conf.max_body_size = 0
                         local ok, err = plugin.check_schema(conf)
                         assert.is_false(ok)
@@ -70,7 +70,7 @@ describe(
                 )
 
                 it(
-                    "size field is negative", function()
+                    "max_body_size field is negative", function()
                         conf.max_body_size = -1
                         local ok, err = plugin.check_schema(conf)
                         assert.is_false(ok)
