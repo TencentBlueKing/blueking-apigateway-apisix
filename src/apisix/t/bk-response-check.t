@@ -154,7 +154,7 @@ passed
 --- request
 GET /apisix/prometheus/metrics
 --- response_body eval
-qr/apisix_apigateway_api_requests_total\{api_name="demo",stage_name="prod",resource_name="",status="200",proxy_phase="",proxy_error="0"\} 4/
+qr/apisix_apigateway_api_requests_total\{api_name="demo",stage_name="prod",backend_name="",resource_name="",status="200",proxy_phase="",proxy_error="0"\} 4/
 
 
 
@@ -162,7 +162,7 @@ qr/apisix_apigateway_api_requests_total\{api_name="demo",stage_name="prod",resou
 --- request
 GET /apisix/prometheus/metrics
 --- response_body eval
-qr/apisix_apigateway_api_request_duration_milliseconds_bucket\{api_name="demo",stage_name="prod",resource_name="",le="5000"\} \d+/
+qr/apisix_apigateway_api_request_duration_milliseconds_bucket\{api_name="demo",stage_name="prod",backend_name="",resource_name="",le="5000"\} \d+/
 
 
 
@@ -170,4 +170,4 @@ qr/apisix_apigateway_api_request_duration_milliseconds_bucket\{api_name="demo",s
 --- request
 GET /apisix/prometheus/metrics
 --- response_body eval
-qr/apisix_apigateway_app_requests_total\{app_code="demo",api_name="demo",stage_name="prod",resource_name=""\} 4/
+qr/apisix_apigateway_app_requests_total\{app_code="demo",api_name="demo",stage_name="prod",backend_name="",resource_name=""\} 4/
