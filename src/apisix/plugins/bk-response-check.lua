@@ -43,6 +43,9 @@ local metric_app_requests_total
 ---@type prometheus.Histogram
 local metric_api_request_duration
 
+local X_BKAPI_TOTAL_LATENCY_HEADER = "X-Bkapi-Total-Latency"
+local X_BKAPI_UPSTREAM_LATENCY_HEADER = "X-Bkapi-Upstream-Latency"
+
 local schema = {}
 
 ---@type apisix.Plugin
@@ -155,6 +158,13 @@ function _M.log(conf, ctx)
             }
         )
     end
+
+    -- X-Bkapi-Total-Latency  from bk_log_request_duration
+    -- (equals to apisix request_time*1000 请求总耗时)
+    core.response.set_header(X_BKAPI_TOTAL_LATENCY_HEADER, ctx.var.bk_log_request_duration)
+    -- X-Bkapi-Upstream-Latency bk_log_upstream_duration
+    -- (equals to apisix upstream_response_time * 1000 上游响应总秒数)
+    core.response.set_header(X_BKAPI_UPSTREAM_LATENCY_HEADER, ctx.var.bk_log_upstream_duration)
 end
 
 return _M
