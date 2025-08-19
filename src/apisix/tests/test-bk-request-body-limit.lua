@@ -16,12 +16,12 @@
 -- to the current version of the project delivered to anyone in the future.
 --
 
-local plugin = require("apisix.plugins.bk-request-size-limit")
+local plugin = require("apisix.plugins.bk-request-body-limit")
 local core = require("apisix.core")
 local errorx = require("apisix.plugins.bk-core.errorx")
 
 describe(
-    "bk-request-size-limit", function()
+    "bk-request-body-limit", function()
         local conf
 
         before_each(
@@ -81,7 +81,7 @@ describe(
         )
 
         context(
-            "access", function()
+            "rewrite", function()
                 local ctx
 
                 before_each(
@@ -98,7 +98,7 @@ describe(
                         local original_header = core.request.header
                         core.request.header = function(_, _) return nil end
 
-                        local result = plugin.access(conf, ctx)
+                        local result = plugin.rewrite(conf, ctx)
                         assert.is_nil(result)
 
                         -- Restore original function
@@ -112,7 +112,7 @@ describe(
                         local original_header = core.request.header
                         core.request.header = function(_, _) return "512" end
 
-                        local result = plugin.access(conf, ctx)
+                        local result = plugin.rewrite(conf, ctx)
                         assert.is_nil(result)
 
                         -- Restore original function
@@ -126,7 +126,7 @@ describe(
                         local original_header = core.request.header
                         core.request.header = function(_, _) return "1024" end
 
-                        local result = plugin.access(conf, ctx)
+                        local result = plugin.rewrite(conf, ctx)
                         assert.is_nil(result)
 
                         -- Restore original function
@@ -148,7 +148,7 @@ describe(
                             return 413, ""
                         end
 
-                        local status, msg = plugin.access(conf, ctx)
+                        local status, msg = plugin.rewrite(conf, ctx)
                         assert.is_equal(status, 413)
                         assert.is_equal(msg, "")
 
@@ -164,7 +164,7 @@ describe(
                         local original_header = core.request.header
                         core.request.header = function(_, _) return "invalid" end
 
-                        local result = plugin.access(conf, ctx)
+                        local result = plugin.rewrite(conf, ctx)
                         assert.is_nil(result)
 
                         -- Restore original function

@@ -16,27 +16,30 @@
 -- to the current version of the project delivered to anyone in the future.
 --
 
--- bk-request-size-limit
+-- bk-request-body-limit
 --
 -- Limit the size of incoming requests by checking the content-length header.
 -- If content-length is present and greater than the configured size, the request is rejected.
 -- If no content-length header is present, the request is allowed to proceed.
 
+local require = require
 local core = require("apisix.core")
+local ok, apisix_ngx_client = pcall(require, "resty.apisix.client")
 local errorx = require("apisix.plugins.bk-core.errorx")
 local tostring = tostring
 
-local plugin_name = "bk-request-size-limit"
+local plugin_name = "bk-request-body-limit"
+
 
 local schema = {
     type = "object",
-    title = "work with route or service object",
     properties = {
         max_body_size = {
             type = "integer",
             minimum = 1,
-            description = "Maximum message body size in bytes. "
-        }
+            maximum = 32 * 1024 * 1024,
+            description = "Maximum message body size in bytes."
+        },
     },
     required = {"max_body_size"},
 }
@@ -52,17 +55,33 @@ function _M.check_schema(conf, schema_type)
     return core.schema.check(schema, conf)
 end
 
-function _M.access(conf, ctx)
-    -- Get content-length header
-    local content_length = tonumber(core.request.header(ctx, "Content-Length"))
-    if content_length then
-        if content_length > conf.max_body_size then
-            return errorx.exit_with_apigw_err(ctx,
-        errorx.new_request_body_size_exceed():with_field(
-                "reason",
-                "request body size ".. tostring(content_length) ..
-                " exceeds the limit " .. tostring(conf.max_body_size)),
-            _M)
+function _M.rewrite(conf, ctx)
+    -- NOTE: here use the same logic as client-control plugin, but with different response code
+
+    if not ok then
+        core.log.error("need to build APISIX-Runtime to support client control")
+        return 501
+    end
+
+    if conf.max_body_size then
+        local len = tonumber(core.request.header(ctx, "Content-Length"))
+        if len then
+            -- if length is given in the header, check it immediately
+            if conf.max_body_size ~= 0 and len > conf.max_body_size then
+                return errorx.exit_with_apigw_err(ctx,
+                    errorx.new_request_body_size_exceed():with_field(
+                        "reason",
+                        "request body size ".. tostring(len) ..
+                        " exceeds the limit " .. tostring(conf.max_body_size)),
+                    _M)
+            end
+        end
+
+        -- then check it when reading the body
+        local set_ok, err = apisix_ngx_client.set_client_max_body_size(conf.max_body_size)
+        if not set_ok then
+            core.log.error("failed to set client max body size: ", err)
+            return 503
         end
     end
 
