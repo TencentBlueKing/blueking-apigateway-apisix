@@ -19,7 +19,6 @@
 local core = require("apisix.core")
 local plugin = require("apisix.plugins.bk-response-check")
 local exporter = require("apisix.plugins.prometheus.exporter")
-local request = require("apisix.core.request")
 
 describe(
     "bk-response-check", function()

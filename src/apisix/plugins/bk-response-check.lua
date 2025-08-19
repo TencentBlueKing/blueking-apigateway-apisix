@@ -108,10 +108,14 @@ end
 function _M.header_filter(conf, ctx)
     -- X-Bkapi-Total-Latency  from bk_log_request_duration
     -- (equals to apisix request_time*1000 请求总耗时)
-    core.response.set_header(X_BKAPI_TOTAL_LATENCY_HEADER, ctx.var.bk_log_request_duration)
+    if ctx.var.bk_log_request_duration ~= nil then
+        core.response.set_header(X_BKAPI_TOTAL_LATENCY_HEADER, ctx.var.bk_log_request_duration)
+    end
     -- X-Bkapi-Upstream-Latency bk_log_upstream_duration
     -- (equals to apisix upstream_response_time * 1000 上游响应总秒数)
-    core.response.set_header(X_BKAPI_UPSTREAM_LATENCY_HEADER, ctx.var.bk_log_upstream_duration)
+    if ctx.var.bk_log_upstream_duration ~= nil then
+        core.response.set_header(X_BKAPI_UPSTREAM_LATENCY_HEADER, ctx.var.bk_log_upstream_duration)
+    end
 end
 
 ---@param conf any
