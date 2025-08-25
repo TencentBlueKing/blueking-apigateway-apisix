@@ -22,7 +22,6 @@ WORKDIR /usr/local/apisix
 
 # 3. install luarocks and install lua libs
 RUN wget https://raw.githubusercontent.com/apache/apisix/${APISIX_VERSION}/utils/linux-install-luarocks.sh && \
-    sed -i 's/3.8.0/3.12.0/g' linux-install-luarocks.sh && \
     bash linux-install-luarocks.sh && \
     rm linux-install-luarocks.sh
 RUN luarocks install multipart --tree=/usr/local/apisix/deps && \
