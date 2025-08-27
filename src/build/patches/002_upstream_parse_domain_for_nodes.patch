@@ -1,14 +1,15 @@
 diff --git a/apisix/utils/upstream.lua b/apisix/utils/upstream.lua
-index c39d4cce..0e51ac03 100644
+index 52c14d04..0ea5648a 100644
 --- a/apisix/utils/upstream.lua
 +++ b/apisix/utils/upstream.lua
-@@ -79,9 +79,35 @@ local function parse_domain_for_nodes(nodes)
+@@ -97,9 +97,36 @@ local function parse_domain_for_nodes(nodes)
                  core.log.error("dns resolver domain: ", host, " error: ", err)
              end
          else
 -            core.table.insert(new_nodes, node)
 +            -- patch for: https://github.com/apache/apisix/issues/12436
 +            if node.domain then
++                core.log.error("issue 12436 happened")
 +                local ip, err = core.resolver.parse_domain(node.domain)
 +                if ip then
 +                    local new_node = core.table.clone(node)
