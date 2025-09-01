@@ -25,6 +25,7 @@
 - bk-request-id                             # priority: 18850
 - bk-stage-context                          # priority: 18840
 - ~~bk-service-context                        # priority: 18830 (abandonned)~~
+- bk-backend-context                        # priority: 18825
 - bk-resource-context                       # priority: 18820
 - bk-status-rewrite                         # priority: 18815 (will be deprecated)
 - bk-verified-user-exempted-apps            # priority: 18810 (will be deprecated)
