@@ -16,6 +16,7 @@
 -- to the current version of the project delivered to anyone in the future.
 --
 
+local core = require("apisix.core")
 local plugin = require("apisix.plugins.bk-response-check")
 local exporter = require("apisix.plugins.prometheus.exporter")
 
@@ -51,6 +52,38 @@ describe(
                         assert.is_not_nil(prometheus.registry["apigateway_api_requests_total"])
                         assert.is_not_nil(prometheus.registry["apigateway_api_request_duration_milliseconds"])
                         assert.is_not_nil(prometheus.registry["apigateway_app_requests_total"])
+                    end
+                )
+            end
+        )
+
+        context(
+            "header_filter", function()
+                before_each(
+                    function()
+                        stub(core.response, "set_header")
+                    end
+                )
+
+                after_each(
+                    function()
+                        core.response.set_header:revert()
+                    end
+                )
+                it(
+                    "should set the headers", function()
+                        ctx = {
+                            var = {
+                                bk_log_request_duration = 2000,
+                                bk_log_upstream_duration = 1000,
+                            }
+                        }
+
+                        plugin.header_filter(nil, ctx)
+
+                        assert.stub(core.response.set_header).was_called_with("X-Bkapi-Total-Latency", 2000)
+                        assert.stub(core.response.set_header).was_called_with("X-Bkapi-Upstream-Latency", 1000)
+
                     end
                 )
             end

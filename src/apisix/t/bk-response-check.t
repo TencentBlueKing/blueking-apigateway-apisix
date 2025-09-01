@@ -88,7 +88,7 @@ done
                             },
                             "serverless-post-function": {
                                 "phase": "rewrite",
-                                "functions" : ["return function(conf, ctx) ctx.var.bk_app_code = \"demo\" end"]
+                                "functions" : ["return function(conf, ctx) ctx.var.bk_app_code = \"demo\"; ctx.var.bk_log_request_duration = 2000; ctx.var.bk_log_upstream_duration = 1000; end"]
                             }
                         },
                         "upstream": {
@@ -171,3 +171,12 @@ qr/apisix_apigateway_api_request_duration_milliseconds_bucket\{api_name="demo",s
 GET /apisix/prometheus/metrics
 --- response_body eval
 qr/apisix_apigateway_app_requests_total\{app_code="demo",api_name="demo",stage_name="prod",backend_name="",resource_name=""\} 4/
+
+
+
+=== TEST 8: check the response latency headers
+--- request
+GET /hello
+--- response_headers
+X-Bkapi-Total-Latency: 2000
+X-Bkapi-Upstream-Latency: 1000
