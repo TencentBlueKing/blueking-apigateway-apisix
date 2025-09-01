@@ -67,6 +67,7 @@ function _M.init()
         "How many HTTP requests processed, partitioned by status code, method and HTTP path.", {
             "api_name",
             "stage_name",
+            "backend_name",
             "resource_name",
             "status",
             "proxy_phase",
@@ -79,6 +80,7 @@ function _M.init()
         "How long it took to process the request, partitioned by status code, method and HTTP path.", {
             "api_name",
             "stage_name",
+            "backend_name",
             "resource_name",
         }, {
             100,
@@ -93,6 +95,7 @@ function _M.init()
             "app_code",
             "api_name",
             "stage_name",
+            "backend_name",
             "resource_name",
         }
     )
@@ -123,6 +126,7 @@ end
 function _M.log(conf, ctx)
     local api_name = ctx.var.bk_gateway_name or ""
     local stage_name = ctx.var.bk_stage_name or ""
+    local backend_name = ctx.var.bk_backend_name or ""
     local resource_name = ctx.var.bk_resource_name or ""
     local proxy_phase = ctx.var.proxy_phase or ""
     local status = ctx.var.status
@@ -146,6 +150,7 @@ function _M.log(conf, ctx)
         1, {
             api_name,
             stage_name,
+            backend_name,
             resource_name,
             status_label,
             proxy_phase,
@@ -158,6 +163,7 @@ function _M.log(conf, ctx)
             ctx.var.request_time * 1000, {
                 api_name,
                 stage_name,
+                backend_name,
                 resource_name,
             }
         )
@@ -169,6 +175,7 @@ function _M.log(conf, ctx)
                 ctx.var.bk_app_code,
                 api_name,
                 stage_name,
+                backend_name,
                 resource_name,
             }
         )

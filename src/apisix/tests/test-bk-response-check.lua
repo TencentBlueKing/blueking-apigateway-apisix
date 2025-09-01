@@ -97,6 +97,7 @@ describe(
                             var = {
                                 api_name = "api_name",
                                 stage_name = "stage_name",
+                                backend_name = "backend_name",
                                 resource_name = "resource_name",
                                 status = 200,
                                 proxy_phase = "proxy_phase",
@@ -117,13 +118,14 @@ describe(
                         local expected_label_names = {
                             'api_name',
                             'stage_name',
+                            'backend_name',
                             'resource_name',
                             'status',
                             'proxy_phase',
                             'proxy_error' ,
                         }
                         local expected_key = 'apigateway_api_requests_total{api_name="",stage_name="",' ..
-                        'resource_name="",status="200",' ..
+                        'backend_name="",resource_name="",status="200",' ..
                         'proxy_phase="proxy_phase",proxy_error="proxy_error"}'
 
                         assert.is_same(expected_label_names, api_requests_total["label_names"])
