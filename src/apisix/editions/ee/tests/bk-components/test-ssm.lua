@@ -84,8 +84,7 @@ describe(
 
                         local result, err = ssm.verify_access_token("fake-access-token")
                         assert.is_nil(result)
-                        -- assert.equals(err, "abc")
-                        assert.is_true(core.string.has_prefix(err, "failed to request third-party api"))
+                        assert.is_true(core.string.has_prefix(err, "access_token is invalid, ssm error message"))
                     end
                 )
 

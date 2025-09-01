@@ -26,19 +26,8 @@ SHELL = /usr/bin/env bash -o pipefail
 
 
 ##@ Build
-.PHONY: all
-all: build-all
-
-.PHONY: build-all
-build-all: build
-
-.PHONY: build
-build: config-watcher
-
-.PHONY: config-watcher
-config-watcher:
-	mkdir -p "${WORKSPACE}/${PACKAGEPATH}"
-	cd src/config-watcher && go build -o ${WORKSPACE}/${PACKAGEPATH}/config-watcher . && cd -
+# .PHONY: build
+# build: 
 
 ##@ Edition
 
@@ -89,9 +78,8 @@ apisix-dependencies: apisix-core
 	${WORKSPACE}/src/apisix-core/rockspec/apisix-3.2.0-0.rockspec --server https://luarocks.cn
 
 .PHONY: apisix-dev-image
-apisix-dev-image: build edition-ee
+apisix-dev-image: edition-ee
 	docker build -f Dockerfile . -t bk-micro-gateway-apisix:development
-	kind load docker-image bk-micro-gateway-apisix:development 
 
 
 
