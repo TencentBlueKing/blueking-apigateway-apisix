@@ -48,7 +48,7 @@ describe(
 
                 it(
                     "should success when config is correct", function()
-                        assert.is_true(plugin.check_schema({}))
+                        assert.is_false(plugin.check_schema({}))
 
                         assert.is_true(plugin.check_schema(conf))
                     end
