@@ -74,8 +74,8 @@ local function ssm_do_request(host, path, params, request_id)
 
     if result.code ~= 0 then
         local new_err = string_format(
-                "failed to request third-party api, url: %s, request_id: %s, result.code!=0, status: %s, response: %s",
-                url, request_id, res.status, res.body
+            "access_token is invalid, ssm error message: %s, request_id: %s, status: %s, result.code!=0, response: %s",
+            url, request_id, res.status, res.body
         )
         core.log.error(new_err)
         return nil, new_err
