@@ -42,6 +42,10 @@ local schema = {
             type = "string",
         },
     },
+    required = {
+        "bk_backend_id",
+        "bk_backend_name",
+    },
 }
 
 local _M = {
