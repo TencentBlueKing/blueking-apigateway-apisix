@@ -82,6 +82,8 @@ function _M.rewrite(conf, ctx) -- luacheck: no unused
         if err then
             return errorx.exit_with_apigw_err(ctx, errorx.new_invalid_args():with_field("reason", err), _M)
         end
+        -- remove the Authorization header
+        core.request.set_header(ctx, "Authorization", nil)
     elseif conf.source == "api_key" then
         token = core.request.header(ctx, "X-API-KEY")
         if token == nil then
@@ -93,6 +95,8 @@ function _M.rewrite(conf, ctx) -- luacheck: no unused
             return errorx.exit_with_apigw_err(ctx,
             errorx.new_invalid_args():with_field("reason", "The `X-API-KEY` header is empty"), _M)
         end
+        -- remove the X-API-KEY header
+        core.request.set_header(ctx, "X-API-KEY", nil)
     end
 
     local encoded_token = core.json.encode({

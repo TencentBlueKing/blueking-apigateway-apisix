@@ -180,6 +180,7 @@ describe(
 
                         assert.is_equal(ctx.headers["X-Bkapi-Authorization"], '{"access_token":"test-token-123"}')
                         assert.is_nil(ctx.var.bk_apigw_error)
+                        assert.is_nil(ctx.headers["Authorization"])
                     end
                 )
 
@@ -224,6 +225,7 @@ describe(
 
                         assert.is_equal(ctx.headers["X-Bkapi-Authorization"], '{"access_token":"api-key-token-123"}')
                         assert.is_nil(ctx.var.bk_apigw_error)
+                        assert.is_nil(ctx.headers["X-API-KEY"])
                     end
                 )
 
