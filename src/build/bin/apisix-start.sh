@@ -1,4 +1,7 @@
 #!/bin/sh
+
+set -eo pipefail
+
 echo "starting......"
 
 # start nginx error to sentry
@@ -12,7 +15,16 @@ then
 fi
 
 
-echo "start apisix"
-/usr/bin/apisix init && /usr/bin/apisix init_etcd && /usr/local/openresty/bin/openresty -p /usr/local/apisix -g 'daemon off;'
+echo "init apisix......"
+/usr/bin/apisix init
+
+echo "init etcd......"
+/usr/bin/apisix init_etcd
+
+
+echo "start apisix......"
+exec /usr/local/openresty/bin/openresty -p /usr/local/apisix -g 'daemon off;'
 
 echo "quit"
+
+sleep 2
