@@ -25,6 +25,6 @@ echo "init etcd......"
 echo "start apisix......"
 exec /usr/local/openresty/bin/openresty -p /usr/local/apisix -g 'daemon off;'
 
-echo "quit"
+echo "apisix quited"
 
 sleep 2
