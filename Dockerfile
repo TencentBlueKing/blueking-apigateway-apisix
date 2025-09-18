@@ -10,7 +10,7 @@ RUN yum clean packages
 # you can add more tools for debug
 # alreay on image: ifconfig nslookup dig ip ss route
 # install openresty & apisix
-RUN yum install -y apisix-${APISIX_VERSION} && \ 
+RUN yum install -y apisix-${APISIX_VERSION} && \
     yum install -y tar m4 findutils procps less iproute traceroute telnet lsof net-tools tcpdump mtr vim bind-utils libyaml-devel hostname gawk iputils python3 python3-pip sudo && \
     yum install -y wget unzip patch make
 
@@ -41,6 +41,6 @@ RUN chmod 755 /data/bkgateway/bin/* && chmod 777 /usr/local/apisix/logs
 # 6. clean up
 RUN yum remove -y wget unzip patch make && yum clean all && rm -rf /var/cache/yum
 
-CMD ["sh", "-c", "/usr/bin/apisix init && /usr/bin/apisix init_etcd && /usr/local/openresty/bin/openresty -p /usr/local/apisix -g 'daemon off;'"]
+ENTRYPOINT ["/data/bkgateway/bin/apisix-start.sh"]
 
 STOPSIGNAL SIGQUIT
