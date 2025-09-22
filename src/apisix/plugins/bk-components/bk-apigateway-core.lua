@@ -108,6 +108,7 @@ function _M.query_permission(gateway_name, stage_name, resource_name, app_code)
     local result, err = bk_apigateway_core_do_get(_M.instance_id, _M.instance_secret, _M.host, path, query)
     if err ~= nil then
         core.log.error(err)
+        return nil, err
     end
     return result.data, err
 end
@@ -129,6 +130,7 @@ function _M.get_apigw_public_key(gateway_name)
     local result, err = bk_apigateway_core_do_get(_M.instance_id, _M.instance_secret, _M.host, path, query)
     if err ~= nil then
         core.log.error(err)
+        return nil, err
     end
     return result.data, err
 end
