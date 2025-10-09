@@ -28,7 +28,7 @@ install_dependencies() {
     export_or_prefix
 
     # install build & runtime deps
-    yum install -y --disablerepo=* --enablerepo=ubi-8-appstream-rpms --enablerepo=ubi-8-baseos-rpms \
+    yum install -y --disablerepo=* --enablerepo=ubi-9-appstream-rpms --enablerepo=ubi-9-baseos-rpms \
     wget tar gcc gcc-c++ automake autoconf libtool make unzip git sudo openldap-devel hostname patch \
     which ca-certificates pcre pcre-devel xz \
     openssl-devel
@@ -36,11 +36,11 @@ install_dependencies() {
     # FIXME: yum uninstall the build tools
 
     # yum install -y libyaml-devel
-    yum install -y --disablerepo=* --enablerepo=ubi-8-appstream-rpms --enablerepo=ubi-8-baseos-rpms cpanminus perl
+    yum install -y --disablerepo=* --enablerepo=ubi-9-appstream-rpms --enablerepo=ubi-9-baseos-rpms cpanminus perl
 
     # install newer curl
     # yum makecache
-    # yum install -y libnghttp2-devel
+    # yum install -y xz
     # install_curl
 
     # install apisix-runtime to make apisix's rpm test work
@@ -49,7 +49,7 @@ install_dependencies() {
 
     # install_apisix_runtime
     # curl -o /usr/local/openresty/openssl3/ssl/openssl.cnf \
-        # https://raw.githubusercontent.com/api7/apisix-build-tools/apisix-runtime/${APISIX_RUNTIME}/conf/openssl3/openssl.cnf
+    #     https://raw.githubusercontent.com/api7/apisix-build-tools/apisix-runtime/${APISIX_RUNTIME}/conf/openssl3/openssl.cnf
 
     # patch lua-resty-events
     sed -i 's/log(ERR, "event worker failed: ", perr)/log(ngx.WARN, "event worker failed: ", perr)/' /usr/local/openresty/lualib/resty/events/worker.lua

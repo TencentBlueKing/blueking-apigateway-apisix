@@ -39,6 +39,7 @@ describe(
                     blacklist = {
                         "127.0.0.3",
                     },
+                    response_code = 403,
                 }
             end
         )
