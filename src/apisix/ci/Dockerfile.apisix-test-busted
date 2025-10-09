@@ -1,14 +1,15 @@
-ARG APISIX_VERSION="3.11.0"
+ARG APISIX_VERSION="3.13.0"
 FROM apache/apisix:$APISIX_VERSION-redhat
 
 RUN yum install -y sudo make gcc wget unzip git # valgrind
 
 
 ARG APISIX_VERSION
-RUN wget https://raw.githubusercontent.com/apache/apisix/${APISIX_VERSION}/utils/linux-install-luarocks.sh && sed -i 's/3.8.0/3.12.0/g' linux-install-luarocks.sh &&  bash linux-install-luarocks.sh
+RUN wget https://raw.githubusercontent.com/apache/apisix/${APISIX_VERSION}/utils/linux-install-luarocks.sh && bash linux-install-luarocks.sh
+
 # lock the version of luasystem, otherwise the busted won't be installed success
-RUN luarocks install https://luarocks.org/manifests/lunarmodules/luasystem-0.2.1-0.rockspec
-RUN luarocks install https://github.com/lunarmodules/busted/releases/download/v2.1.1/busted-2.1.1-1.rockspec
+RUN luarocks install https://luarocks.org/manifests/lunarmodules/luasystem-0.6.3-1.rockspec
+RUN luarocks install https://github.com/lunarmodules/busted/releases/download/v2.2.0/busted-2.2.0-1.rockspec
 
 COPY ci/requirements-dev-0.rockspec /
 RUN luarocks install --deps-only /requirements-dev-0.rockspec --server https://luarocks.cn
