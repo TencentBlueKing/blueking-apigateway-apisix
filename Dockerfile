@@ -1,4 +1,4 @@
-FROM tencentos/tencentos4-minimal:4.4-v20250613
+FROM tencentos/tencentos4-minimal:4.4-v20250922
 
 ARG APISIX_VERSION=3.13.0
 LABEL apisix_version="${APISIX_VERSION}"
