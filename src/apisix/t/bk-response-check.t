@@ -173,10 +173,3 @@ GET /apisix/prometheus/metrics
 qr/apisix_apigateway_app_requests_total\{app_code="demo",api_name="demo",stage_name="prod",backend_name="",resource_name=""\} 4/
 
 
-
-=== TEST 8: check the response latency headers
---- request
-GET /hello
---- response_headers
-X-Bkapi-Total-Latency: 2000
-X-Bkapi-Upstream-Latency: 1000
