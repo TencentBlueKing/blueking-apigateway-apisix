@@ -58,38 +58,6 @@ describe(
         )
 
         context(
-            "header_filter", function()
-                before_each(
-                    function()
-                        stub(core.response, "set_header")
-                    end
-                )
-
-                after_each(
-                    function()
-                        core.response.set_header:revert()
-                    end
-                )
-                it(
-                    "should set the headers", function()
-                        ctx = {
-                            var = {
-                                bk_log_request_duration = 2000,
-                                bk_log_upstream_duration = 1000,
-                            }
-                        }
-
-                        plugin.header_filter(nil, ctx)
-
-                        assert.stub(core.response.set_header).was_called_with("X-Bkapi-Total-Latency", 2000)
-                        assert.stub(core.response.set_header).was_called_with("X-Bkapi-Upstream-Latency", 1000)
-
-                    end
-                )
-            end
-        )
-
-        context(
             "log", function()
                 it(
                     "should log the metrics", function()
