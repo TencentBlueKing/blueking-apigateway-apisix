@@ -31,6 +31,7 @@
 
 local core = require("apisix.core")
 local exporter = require("apisix.plugins.prometheus.exporter")
+local plugin = require("apisix.plugin")
 
 ---@type prometheus.Registry
 local prometheus_registry
@@ -58,6 +59,11 @@ local _M = {
 function _M.init()
     prometheus_registry = exporter.get_prometheus()
 
+    -- use the same plugin attr with prometheus plugin
+    local attr = plugin.plugin_attr("prometheus")
+    local bk_metrics_exptime = core.table.try_read_attr(attr, "metrics",
+                                   "bk_metrics", "expire")
+
     -- registers  metrics.
     metric_api_requests_total = prometheus_registry:counter(
         "apigateway_api_requests_total",
@@ -69,7 +75,8 @@ function _M.init()
             "status",
             "proxy_phase",
             "proxy_error",
-        }
+        },
+        bk_metrics_exptime
     )
 
     metric_api_request_duration = prometheus_registry:histogram(
@@ -84,7 +91,8 @@ function _M.init()
             300,
             1000,
             5000,
-        }
+        },
+        bk_metrics_exptime
     )
 
     metric_app_requests_total = prometheus_registry:counter(
@@ -94,7 +102,8 @@ function _M.init()
             "stage_name",
             "backend_name",
             "resource_name",
-        }
+        },
+        bk_metrics_exptime
     )
 end
 
