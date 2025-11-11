@@ -33,6 +33,7 @@ local core = require("apisix.core")
 local errorx = require("apisix.plugins.bk-core.errorx")
 local jwt_utils = require("apisix.plugins.bk-auth-verify.jwt-utils")
 local pl_types = require("pl.types")
+local bk_app_define = require("apisix.plugins.bk-define.app")
 local table_concat = table.concat
 
 local plugin_name = "bk-jwt"
@@ -102,10 +103,35 @@ local function generate_bkapi_app_header(app)
 end
 
 function _M.rewrite(conf, ctx) -- luacheck: no unused
-    -- generate bkapi headers
-    local jwt_header, err = generate_bkapi_jwt_header(
-        ctx.var.bk_app, ctx.var.bk_user, ctx.var.bk_gateway_name, ctx.var.jwt_private_key
-    )
+
+    local jwt_header, err
+    -- if the app is a virtual app, should convert the app_code to the real app_code
+    -- v_mcp_{mcp_server_id}_{app_code}
+    if ctx.var.bk_app_code ~= nil and core.string.has_prefix(ctx.var.bk_app_code, "v_mcp_") then
+        -- split by _ and get the parts after third _
+        local real_app_code = string.match( ctx.var.bk_app_code,"^v_mcp_%d+_(.+)$")
+        if real_app_code == nil then
+            real_app_code = ctx.var.bk_app_code
+        end
+
+        local real_app = bk_app_define.new_app(
+            {
+                app_code = real_app_code,
+                exists = ctx.var.bk_app.exists,
+                verified = ctx.var.bk_app.verified,
+            }
+        )
+        jwt_header, err = generate_bkapi_jwt_header(
+            real_app, ctx.var.bk_user, ctx.var.bk_gateway_name, ctx.var.jwt_private_key
+        )
+    else
+        -- generate bkapi headers
+        jwt_header, err = generate_bkapi_jwt_header(
+            ctx.var.bk_app, ctx.var.bk_user, ctx.var.bk_gateway_name, ctx.var.jwt_private_key
+        )
+    end
+
+
     if pl_types.is_empty(jwt_header) then
         return errorx.exit_with_apigw_err(ctx, errorx.new_invalid_args():with_field("reason", err), _M)
     end
