@@ -109,7 +109,7 @@ function _M.rewrite(conf, ctx) -- luacheck: no unused
     -- v_mcp_{mcp_server_id}_{app_code}
     if ctx.var.bk_app_code ~= nil and core.string.has_prefix(ctx.var.bk_app_code, "v_mcp_") then
         -- split by _ and get the parts after third _
-        local real_app_code = string.match( ctx.var.bk_app_code,"^v_mcp_%d+_(.+)$")
+        local real_app_code = string.match(ctx.var.bk_app_code,"^v_mcp_%d+_(.+)$")
         if real_app_code == nil then
             real_app_code = ctx.var.bk_app_code
         end
@@ -130,7 +130,6 @@ function _M.rewrite(conf, ctx) -- luacheck: no unused
             ctx.var.bk_app, ctx.var.bk_user, ctx.var.bk_gateway_name, ctx.var.jwt_private_key
         )
     end
-
 
     if pl_types.is_empty(jwt_header) then
         return errorx.exit_with_apigw_err(ctx, errorx.new_invalid_args():with_field("reason", err), _M)
