@@ -92,16 +92,16 @@ function _M.access(conf, ctx)
     end
 
     -- if user is nil, return directly(do nothing)
-    if ctx.var.user == nil then
+    if ctx.var.bk_user == nil then
         return
     end
 
     -- if user is not verified, return directly(do nothing)
-    if ctx.var.user.verified == false then
+    if ctx.var.bk_user.verified == false then
         return
     end
 
-    local bk_username = ctx.var.user.username
+    local bk_username = ctx.var.bk_user:get_username()
 
     if conf.whitelist_map and not conf.whitelist_map[bk_username] then
         return errorx.exit_with_apigw_err(
