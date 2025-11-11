@@ -101,7 +101,7 @@ function _M.access(conf, ctx)
         return
     end
 
-    local bk_username = ctx.var.bk_user:get_username()
+    local bk_username = ctx.var.bk_user.username
 
     if conf.whitelist_map and not conf.whitelist_map[bk_username] then
         return errorx.exit_with_apigw_err(
