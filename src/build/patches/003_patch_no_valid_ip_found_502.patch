@@ -1,8 +1,8 @@
 diff --git a/apisix/init.lua b/apisix/init.lua
-index 388af426..9899c332 100644
+index b5ee018b..929a0b24 100644
 --- a/apisix/init.lua
 +++ b/apisix/init.lua
-@@ -431,6 +431,12 @@ function _M.handle_upstream(api_ctx, route, enable_websocket)
+@@ -509,6 +509,12 @@ function _M.handle_upstream(api_ctx, route, enable_websocket)
              route, err = parse_domain_in_route(route)
              if err then
                  core.log.error("failed to get resolved route: ", err)
