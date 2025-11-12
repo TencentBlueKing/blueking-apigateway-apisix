@@ -16,6 +16,7 @@
 -- to the current version of the project delivered to anyone in the future.
 --
 
+local core = require("apisix.core")
 local context_api_bkauth = require("apisix.plugins.bk-define.context-api-bkauth")
 local request = require("apisix.core.request")
 local plugin = require("apisix.plugins.bk-jwt")
@@ -282,7 +283,9 @@ describe(
                                 jwt_private_key = jwt_private_key,
                                 bk_api_auth = context_api_bkauth.new(
                                     {
-                                        include_system_headers = {},
+                                        include_system_headers = {
+                                           "X-Bkapi-App",
+                                        },
                                     }
                                 ),
                             },
@@ -308,6 +311,15 @@ describe(
                         assert.is_not_nil(jwt_obj.payload.app)
                         assert.is_equal(jwt_obj.payload.app.app_code, real_app_code)
                         assert.is_not_equal(jwt_obj.payload.app.app_code, virtual_app_code)
+
+                        -- GET the app header
+                        local call_args_2 = request.set_header.calls[2].vals
+                        local app_header = call_args_2[3]
+                        assert.is_string(app_header)
+                        -- assert.is_equal(app_header, core.json.encode(ctx.var.bk_app))
+                        local app_header_obj = core.json.decode(app_header)
+                        assert.is_equal(real_app_code, app_header_obj.app_code)
+
                     end
                 )
             end
