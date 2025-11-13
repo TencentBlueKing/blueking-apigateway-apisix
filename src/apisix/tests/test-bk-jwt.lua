@@ -16,11 +16,13 @@
 -- to the current version of the project delivered to anyone in the future.
 --
 
+local core = require("apisix.core")
 local context_api_bkauth = require("apisix.plugins.bk-define.context-api-bkauth")
 local request = require("apisix.core.request")
 local plugin = require("apisix.plugins.bk-jwt")
 local bk_app_define = require("apisix.plugins.bk-define.app")
 local bk_user_define = require("apisix.plugins.bk-define.user")
+local jwt = require("resty.jwt")
 
 local jwt_private_key = [[
 -----BEGIN RSA PRIVATE KEY-----
@@ -201,6 +203,123 @@ describe(
                         local status = plugin.rewrite({}, ctx)
                         assert.is_equal(status, 400)
                         assert.is_equal(ctx.var.bk_apigw_error.error.code, 1640001)
+                    end
+                )
+
+                it(
+                    "normal app_code", function()
+                        local real_app_code = "normal-app"
+
+                        local ctx = {
+                            var = {
+                                bk_app_code = real_app_code,
+                                bk_app = bk_app_define.new_app(
+                                    {
+                                        app_code = real_app_code,
+                                        verified = true,
+                                        exists = true,
+                                    }
+                                ),
+                                bk_user = bk_user_define.new_user(
+                                    {
+                                        username = "admin",
+                                        verified = true,
+                                    }
+                                ),
+                                bk_gateway_name = "my-gateway-for-virtual-app",
+                                jwt_private_key = jwt_private_key,
+                                bk_api_auth = context_api_bkauth.new(
+                                    {
+                                        include_system_headers = {},
+                                    }
+                                ),
+                            },
+                        }
+
+                        local status = plugin.rewrite({}, ctx)
+                        assert.is_nil(status)
+                        assert.is_nil(ctx.var.bk_apigw_error)
+
+                        -- The JWT header should be set
+                        assert.stub(request.set_header).was_called()
+
+                        -- Get the JWT token that was set
+                        local call_args = request.set_header.calls[1].vals
+                        local jwt_header = call_args[3] -- The third argument is the JWT token
+                        assert.is_string(jwt_header)
+
+                        -- Decode the JWT token
+                        local jwt_obj = jwt:load_jwt(jwt_header)
+                        assert.is_true(jwt_obj.valid)
+
+                        -- Verify the app_code in the payload is the real app_code, not the virtual one
+                        assert.is_not_nil(jwt_obj.payload.app)
+                        assert.is_equal(jwt_obj.payload.app.app_code, real_app_code)
+                    end
+                )
+
+                it(
+                    "virtual app_code", function()
+                        local virtual_app_code = "v_mcp_123_real_app"
+                        local real_app_code = "real_app"
+
+                        local ctx = {
+                            var = {
+                                bk_app_code = virtual_app_code,
+                                bk_app = bk_app_define.new_app(
+                                    {
+                                        app_code = virtual_app_code,
+                                        verified = true,
+                                        exists = true,
+                                    }
+                                ),
+                                bk_user = bk_user_define.new_user(
+                                    {
+                                        username = "admin",
+                                        verified = true,
+                                    }
+                                ),
+                                bk_gateway_name = "my-gateway-for-virtual-app",
+                                jwt_private_key = jwt_private_key,
+                                bk_api_auth = context_api_bkauth.new(
+                                    {
+                                        include_system_headers = {
+                                           "X-Bkapi-App",
+                                        },
+                                    }
+                                ),
+                            },
+                        }
+
+                        local status = plugin.rewrite({}, ctx)
+                        assert.is_nil(status)
+                        assert.is_nil(ctx.var.bk_apigw_error)
+
+                        -- The JWT header should be set
+                        assert.stub(request.set_header).was_called()
+
+                        -- Get the JWT token that was set
+                        local call_args = request.set_header.calls[1].vals
+                        local jwt_header = call_args[3] -- The third argument is the JWT token
+                        assert.is_string(jwt_header)
+
+                        -- Decode the JWT token
+                        local jwt_obj = jwt:load_jwt(jwt_header)
+                        assert.is_true(jwt_obj.valid)
+
+                        -- Verify the app_code in the payload is the real app_code, not the virtual one
+                        assert.is_not_nil(jwt_obj.payload.app)
+                        assert.is_equal(jwt_obj.payload.app.app_code, real_app_code)
+                        assert.is_not_equal(jwt_obj.payload.app.app_code, virtual_app_code)
+
+                        -- GET the app header
+                        local call_args_2 = request.set_header.calls[2].vals
+                        local app_header = call_args_2[3]
+                        assert.is_string(app_header)
+                        -- assert.is_equal(app_header, core.json.encode(ctx.var.bk_app))
+                        local app_header_obj = core.json.decode(app_header)
+                        assert.is_equal(real_app_code, app_header_obj.app_code)
+
                     end
                 )
             end

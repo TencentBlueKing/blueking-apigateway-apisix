@@ -1,5 +1,5 @@
 diff --git a/apisix/http/router/radixtree_uri_with_parameter.lua b/apisix/http/router/radixtree_uri_with_parameter.lua
-index 4bf7f3eb..cd9da089 100644
+index 3f10f4fc..9822206e 100644
 --- a/apisix/http/router/radixtree_uri_with_parameter.lua
 +++ b/apisix/http/router/radixtree_uri_with_parameter.lua
 @@ -18,8 +18,12 @@ local require = require
@@ -15,7 +15,7 @@ index 4bf7f3eb..cd9da089 100644
  
  
  local _M = {}
-@@ -34,10 +38,22 @@ function _M.match(api_ctx)
+@@ -33,10 +37,22 @@ function _M.match(api_ctx)
      if not cached_router_version or cached_router_version ~= user_routes.conf_version
          or not cached_service_version or cached_service_version ~= service_version
      then
