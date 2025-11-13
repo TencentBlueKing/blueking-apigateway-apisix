@@ -120,14 +120,6 @@ function _M.rewrite(conf, ctx) -- luacheck: no unused
             -- deep copy the ctx.var.bk_app
             jwt_bk_app = core.table.deepcopy(ctx.var.bk_app)
             jwt_bk_app.app_code = real_app_code
-            -- jwt_bk_app = bk_app_define.new_app(
-            --     {
-            --         app_code = real_app_code,
-            --         exists = ctx.var.bk_app.exists,
-            --         verified = ctx.var.bk_app.verified,
-            --     }
-            -- )
-            -- jwt_bk_app_code = real_app_code
         end
     end
 
