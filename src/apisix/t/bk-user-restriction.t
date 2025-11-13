@@ -69,7 +69,7 @@ done
                             },
                             "serverless-post-function": {
                                 "phase": "rewrite",
-                                "functions" : ["return function(conf, ctx) ctx.var.user={username='user1', verified=true}; end"]
+                                "functions" : ["return function(conf, ctx) ctx.var.bk_user={username='user1', verified=true}; end"]
                             },
                             "bk-resource-context": {
                                 "bk_resource_auth": {
@@ -121,7 +121,7 @@ hello world
                             },
                             "serverless-post-function": {
                                 "phase": "rewrite",
-                                "functions" : ["return function(conf, ctx) ctx.var.user={username='unknown_user', verified=true}; end"]
+                                "functions" : ["return function(conf, ctx) ctx.var.bk_user={username='unknown_user', verified=true}; end"]
                             },
                             "bk-resource-context": {
                                 "bk_resource_auth": {
@@ -172,7 +172,7 @@ GET /hello
                             },
                             "serverless-post-function": {
                                 "phase": "rewrite",
-                                "functions" : ["return function(conf, ctx) ctx.var.user={username='user3', verified=true}; end"]
+                                "functions" : ["return function(conf, ctx) ctx.var.bk_user={username='user3', verified=true}; end"]
                             },
                             "bk-resource-context": {
                                 "bk_resource_auth": {
@@ -223,7 +223,7 @@ GET /hello
                             },
                             "serverless-post-function": {
                                 "phase": "rewrite",
-                                "functions" : ["return function(conf, ctx) ctx.var.user={username='unknown_user', verified=true}; end"]
+                                "functions" : ["return function(conf, ctx) ctx.var.bk_user={username='unknown_user', verified=true}; end"]
                             },
                             "bk-resource-context": {
                                 "bk_resource_auth": {

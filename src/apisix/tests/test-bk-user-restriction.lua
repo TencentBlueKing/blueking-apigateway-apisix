@@ -19,6 +19,7 @@
 local core = require("apisix.core")
 local plugin = require("apisix.plugins.bk-user-restriction")
 local context_resource_bkauth = require("apisix.plugins.bk-define.context-resource-bkauth")
+local bk_user_define = require("apisix.plugins.bk-define.user")
 
 describe("bk-user-restriction", function()
     local ctx, conf
@@ -33,12 +34,12 @@ describe("bk-user-restriction", function()
         ctx = {
             var = {
                 bk_resource_auth = bk_resource_auth,
-                user = {
-                    username = "test_user",
-                    verified = true,
-                },
             },
         }
+        ctx.var.bk_user = bk_user_define.new_user({
+            username = "test_user",
+            verified = true,
+        })
 
         conf = {
             message = "The bk-user is not allowed",
@@ -60,13 +61,13 @@ describe("bk-user-restriction", function()
 
     context("access", function()
         it("user is nil, do nothing", function()
-            ctx.var.user = nil
+            ctx.var.bk_user = nil
             local code = plugin.access(conf, ctx)
             assert.is_nil(code)
         end)
 
         it("user is not verified, do nothing", function()
-            ctx.var.user.verified = false
+            ctx.var.bk_user.verified = false
             local code = plugin.access(conf, ctx)
             assert.is_nil(code)
         end)
@@ -88,7 +89,7 @@ describe("bk-user-restriction", function()
             assert.is_true(ok)
             assert.is_not_nil(conf.whitelist_map)
 
-            ctx.var.user.username = "unknown_user"
+            ctx.var.bk_user.username = "unknown_user"
             local code = plugin.access(conf, ctx)
             assert.is_equal(code, 403)
             assert.is_not_nil(ctx.var.bk_apigw_error)
@@ -102,7 +103,7 @@ describe("bk-user-restriction", function()
             assert.is_true(ok)
             assert.is_not_nil(conf.whitelist_map)
 
-            ctx.var.user.username = "allowed_user"
+            ctx.var.bk_user.username = "allowed_user"
             local code = plugin.access(conf, ctx)
             assert.is_nil(code)
             assert.is_nil(ctx.var.bk_apigw_error)
@@ -115,7 +116,7 @@ describe("bk-user-restriction", function()
             assert.is_true(ok)
             assert.is_not_nil(conf.blacklist_map)
 
-            ctx.var.user.username = "denied_user"
+            ctx.var.bk_user.username = "denied_user"
             local code = plugin.access(conf, ctx)
             assert.is_equal(code, 403)
             assert.is_not_nil(ctx.var.bk_apigw_error)
@@ -131,7 +132,7 @@ describe("bk-user-restriction", function()
             assert.is_true(ok)
             assert.is_not_nil(conf.blacklist_map)
 
-            ctx.var.user.username = "allowed_user"
+            ctx.var.bk_user.username = "allowed_user"
             local code = plugin.access(conf, ctx)
             assert.is_nil(code)
             assert.is_nil(ctx.var.bk_apigw_error)
