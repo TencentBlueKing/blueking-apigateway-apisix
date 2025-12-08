@@ -287,6 +287,102 @@ describe(
         )
 
         context(
+            "rewrite with allow_fallback = true",
+            function()
+                it(
+                    "should not return error when bearer token is missing and allow_fallback is true",
+                    function()
+                        local conf = { source = "bearer", allow_fallback = true }
+                        ctx.headers = {}
+
+                        local status = plugin.rewrite(conf, ctx)
+
+                        assert.is_nil(status)
+                        assert.is_nil(ctx.var.bk_apigw_error)
+                        assert.is_nil(ctx.headers["X-Bkapi-Authorization"])
+                    end
+                )
+
+                it(
+                    "should not return error when bearer token format is invalid and allow_fallback is true",
+                    function()
+                        local conf = { source = "bearer", allow_fallback = true }
+                        ctx.headers = { Authorization = "Basic dGVzdDp0ZXN0" }
+
+                        local status = plugin.rewrite(conf, ctx)
+
+                        assert.is_nil(status)
+                        assert.is_nil(ctx.var.bk_apigw_error)
+                        assert.is_nil(ctx.headers["X-Bkapi-Authorization"])
+                        -- Authorization header should not be removed when fallback is allowed
+                        -- and token extraction failed
+                        assert.is_equal(ctx.headers["Authorization"], "Basic dGVzdDp0ZXN0")
+                    end
+                )
+
+                it(
+                    "should not return error when X-API-KEY header is missing and allow_fallback is true",
+                    function()
+                        local conf = { source = "api_key", allow_fallback = true }
+                        ctx.headers = {}
+
+                        local status = plugin.rewrite(conf, ctx)
+
+                        assert.is_nil(status)
+                        assert.is_nil(ctx.var.bk_apigw_error)
+                        assert.is_nil(ctx.headers["X-Bkapi-Authorization"])
+                    end
+                )
+
+                it(
+                    "should not return error when X-API-KEY header is empty and allow_fallback is true",
+                    function()
+                        local conf = { source = "api_key", allow_fallback = true }
+                        ctx.headers = { ["X-API-KEY"] = "" }
+
+                        local status = plugin.rewrite(conf, ctx)
+
+                        assert.is_nil(status)
+                        assert.is_nil(ctx.var.bk_apigw_error)
+                        assert.is_nil(ctx.headers["X-Bkapi-Authorization"])
+                        -- X-API-KEY header should not be removed when it's empty and fallback is allowed
+                        assert.is_equal(ctx.headers["X-API-KEY"], "")
+                    end
+                )
+
+                it(
+                    "should still set token when bearer token is valid and allow_fallback is true",
+                    function()
+                        local conf = { source = "bearer", allow_fallback = true }
+                        ctx.headers = { Authorization = "Bearer fallback-token-123" }
+
+                        local status = plugin.rewrite(conf, ctx)
+
+                        assert.is_nil(status)
+                        assert.is_nil(ctx.var.bk_apigw_error)
+                        assert.is_equal(ctx.headers["X-Bkapi-Authorization"], '{"access_token":"fallback-token-123"}')
+                        assert.is_nil(ctx.headers["Authorization"])
+                    end
+                )
+
+                it(
+                    "should still set token when X-API-KEY is valid and allow_fallback is true",
+                    function()
+                        local conf = { source = "api_key", allow_fallback = true }
+                        ctx.headers = { ["X-API-KEY"] = "fallback-api-key-123" }
+
+                        local status = plugin.rewrite(conf, ctx)
+
+                        assert.is_nil(status)
+                        assert.is_nil(ctx.var.bk_apigw_error)
+                        assert.is_equal(ctx.headers["X-Bkapi-Authorization"], '{"access_token":"fallback-api-key-123"}')
+                        assert.is_nil(ctx.headers["X-API-KEY"])
+                    end
+                )
+            end
+        )
+
+        context(
             "plugin metadata",
             function()
                 it(
