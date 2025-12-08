@@ -147,7 +147,7 @@ function _M.get_with_fallback(self, ctx, key, version, create_obj_func, ...)
         end
 
         -- NOTE: 2024-11-11 we met some timeout here, in the same apisix pod, the same cache_key,
-        --       the lock aquire timeout, then cause all responses fail at that time!
+        --       the lock acquire timeout, then cause all responses fail at that time!
         -- So: we should try to use the fallback shared_dict data here
         local shared_data_dict = ngx_shared[self.plugin_shared_dict_name]
         if shared_data_dict ~= nil then

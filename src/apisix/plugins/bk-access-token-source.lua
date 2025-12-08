@@ -40,6 +40,11 @@ local schema = {
             enum = {"bearer", "api_key"},
             default = "bearer",
             description = "The source of the authentication token, default is bearer",
+        },
+        allow_fallback = {
+            type = "boolean",
+            default = true,
+            description = "Allow degradation of the authentication token, would fallback to the default bk-auth header",
         }
     },
 }
@@ -79,30 +84,40 @@ function _M.rewrite(conf, ctx) -- luacheck: no unused
     if conf.source == "bearer" then
         local err
         token, err = get_bearer_token(ctx)
-        if err then
+        if err and not conf.allow_fallback then
             return errorx.exit_with_apigw_err(ctx, errorx.new_invalid_args():with_field("reason", err), _M)
         end
+
         -- remove the Authorization header
-        core.request.set_header(ctx, "Authorization", nil)
+        if err == nil then
+            core.request.set_header(ctx, "Authorization", nil)
+        end
     elseif conf.source == "api_key" then
         token = core.request.header(ctx, "X-API-KEY")
-        if token == nil then
+        if token == nil and not conf.allow_fallback then
             return errorx.exit_with_apigw_err(ctx,
             errorx.new_invalid_args():with_field("reason", "No `X-API-KEY` header found in the request"), _M)
         end
 
-        if token == "" then
+        if token == "" and not conf.allow_fallback then
             return errorx.exit_with_apigw_err(ctx,
             errorx.new_invalid_args():with_field("reason", "The `X-API-KEY` header is empty"), _M)
         end
-        -- remove the X-API-KEY header
-        core.request.set_header(ctx, "X-API-KEY", nil)
+
+        if token ~= nil and token ~= "" then
+            -- remove the X-API-KEY header
+            core.request.set_header(ctx, "X-API-KEY", nil)
+        end
     end
 
-    local encoded_token = core.json.encode({
-        access_token = token,
-    })
-    core.request.set_header(ctx, BKAPI_AUTHORIZATION_HEADER, encoded_token)
+
+    if token ~= nil and token ~= "" then
+        local encoded_token = core.json.encode({
+            access_token = token,
+        })
+        core.request.set_header(ctx, BKAPI_AUTHORIZATION_HEADER, encoded_token)
+    end
+
 end
 
 if _TEST then -- luacheck: ignore

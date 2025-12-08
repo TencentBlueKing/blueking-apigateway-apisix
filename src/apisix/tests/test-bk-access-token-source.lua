@@ -47,7 +47,7 @@ describe(
                 it(
                     "should accept valid bearer source",
                     function()
-                        local conf = { source = "bearer" }
+                        local conf = { source = "bearer", allow_fallback = true }
                         local ok = plugin.check_schema(conf)
                         assert.is_true(ok)
                     end
@@ -56,7 +56,7 @@ describe(
                 it(
                     "should accept valid api_key source",
                     function()
-                        local conf = { source = "api_key" }
+                        local conf = { source = "api_key", allow_fallback = true }
                         local ok = plugin.check_schema(conf)
                         assert.is_true(ok)
                     end
@@ -69,6 +69,7 @@ describe(
                         local ok = plugin.check_schema(conf)
                         assert.is_true(ok)
                         assert.is_equal(conf.source, "bearer")
+                        assert.is_true(conf.allow_fallback)
                     end
                 )
 
@@ -85,6 +86,15 @@ describe(
                     "should reject non-string source",
                     function()
                         local conf = { source = 123 }
+                        local ok = plugin.check_schema(conf)
+                        assert.is_false(ok)
+                    end
+                )
+
+                it(
+                    "should reject invalid allow_fallback",
+                    function()
+                        local conf = { source = "bearer", allow_fallback = "invalid" }
                         local ok = plugin.check_schema(conf)
                         assert.is_false(ok)
                     end
@@ -173,7 +183,7 @@ describe(
                 it(
                     "should handle bearer token successfully",
                     function()
-                        local conf = { source = "bearer" }
+                        local conf = { source = "bearer", allow_fallback = false }
                         ctx.headers = { Authorization = "Bearer test-token-123" }
 
                         plugin.rewrite(conf, ctx)
@@ -187,7 +197,7 @@ describe(
                 it(
                     "should return error when bearer token is missing",
                     function()
-                        local conf = { source = "bearer" }
+                        local conf = { source = "bearer", allow_fallback = false }
                         ctx.headers = {}
 
                         local status = plugin.rewrite(conf, ctx)
@@ -200,7 +210,7 @@ describe(
                 it(
                     "should return error when bearer token format is invalid",
                     function()
-                        local conf = { source = "bearer" }
+                        local conf = { source = "bearer", allow_fallback = false }
                         ctx.headers = { Authorization = "Basic dGVzdDp0ZXN0" }
 
                         local status = plugin.rewrite(conf, ctx)
@@ -218,7 +228,7 @@ describe(
                 it(
                     "should handle X-API-KEY token successfully",
                     function()
-                        local conf = { source = "api_key" }
+                        local conf = { source = "api_key", allow_fallback = false }
                         ctx.headers = { ["X-API-KEY"] = "api-key-token-123" }
 
                         plugin.rewrite(conf, ctx)
@@ -232,7 +242,7 @@ describe(
                 it(
                     "should return error when X-API-KEY header is missing",
                     function()
-                        local conf = { source = "api_key" }
+                        local conf = { source = "api_key", allow_fallback = false }
                         ctx.headers = {}
 
                         local status = plugin.rewrite(conf, ctx)
@@ -245,7 +255,7 @@ describe(
                 it(
                     "should return error when X-API-KEY header is empty",
                     function()
-                        local conf = { source = "api_key" }
+                        local conf = { source = "api_key", allow_fallback = false }
                         ctx.headers = { ["X-API-KEY"] = "" }
 
                         local status = plugin.rewrite(conf, ctx)
@@ -263,7 +273,7 @@ describe(
                 it(
                     "should use bearer source when source is not specified",
                     function()
-                        local conf = {}
+                        local conf = { allow_fallback = false }
                         ctx.headers = { Authorization = "Bearer default-token-123" }
 
                         plugin.check_schema(conf)
