@@ -56,7 +56,7 @@ done
     location /t {
         content_by_lua_block {
             local plugin = require("apisix.plugins.bk-access-token-source")
-            local ok, err = plugin.check_schema({source = "bearer"})
+            local ok, err = plugin.check_schema({source = "bearer", allow_fallback = false})
             if not ok then
                 ngx.say(err)
             end
@@ -77,7 +77,7 @@ done
     location /t {
         content_by_lua_block {
             local plugin = require("apisix.plugins.bk-access-token-source")
-            local ok, err = plugin.check_schema({source = "invalid"})
+            local ok, err = plugin.check_schema({source = "invalid", allow_fallback = false})
             if not ok then
                 ngx.say("invalid source error: ", err)
             end
@@ -99,7 +99,8 @@ done
                 [[{
                     "plugins": {
                         "bk-access-token-source": {
-                            "source": "bearer"
+                            "source": "bearer",
+                            "allow_fallback": false
                         },
                         "bk-error-wrapper": {}
                     },
@@ -163,7 +164,8 @@ Authorization: Basic dGVzdDp0ZXN0
                 [[{
                     "plugins": {
                         "bk-access-token-source": {
-                            "source": "api_key"
+                            "source": "api_key",
+                            "allow_fallback": false
                         },
                         "bk-error-wrapper": {}
                     },
@@ -218,7 +220,7 @@ X-Bkapi-Authorization: {"access_token":"new-api-key-456"}
                 ngx.HTTP_PUT,
                 [[{
                     "plugins": {
-                        "bk-access-token-source": {},
+                        "bk-access-token-source": { "allow_fallback": false },
                         "bk-error-wrapper": {}
                     },
                     "upstream": {
@@ -266,7 +268,8 @@ Authorization: Bearer
                 [[{
                     "plugins": {
                         "bk-access-token-source": {
-                            "source": "api_key"
+                            "source": "api_key",
+                            "allow_fallback": false
                         },
                         "bk-error-wrapper": {}
                     },
@@ -296,3 +299,111 @@ GET /echo
 X-API-KEY:
 --- error_code: 400
 --- response_body_like: "INVALID_ARGS"
+
+=== TEST 18: add plugin with bearer source and allow_fallback=true
+--- config
+    location /t {
+        content_by_lua_block {
+            local t = require("lib.test_admin").test
+            local code, body = t('/apisix/admin/routes/1',
+                ngx.HTTP_PUT,
+                [[{
+                    "plugins": {
+                        "bk-access-token-source": {
+                            "source": "bearer",
+                            "allow_fallback": true
+                        },
+                        "bk-error-wrapper": {}
+                    },
+                    "upstream": {
+                        "nodes": {
+                            "127.0.0.1:1980": 1
+                        },
+                        "type": "roundrobin"
+                    },
+                    "uri": "/echo"
+                }]]
+                )
+
+            if code >= 300 then
+                ngx.status = code
+            end
+            ngx.say(body)
+        }
+    }
+--- response_body
+passed
+
+=== TEST 19: test bearer with allow_fallback=true - fallback to original X-Bkapi-Authorization
+--- request
+GET /echo
+--- more_headers
+X-Bkapi-Authorization: {"access_token":"original-token"}
+--- response_headers
+X-Bkapi-Authorization: {"access_token":"original-token"}
+
+=== TEST 20: test bearer with allow_fallback=true - no bearer and no original header
+--- request
+GET /echo
+--- response_headers
+!X-Bkapi-Authorization
+
+=== TEST 21: update plugin to use api_key with allow_fallback=true
+--- config
+    location /t {
+        content_by_lua_block {
+            local t = require("lib.test_admin").test
+            local code, body = t('/apisix/admin/routes/1',
+                ngx.HTTP_PUT,
+                [[{
+                    "plugins": {
+                        "bk-access-token-source": {
+                            "source": "api_key",
+                            "allow_fallback": true
+                        },
+                        "bk-error-wrapper": {}
+                    },
+                    "upstream": {
+                        "nodes": {
+                            "127.0.0.1:1980": 1
+                        },
+                        "type": "roundrobin"
+                    },
+                    "uri": "/echo"
+                }]]
+                )
+
+            if code >= 300 then
+                ngx.status = code
+            end
+            ngx.say(body)
+        }
+    }
+--- response_body
+passed
+
+=== TEST 22: test api_key with allow_fallback=true - fallback to original X-Bkapi-Authorization
+--- request
+GET /echo
+--- more_headers
+X-Bkapi-Authorization: {"access_token":"original-api-token"}
+--- response_headers
+X-Bkapi-Authorization: {"access_token":"original-api-token"}
+
+=== TEST 23: test api_key with allow_fallback=true - empty X-API-KEY fallback to original header
+--- request
+GET /echo
+--- more_headers
+X-API-KEY:
+X-Bkapi-Authorization: {"access_token":"fallback-token"}
+--- response_headers
+X-Bkapi-Authorization: {"access_token":"fallback-token"}
+
+=== TEST 24: test api_key with allow_fallback=true - non-empty X-API-KEY fallback to original header
+--- request
+GET /echo
+--- more_headers
+X-API-KEY: abc
+X-Bkapi-Authorization: {"access_token":"fallback-token"}
+--- response_headers
+X-Bkapi-Authorization: {"access_token":"abc"}
