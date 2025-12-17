@@ -20,6 +20,7 @@ local bk_core = require("apisix.plugins.bk-core.init")
 local context_api_bkauth = require("apisix.plugins.bk-define.context-api-bkauth")
 
 local ngx = ngx -- luacheck: ignore
+local ngx_var = ngx.var
 local ngx_decode_base64 = ngx.decode_base64
 
 local plugin_name = "bk-stage-context"
@@ -184,6 +185,12 @@ function _M.rewrite(conf, ctx)
     -- https://apisix.apache.org/zh/docs/apisix/apisix-variable
     ctx.var.bk_resource_name = ctx.route_name
     ctx.var.bk_service_name = ctx.service_name
+
+    -- Set the ngx.var
+    ngx_var.bk_ngx_var_gateway_name = conf.bk_gateway_name
+    ngx_var.bk_ngx_var_gateway_id = conf.bk_gateway_id
+    ngx_var.bk_ngx_var_stage_name = conf.bk_stage_name
+
 end
 
 return _M

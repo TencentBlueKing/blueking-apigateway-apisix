@@ -28,7 +28,7 @@
 -- bk_backend_name: The name of the backend.
 
 
-
+local ngx_var = ngx.var
 local core = require("apisix.core")
 
 local plugin_name = "bk-backend-context"
@@ -71,6 +71,9 @@ function _M.rewrite(conf, ctx)
     -- Inject bk_backend(id,name) information into the context
     ctx.var.bk_backend_id = conf.bk_backend_id
     ctx.var.bk_backend_name = conf.bk_backend_name
+
+    -- Set the ngx.var
+    ngx_var.bk_ngx_var_backend_name = conf.bk_backend_name
 end
 
 return _M

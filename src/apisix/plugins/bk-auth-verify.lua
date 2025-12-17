@@ -28,6 +28,9 @@
 -- This plugin depends on:
 --     * bk-resource-context: To determine whether the user verification should be skipped.
 --
+
+
+local ngx_var = ngx.var
 local pl_types = require("pl.types")
 local core = require("apisix.core")
 local bk_core = require("apisix.plugins.bk-core.init")
@@ -191,6 +194,11 @@ function _M.rewrite(conf, ctx) -- luacheck: no unused
     ctx.var.bk_username = user["username"]
     -- 记录认证参数位置，便于统计哪些请求将认证参数放到请求参数，推动优化
     ctx.var.auth_params_location = ctx.var.auth_params_location or ""
+
+    -- Set the ngx.var
+    ngx_var.bk_ngx_var_app_code = app["app_code"]
+    ngx_var.bk_ngx_var_username = user["username"]
+
 end
 
 if _TEST then -- luacheck: ignore

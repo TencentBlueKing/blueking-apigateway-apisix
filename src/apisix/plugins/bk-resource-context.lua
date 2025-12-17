@@ -31,6 +31,7 @@
 --                   and skip_user_verification.
 
 
+local ngx_var = ngx.var
 
 local core = require("apisix.core")
 local context_resource_bkauth = require("apisix.plugins.bk-define.context-resource-bkauth")
@@ -94,6 +95,10 @@ function _M.rewrite(conf, ctx)
     ctx.var.bk_resource_id = conf.bk_resource_id
     ctx.var.bk_resource_name = conf.bk_resource_name
     ctx.var.bk_resource_auth = conf.bk_resource_auth_obj
+
+    -- Set the ngx.var
+    ngx_var.bk_ngx_var_resource_id = conf.bk_resource_id
+    ngx_var.bk_ngx_var_resource_name = conf.bk_resource_name
 end
 
 return _M
