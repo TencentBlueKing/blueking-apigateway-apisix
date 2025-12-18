@@ -195,7 +195,7 @@ describe(
                         )
                         assert.stub(response.set_header).was_called_with(
                             "X-Bkapi-Error-Message",
-                            bk_apigw_error.error.message .. " [upstream_error=\"failed to connect to upstream\"]"
+                            bk_apigw_error.error.message .. " [upstream_error=\"connection refused\"]"
                         )
                     end
                 )
@@ -326,12 +326,12 @@ describe(
                 before_each(
                     function()
                         ctx = CTX()
-                        ngx.status = 504
                     end
                 )
 
                 it(
                     "failed to connect to upstream", function()
+                        ngx.status = 504
                         ctx.var = {
                             upstream_status = 504,
                             upstream_bytes_sent = "0",
@@ -341,7 +341,7 @@ describe(
                         assert.is_not_nil(ctx.var.bk_apigw_error)
                         assert.is_equal(504, ctx.var.bk_apigw_error.status)
                         local start = string.find(
-                            ctx.var.bk_apigw_error.error.message, "failed to connect to upstream", 1, true
+                            ctx.var.bk_apigw_error.error.message, "connection timed out while connecting to upstream", 1, true
                         )
                         assert.is_not_nil(start)
                         assert.is_equal(ctx.var.proxy_phase, proxy_phases.CONNECTING)
@@ -350,10 +350,11 @@ describe(
 
                 it(
                     "cannot send request to upstream", function()
+                        ngx.status = 504
                         ctx.var = {
                             upstream_status = 504,
                             upstream_connect_time = 0.1,
-                            upstream_bytes_sent = 0,
+                            upstream_bytes_sent = "156",
                             upstream_bytes_received = "0",
                             upstream_header_time = "-",
                         }
@@ -361,7 +362,7 @@ describe(
                         assert.is_not_nil(ctx.var.bk_apigw_error)
                         assert.is_equal(504, ctx.var.bk_apigw_error.status)
                         local start = string.find(
-                            ctx.var.bk_apigw_error.error.message, "cannot read header from upstream", 1, true
+                            ctx.var.bk_apigw_error.error.message, "connection timed", 1, true
                         )
                         assert.is_not_nil(start)
                         assert.is_equal(ctx.var.proxy_phase, proxy_phases.HEADER_WAITING)
@@ -370,17 +371,18 @@ describe(
 
                 it(
                     "cannot read header from upstream", function()
+                        ngx.status = 504
                         ctx.var = {
                             upstream_status = 504,
                             upstream_connect_time = 0.1,
-                            upstream_bytes_sent = "156",
+                            upstream_bytes_sent = "256",
                             upstream_bytes_received = "0",
                         }
                         plugin.header_filter(nil, ctx)
                         assert.is_not_nil(ctx.var.bk_apigw_error)
                         assert.is_equal(504, ctx.var.bk_apigw_error.status)
                         local start = string.find(
-                            ctx.var.bk_apigw_error.error.message, "cannot read header from upstream", 1, true
+                            ctx.var.bk_apigw_error.error.message, "connection timed", 1, true
                         )
                         assert.is_not_nil(start)
                         assert.is_equal(ctx.var.proxy_phase, proxy_phases.HEADER_WAITING)
@@ -389,6 +391,7 @@ describe(
 
                 it(
                     "failed to read header from upstream", function()
+                        ngx.status = 504
                         ctx.var = {
                             upstream_status = 504,
                             upstream_connect_time = 0.1,
@@ -517,6 +520,7 @@ describe(
             "_get_upstream_error_msg", function()
                 it(
                     "failed to connect to upstream", function()
+                        ngx.status = 504
                         local ctx = {
                             var = {
                                 upstream_connect_time = nil,
@@ -524,15 +528,86 @@ describe(
                         }
                         local phase, err = plugin._get_upstream_error_msg(ctx)
                         assert.is_equal(proxy_phases.CONNECTING, phase)
-                        assert.is_equal("failed to connect to upstream", err)
+                        assert.is_equal("connection timed out while connecting to upstream", err)
                     end
                 )
 
                 it(
                     "cannot read header from upstream", function()
+                        ngx.status = 504
                         local ctx = {
                             var = {
                                 upstream_connect_time = 100,
+                                upstream_bytes_sent = "156",
+                                upstream_bytes_received = "0",
+                            },
+                        }
+                        local phase, err = plugin._get_upstream_error_msg(ctx)
+                        assert.is_equal(proxy_phases.HEADER_WAITING, phase)
+                        assert.is_equal("connection timed out while reading response header from upstream", err)
+
+                    end
+                )
+
+                it(
+                    "connection timeout when upstream_bytes_sent is not set", function()
+                        ngx.status = 504
+                        local ctx = {
+                            var = {
+                                upstream_connect_time = 100,
+                                upstream_bytes_received = ", 1",
+                                -- upstream_bytes_sent not set, defaults to 0
+                            },
+                        }
+                        local phase, err = plugin._get_upstream_error_msg(ctx)
+                        assert.is_equal(proxy_phases.CONNECTING, phase)
+                        assert.is_equal("connection timed out while connecting to upstream", err)
+
+                    end
+                )
+
+                it(
+                    "502 connection refused", function()
+                        ngx.status = 502
+                        local ctx = {
+                            var = {
+                                upstream_connect_time = 0,
+                                upstream_bytes_sent = "0",
+                                upstream_bytes_received = "0",
+                            },
+                        }
+                        local phase, err = plugin._get_upstream_error_msg(ctx)
+                        assert.is_equal(proxy_phases.CONNECTING, phase)
+                        assert.is_equal("connection refused", err)
+
+                    end
+                )
+
+                it(
+                    "502 connection reset by peer", function()
+                        ngx.status = 502
+                        local ctx = {
+                            var = {
+                                upstream_connect_time = 0.1,
+                                upstream_bytes_sent = "256",
+                                upstream_bytes_received = "0",
+                            },
+                        }
+                        local phase, err = plugin._get_upstream_error_msg(ctx)
+                        assert.is_equal(proxy_phases.HEADER_WAITING, phase)
+                        assert.is_equal("connection reset by peer OR upstream prematurely closed connection", err)
+
+                    end
+                )
+
+                it(
+                    "legacy fallback - cannot read header", function()
+                        ngx.status = 200  -- Not 5xx, uses legacy logic
+                        local ctx = {
+                            var = {
+                                upstream_connect_time = 0.1,
+                                upstream_bytes_sent = "256",
+                                upstream_bytes_received = "0",
                             },
                         }
                         local phase, err = plugin._get_upstream_error_msg(ctx)
@@ -543,22 +618,8 @@ describe(
                 )
 
                 it(
-                    "failed to read header from upstream", function()
-                        local ctx = {
-                            var = {
-                                upstream_connect_time = 100,
-                                upstream_bytes_received = ", 1",
-                            },
-                        }
-                        local phase, err = plugin._get_upstream_error_msg(ctx)
-                        assert.is_equal(proxy_phases.HEAEDER_RECEIVING, phase)
-                        assert.is_equal("failed to read header from upstream", err)
-
-                    end
-                )
-
-                it(
                     "finished", function()
+                        ngx.status = 200
                         local ctx = {
                             var = {
                                 upstream_connect_time = 100,
