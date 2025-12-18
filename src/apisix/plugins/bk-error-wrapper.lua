@@ -76,7 +76,57 @@ end
 ---@param ctx apisix.Context
 ---@return string,string|nil @the specific phase and error message
 local function _get_upstream_error_msg(ctx)
-    -- FIXME: add ngx.status as parameter, return specific error message in comment above
+    -- Get the error log message from nginx variable
+    local ngx_status = ngx.status
+
+    if ngx_status >= 500 and ngx_status <= 599 then
+        local upstream_connect_time = ctx.var.upstream_connect_time or 0
+        local upstream_header_time = ctx.var.upstream_header_time or 0
+        local upstream_response_time = ctx.var.upstream_response_time or 0
+        local upstream_bytes_sent = bk_upstream.get_last_upstream_bytes_sent(ctx)
+        local upstream_bytes_received = bk_upstream.get_last_upstream_bytes_received(ctx)
+
+        if ngx_status == 502 then
+            if upstream_connect_time == 0 then
+                if upstream_bytes_sent == 0 then
+                    -- connect() failed (111: Connection refused) while connecting to upstream
+                    return proxy_phases.CONNECTING, "connection refused"
+                end
+            else
+                -- upstream_connect_time is ok, connected
+                if upstream_bytes_sent > 0 and upstream_bytes_received == 0 then
+                    -- readv() failed (104: Connection reset by peer) while reading upstream
+                    -- recv() failed (104: Connection reset by peer) while reading response header from upstream
+                    -- upstream prematurely closed connection while reading upstream
+                    -- upstream prematurely closed connection while reading response header from upstream
+                    return proxy_phases.HEADER_WAITING, "connection reset by peer OR upstream prematurely closed connection"
+                end
+
+            end
+        end
+
+        if ngx_status == 504 then
+            if upstream_bytes_sent == 0 then
+                return proxy_phases.CONNECTING, "connection timed out while connecting to upstream"
+            end
+            if upstream_bytes_sent > 0 and upstream_bytes_received == 0 then
+                return proxy_phases.HEADER_WAITING, "connection timed out while reading response header from upstream"
+            end
+        end
+
+        core.log.error(
+            "not catch upstream error: ",
+            "[ngx_status: " .. tostring(ngx_status) .. "] ",
+            "[upstream_connect_time: " .. tostring(upstream_connect_time) .. "] ",
+            "[upstream_header_time: " .. tostring(upstream_header_time) .. "] ",
+            "[upstream_response_time: " .. tostring(upstream_response_time) .. "] ",
+            "[upstream_bytes_sent: " .. tostring(upstream_bytes_sent) .. "] ",
+            "[upstream_bytes_received: " .. tostring(upstream_bytes_received) .. "]"
+        )
+
+    end
+
+    -- the legacy logical
     if not ctx.var.upstream_connect_time then -- 握手失败
         return proxy_phases.CONNECTING, "failed to connect to upstream"
     -- note: 此处删掉对$upstream_bytes_sent判断的原因是
