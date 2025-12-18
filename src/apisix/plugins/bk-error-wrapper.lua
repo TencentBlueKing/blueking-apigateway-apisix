@@ -99,7 +99,8 @@ local function _get_upstream_error_msg(ctx)
                     -- recv() failed (104: Connection reset by peer) while reading response header from upstream
                     -- upstream prematurely closed connection while reading upstream
                     -- upstream prematurely closed connection while reading response header from upstream
-                    return proxy_phases.HEADER_WAITING, "connection reset by peer OR upstream prematurely closed connection"
+                    return proxy_phases.HEADER_WAITING,
+                        "connection reset by peer OR upstream prematurely closed connection"
                 end
 
             end
@@ -110,7 +111,8 @@ local function _get_upstream_error_msg(ctx)
                 return proxy_phases.CONNECTING, "connection timed out while connecting to upstream"
             end
             if upstream_bytes_sent > 0 and upstream_bytes_received == 0 then
-                return proxy_phases.HEADER_WAITING, "connection timed out while reading response header from upstream"
+                return proxy_phases.HEADER_WAITING,
+                    "connection timed out while reading response header from upstream OR reading upstream"
             end
         end
 
@@ -182,12 +184,12 @@ function _M.header_filter(conf, ctx) -- luacheck: no unused
 
     -- upstream status 报错封装成网关的报错
     if upstream_error_msg then
-      if not ctx.var.bk_apigw_error and ngx.status >= ngx.HTTP_BAD_REQUEST then
-          -- wrap and generate a bk_apigw_error
-          local error = errorx.new_default_error_with_status(ngx.status)
-          -- after set this, the body_filter will be called
-          ctx.var.bk_apigw_error = error
-      end
+        if not ctx.var.bk_apigw_error and ngx.status >= ngx.HTTP_BAD_REQUEST then
+            -- wrap and generate a bk_apigw_error
+            local error = errorx.new_default_error_with_status(ngx.status)
+            -- after set this, the body_filter will be called
+            ctx.var.bk_apigw_error = error
+        end
     end
 
     local apigw_error = ctx.var.bk_apigw_error

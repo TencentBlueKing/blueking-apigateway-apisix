@@ -544,7 +544,7 @@ describe(
                         }
                         local phase, err = plugin._get_upstream_error_msg(ctx)
                         assert.is_equal(proxy_phases.HEADER_WAITING, phase)
-                        assert.is_equal("connection timed out while reading response header from upstream", err)
+                        assert.is_equal("connection timed out while reading response header from upstream OR reading upstream", err)
 
                     end
                 )
