@@ -1,15 +1,30 @@
 diff --git a/apisix/init.lua b/apisix/init.lua
-index b5ee018b..929a0b24 100644
+index b5ee018b..ca9eb8fd 100644
 --- a/apisix/init.lua
 +++ b/apisix/init.lua
-@@ -509,6 +509,12 @@ function _M.handle_upstream(api_ctx, route, enable_websocket)
+@@ -61,6 +61,8 @@ local pairs           = pairs
+ local tostring       = tostring
+ local ngx_re_match    = ngx.re.match
+ local control_api_router
++local cjson           = require('cjson')
++local cjson_null      = cjson.null
+ 
+ local is_http = false
+ if ngx.config.subsystem == "http" then
+@@ -509,6 +511,18 @@ function _M.handle_upstream(api_ctx, route, enable_websocket)
              route, err = parse_domain_in_route(route)
              if err then
                  core.log.error("failed to get resolved route: ", err)
 +
 +                -- if the dns resolve get no valid ips, return 502 , treat it as `pick_server` fail
 +                if err == "no valid ip found" then
-+                    return core.response.exit(502)
++                    return core.response.exit(502, core.json.encode({
++                      data=cjson_null,
++                      result=false,
++                      code_name="BAD_GATEWAY",
++                      code=1650200,
++                      message="502 Bad Gateway: parse backend host fail, no valid ip found"
++                    }))
 +                end
 +
                  return core.response.exit(500)
