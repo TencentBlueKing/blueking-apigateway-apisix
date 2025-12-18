@@ -44,7 +44,31 @@ end
 ---@param ctx apisix.Context
 ---@return number|nil
 function _M.get_last_upstream_bytes_received(ctx)
-    return tonumber(get_last_item(ctx.var.upstream_bytes_received))
+    if not ctx.var.upstream_bytes_received then
+        return 0
+    end
+
+    if string.find(ctx.var.upstream_bytes_received, ",") then
+        return tonumber(get_last_item(ctx.var.upstream_bytes_received))
+    else
+        return tonumber(ctx.var.upstream_bytes_received)
+    end
+end
+
+---get the last upstream bytes sent
+---this will make sense after or in header_filter phase
+---@param ctx apisix.Context
+---@return number|nil
+function _M.get_last_upstream_bytes_sent(ctx)
+    if not ctx.var.upstream_bytes_sent then
+        return 0
+    end
+
+    if string.find(ctx.var.upstream_bytes_sent, ",") then
+        return tonumber(get_last_item(ctx.var.upstream_bytes_sent))
+    else
+        return tonumber(ctx.var.upstream_bytes_sent)
+    end
 end
 
 if _TEST then
