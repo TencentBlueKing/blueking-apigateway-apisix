@@ -73,7 +73,7 @@ describe(
                 assert.is_not_nil(cache)
 
                 assert.equal(10240, cache.lrucache_max_items)
-                assert.equal(60, cache.lrucache_ttl)
+                assert.equal(90, cache.lrucache_ttl)
                 assert.equal(2, cache.lrucache_short_ttl)
                 assert.equal(86400, cache.fallback_cache_ttl)
 
