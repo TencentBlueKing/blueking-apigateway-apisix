@@ -116,7 +116,7 @@ local function _get_upstream_error_msg(ctx)
             end
         end
 
-        core.log.error(
+        core.log.warn(
             "not catch upstream error: ",
             "[ngx_status: " .. tostring(ngx_status) .. "] ",
             "[upstream_connect_time: " .. tostring(upstream_connect_time) .. "] ",
