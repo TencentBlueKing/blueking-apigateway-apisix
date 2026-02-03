@@ -25,7 +25,6 @@ src/
 │   ├── t/              # Test-nginx functional tests
 │   └── editions/       # Edition-specific configurations (TE/EE)
 ├── apisix-core/        # APISIX upstream submodule
-└── build/              # Build scripts and patches
 ```
 
 - src/apisix/ is the main working dir, we do all the works here, please read @src/apisix/AGENTS.md
