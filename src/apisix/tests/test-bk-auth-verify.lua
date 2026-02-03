@@ -576,6 +576,50 @@ describe(
                         plugin.verify:revert()
                     end
                 )
+
+                it(
+                    "should skip when is_bk_oauth2 is true", function()
+                        ctx.var.is_bk_oauth2 = true
+
+                        -- verify should NOT be called
+                        stub(
+                            plugin, "verify", function()
+                                error("verify should not be called when is_bk_oauth2 is true")
+                            end
+                        )
+
+                        local result = plugin.rewrite({}, ctx)
+
+                        assert.is_nil(result)
+                        assert.is_nil(ctx.var.bk_app)
+                        assert.is_nil(ctx.var.bk_user)
+
+                        plugin.verify:revert()
+                    end
+                )
+
+                it(
+                    "should NOT skip when is_bk_oauth2 is false", function()
+                        ctx.var.is_bk_oauth2 = false
+
+                        stub(
+                            plugin, "verify", function()
+                                return {
+                                    app_code = "test-app",
+                                }, {
+                                    username = "test-user",
+                                }
+                            end
+                        )
+
+                        plugin.rewrite({}, ctx)
+
+                        assert.is_not_nil(ctx.var.bk_app)
+                        assert.is_same(ctx.var.bk_app_code, "test-app")
+
+                        plugin.verify:revert()
+                    end
+                )
             end
         )
     end

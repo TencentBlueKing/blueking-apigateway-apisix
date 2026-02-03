@@ -28,6 +28,7 @@ local ipairs = ipairs
 local VERIFY_APP_SECRET_URL = "/api/v1/apps/%s/access-keys/verify"
 local LIST_APP_SECRETS_URL = "/api/v1/apps/%s/access-keys"
 local GET_APP_URL = "/api/v1/apps/%s"
+local VERIFY_OAUTH2_ACCESS_TOKEN_URL = "/api/v1/oauth2/access-tokens/verify"
 
 local BKAUTH_TIMEOUT_MS = 5 * 1000
 
@@ -202,6 +203,47 @@ function _M.get_app_tenant_info(app_code)
         tenant_mode=result.data.bk_tenant.mode,
         tenant_id=result.data.bk_tenant.id,
         error_message=nil,
+    }, nil
+end
+
+
+---Verify an OAuth2 access token via bkauth service
+---@param access_token string The OAuth2 access token to verify
+---@return table|nil result The verification result containing bk_app_code, bk_username, audience
+---@return string|nil err The error message if verification failed
+function _M.verify_oauth2_access_token(access_token)
+    local request_id = uuid.generate_v4()
+    local path = VERIFY_OAUTH2_ACCESS_TOKEN_URL
+    local params = {
+        method = "POST",
+        body = core.json.encode(
+            {
+                access_token = access_token,
+            }
+        ),
+        ssl_verify = false,
+        headers = {
+            ["X-Bk-App-Code"] = _M.app_code,
+            ["X-Bk-App-Secret"] = _M.app_secret,
+            ["X-Request-Id"] = request_id,
+            ["Content-Type"] = "application/json",
+        },
+    }
+    local result, err = bkauth_do_request(_M.host, path, params, request_id)
+    if err ~= nil then
+        return nil, err
+    end
+
+    -- TODO:
+    -- 1. what if it expired?
+    -- 2. what if it is invalid?
+    -- we should make it cacheable for invalid tokens
+
+    -- response: {"data": {"bk_app_code": "...", "bk_username": "...", "audience": [...]}}
+    return {
+        bk_app_code = result.data.bk_app_code,
+        bk_username = result.data.bk_username,
+        audience = result.data.audience or {},
     }, nil
 end
 

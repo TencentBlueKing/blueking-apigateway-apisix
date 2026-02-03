@@ -110,6 +110,13 @@ function _M.get_bk_apigateway_core_addr()
     return core.table.try_read_attr(conf, "bk_gateway", "hosts", "bk-apigateway-core-api", "addr")
 end
 
+
+function _M.get_bkauth_origin()
+    local conf = core.config.local_conf()
+    return core.table.try_read_attr(conf, "bk_gateway", "hosts", "bkauth", "origin")
+end
+
+
 function _M.get_jwt_issuer()
     local conf = core.config.local_conf()
     return core.table.try_read_attr(conf, "bk_gateway", "jwt_issuer")
