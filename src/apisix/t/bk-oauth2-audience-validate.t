@@ -157,7 +157,7 @@ pass
                     is_bk_oauth2 = true,
                     bk_gateway_name = "bk-apigateway",
                     bk_resource_name = "mcp-resource",
-                    uri = "/prod/api/v2/mcp-servers/my-server/resources",
+                    uri = "/api/v2/mcp-servers/my-server/resources",
                     audience = {"mcp_server:my-server"}
                 }
             }
@@ -313,7 +313,7 @@ status: 403
                     is_bk_oauth2 = true,
                     bk_gateway_name = "bk-apigateway",
                     bk_resource_name = "mcp-resource",
-                    uri = "/prod/api/v2/mcp-servers/server-a/resources",
+                    uri = "/api/v2/mcp-servers/server-a/resources",
                     audience = {"mcp_server:server-b"}
                 }
             }
@@ -336,7 +336,7 @@ status: 403
                     is_bk_oauth2 = true,
                     bk_gateway_name = "other-gateway",
                     bk_resource_name = "mcp-resource",
-                    uri = "/prod/api/v2/mcp-servers/my-server/resources",
+                    uri = "/api/v2/mcp-servers/my-server/resources",
                     audience = {"mcp_server:my-server"}
                 }
             }

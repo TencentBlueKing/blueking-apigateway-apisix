@@ -41,7 +41,7 @@ local string_match = string.match
 local plugin_name = "bk-oauth2-audience-validate"
 
 local BK_APIGATEWAY_GATEWAY_NAME = "bk-apigateway"
-local MCP_SERVER_PATH_PATTERN = [[/prod/api/v2/mcp-servers/([^/]+)]]
+local MCP_SERVER_PATH_PATTERN = [[/api/v2/mcp-servers/([^/]+)]]
 
 local schema = {
     type = "object",
@@ -172,8 +172,18 @@ end
 local function validate_audience(ctx)
     local audience = ctx.var.audience
 
+    -- Normalize: if audience is a string, wrap in table
+    if type(audience) == "string" then
+        audience = { audience }
+    end
+
     if pl_types.is_empty(audience) then
         return false, "empty audience"
+    end
+
+    -- Guard against invalid type
+    if type(audience) ~= "table" then
+        return false, "invalid audience type: " .. type(audience)
     end
 
     local last_reason = ""
@@ -211,16 +221,34 @@ end
 function _M.rewrite(conf, ctx) -- luacheck: no unused
     -- Only run if OAuth2 flow is active
     if ctx.var.is_bk_oauth2 ~= true then
+        core.log.info("bk-oauth2-audience-validate: skipping",
+                      "is_bk_oauth2=", ctx.var.is_bk_oauth2,
+                      "gateway=", ctx.var.bk_gateway_name, ", resource=", ctx.var.bk_resource_name)
         return
     end
+
+    local audience = ctx.var.audience or {}
+    core.log.info("bk-oauth2-audience-validate: checking",
+                  "audience=", core.json.encode(audience),
+                  "gateway=", ctx.var.bk_gateway_name, ", resource=", ctx.var.bk_resource_name)
 
     -- Validate audience
     local valid, reason = validate_audience(ctx)
     if not valid then
-        local err = errorx.new_app_no_permission():with_field("reason", reason)
+        core.log.info("bk-oauth2-audience-validate: validation failed",
+                      "audience=", core.json.encode(audience),
+                      "gateway=", ctx.var.bk_gateway_name, ", resource=", ctx.var.bk_resource_name,
+                      "reason=", reason)
+        local err = errorx.new_app_no_permission()
+            :with_field("reason", reason)
+            :with_field("gateway", ctx.var.bk_gateway_name or "")
+            :with_field("resource", ctx.var.bk_resource_name or "")
         return errorx.exit_with_apigw_err(ctx, err, _M)
     end
 
+    core.log.info("bk-oauth2-audience-validate: validation passed",
+                  "audience=", core.json.encode(audience),
+                  "gateway=", ctx.var.bk_gateway_name, ", resource=", ctx.var.bk_resource_name)
     -- Audience validated successfully, allow request to proceed
 end
 

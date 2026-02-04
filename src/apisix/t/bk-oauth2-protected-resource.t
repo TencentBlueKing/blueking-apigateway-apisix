@@ -107,7 +107,7 @@ hello world
 GET /hello
 --- error_code: 401
 --- response_headers_like
-WWW-Authenticate: Bearer resource_metadata=.*
+WWW-Authenticate: Bearer .*
 
 === TEST 6: X-Bkapi-Authorization takes precedence over Authorization Bearer
 --- request
@@ -127,4 +127,4 @@ GET /hello
 Authorization: Basic dXNlcjpwYXNz
 --- error_code: 401
 --- response_headers_like
-WWW-Authenticate: Bearer resource_metadata=.*
+WWW-Authenticate: Bearer .*

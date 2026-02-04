@@ -23,6 +23,7 @@ describe(
     "bk-oauth2-verify", function()
         local ctx
         local cached_result
+        local authorization_header
 
         before_each(
             function()
@@ -30,6 +31,16 @@ describe(
                     var = {},
                 }
                 cached_result = nil
+                authorization_header = nil
+
+                stub(
+                    core.request, "header", function(_, name)
+                        if name == "Authorization" then
+                            return authorization_header
+                        end
+                        return nil
+                    end
+                )
 
                 stub(
                     oauth2_cache, "get_oauth2_access_token", function(token)
@@ -44,6 +55,7 @@ describe(
 
         after_each(
             function()
+                core.request.header:revert()
                 oauth2_cache.get_oauth2_access_token:revert()
             end
         )
@@ -87,7 +99,7 @@ describe(
                 it(
                     "should process when is_bk_oauth2 is true", function()
                         ctx.var.is_bk_oauth2 = true
-                        ctx.var.oauth2_access_token = "valid-token"
+                        authorization_header = "Bearer valid-token"
                         cached_result = {
                             bk_app_code = "test-app",
                             bk_username = "test-user",
@@ -107,7 +119,7 @@ describe(
                 it(
                     "should set audience from verification result", function()
                         ctx.var.is_bk_oauth2 = true
-                        ctx.var.oauth2_access_token = "valid-token"
+                        authorization_header = "Bearer valid-token"
                         cached_result = {
                             bk_app_code = "test-app",
                             bk_username = "test-user",
@@ -124,7 +136,7 @@ describe(
                 it(
                     "should return 401 when token verification fails", function()
                         ctx.var.is_bk_oauth2 = true
-                        ctx.var.oauth2_access_token = "invalid-token"
+                        authorization_header = "Bearer invalid-token"
                         cached_result = nil  -- Verification fails
 
                         local status = plugin.rewrite({}, ctx)
@@ -136,7 +148,7 @@ describe(
                 it(
                     "should return 401 when no token is present", function()
                         ctx.var.is_bk_oauth2 = true
-                        ctx.var.oauth2_access_token = nil
+                        authorization_header = nil
 
                         local status = plugin.rewrite({}, ctx)
 
@@ -149,9 +161,9 @@ describe(
         context(
             "token extraction", function()
                 it(
-                    "should use oauth2_access_token from context", function()
+                    "should extract token from Authorization header", function()
                         ctx.var.is_bk_oauth2 = true
-                        ctx.var.oauth2_access_token = "my-token-123"
+                        authorization_header = "Bearer my-token-123"
                         cached_result = {
                             bk_app_code = "app",
                             bk_username = "user",
@@ -161,6 +173,58 @@ describe(
                         plugin.rewrite({}, ctx)
 
                         assert.stub(oauth2_cache.get_oauth2_access_token).was_called_with("my-token-123")
+                    end
+                )
+
+                it(
+                    "should handle case-insensitive Bearer prefix", function()
+                        ctx.var.is_bk_oauth2 = true
+                        authorization_header = "bearer lowercase-token"
+                        cached_result = {
+                            bk_app_code = "app",
+                            bk_username = "user",
+                            audience = {},
+                        }
+
+                        plugin.rewrite({}, ctx)
+
+                        assert.stub(oauth2_cache.get_oauth2_access_token).was_called_with("lowercase-token")
+                    end
+                )
+
+                it(
+                    "should return 401 for non-Bearer authorization", function()
+                        ctx.var.is_bk_oauth2 = true
+                        authorization_header = "Basic dXNlcjpwYXNz"
+
+                        local status = plugin.rewrite({}, ctx)
+
+                        assert.is_equal(401, status)
+                    end
+                )
+            end
+        )
+
+        context(
+            "mask_token helper", function()
+                it(
+                    "should mask long tokens", function()
+                        local masked = plugin._mask_token("abcd1234efgh5678")
+                        assert.is_equal("abcd...5678", masked)
+                    end
+                )
+
+                it(
+                    "should return *** for short tokens", function()
+                        local masked = plugin._mask_token("short")
+                        assert.is_equal("***", masked)
+                    end
+                )
+
+                it(
+                    "should return *** for nil", function()
+                        local masked = plugin._mask_token(nil)
+                        assert.is_equal("***", masked)
                     end
                 )
             end

@@ -140,6 +140,14 @@ describe(
             "MCP server path parsing", function()
                 it(
                     "should extract mcp_server_name from path", function()
+                        local name = plugin._extract_mcp_server_from_path("/api/v2/mcp-servers/my-server/resources")
+
+                        assert.is_equal("my-server", name)
+                    end
+                )
+
+                it(
+                    "should extract mcp_server_name with stage prefix", function()
                         local name = plugin._extract_mcp_server_from_path("/prod/api/v2/mcp-servers/my-server/resources")
 
                         assert.is_equal("my-server", name)
@@ -147,8 +155,16 @@ describe(
                 )
 
                 it(
+                    "should extract mcp_server_name with complex path prefix", function()
+                        local name = plugin._extract_mcp_server_from_path("/api/v1/abc/prod/api/v2/mcp-servers/abc/")
+
+                        assert.is_equal("abc", name)
+                    end
+                )
+
+                it(
                     "should return nil for non-matching path", function()
-                        local name = plugin._extract_mcp_server_from_path("/api/other/path")
+                        local name = plugin._extract_mcp_server_from_path("/other/path")
 
                         assert.is_nil(name)
                     end
@@ -162,7 +178,7 @@ describe(
                     "should allow access when mcp_server matches", function()
                         ctx.var.is_bk_oauth2 = true
                         ctx.var.bk_gateway_name = "bk-apigateway"
-                        ctx.var.uri = "/prod/api/v2/mcp-servers/my-server/resources"
+                        ctx.var.uri = "/api/v2/mcp-servers/my-server/resources"
                         ctx.var.audience = {"mcp_server:my-server"}
 
                         local result = plugin.rewrite({}, ctx)
@@ -175,7 +191,7 @@ describe(
                     "should deny access when mcp_server does not match", function()
                         ctx.var.is_bk_oauth2 = true
                         ctx.var.bk_gateway_name = "bk-apigateway"
-                        ctx.var.uri = "/prod/api/v2/mcp-servers/other-server/resources"
+                        ctx.var.uri = "/api/v2/mcp-servers/other-server/resources"
                         ctx.var.audience = {"mcp_server:my-server"}
 
                         local status = plugin.rewrite({}, ctx)
@@ -188,7 +204,7 @@ describe(
                     "should deny access when gateway is not bk-apigateway", function()
                         ctx.var.is_bk_oauth2 = true
                         ctx.var.bk_gateway_name = "other-gateway"
-                        ctx.var.uri = "/prod/api/v2/mcp-servers/my-server/resources"
+                        ctx.var.uri = "/api/v2/mcp-servers/my-server/resources"
                         ctx.var.audience = {"mcp_server:my-server"}
 
                         local status = plugin.rewrite({}, ctx)

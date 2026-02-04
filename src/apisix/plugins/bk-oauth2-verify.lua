@@ -25,7 +25,7 @@
 -- bk-auth-verify flow to handle authentication.
 --
 -- This plugin depends on:
---     * bk-oauth2-protected-resource: To set is_bk_oauth2 and oauth2_access_token
+--     * bk-oauth2-protected-resource: To set is_bk_oauth2 flag
 --     * bk-cache/oauth2-access-token: For token verification with caching
 --     * bk-define/app: For creating app objects
 --     * bk-define/user: For creating user objects
@@ -37,7 +37,14 @@ local oauth2_cache = require("apisix.plugins.bk-cache.oauth2-access-token")
 local bk_app_define = require("apisix.plugins.bk-define.app")
 local bk_user_define = require("apisix.plugins.bk-define.user")
 
+local string_lower = string.lower
+local string_sub = string.sub
+local string_match = string.match
+
 local plugin_name = "bk-oauth2-verify"
+local AUTHORIZATION_HEADER = "Authorization"
+local BEARER_PREFIX = "bearer "
+local BEARER_PREFIX_LEN = #BEARER_PREFIX
 
 local schema = {
     type = "object",
@@ -54,6 +61,40 @@ local _M = {
 
 function _M.check_schema(conf)
     return core.schema.check(schema, conf)
+end
+
+
+---Extract Bearer token from Authorization header
+---@param ctx table The current context
+---@return string|nil token The extracted token, or nil if not found
+local function extract_bearer_token(ctx)
+    local authorization = core.request.header(ctx, AUTHORIZATION_HEADER)
+    if pl_types.is_empty(authorization) then
+        return nil
+    end
+
+    -- Case-insensitive check for "Bearer " prefix
+    local auth_lower = string_lower(authorization)
+    if string_sub(auth_lower, 1, BEARER_PREFIX_LEN) ~= BEARER_PREFIX then
+        return nil
+    end
+
+    -- Extract token after "Bearer " prefix
+    local token = string_sub(authorization, BEARER_PREFIX_LEN + 1)
+    -- Trim leading whitespace
+    token = string_match(token, "^%s*(.+)$")
+    return token
+end
+
+
+---Mask token for logging (security)
+---@param token string The access token
+---@return string masked The masked token
+local function mask_token(token)
+    if not token or #token < 8 then
+        return "***"
+    end
+    return string_sub(token, 1, 4) .. "..." .. string_sub(token, -4)
 end
 
 
@@ -97,22 +138,32 @@ end
 function _M.rewrite(conf, ctx) -- luacheck: no unused
     -- Only run if OAuth2 flow is active
     if ctx.var.is_bk_oauth2 ~= true then
+        core.log.info("bk-oauth2-verify: skipping, is_bk_oauth2=", ctx.var.is_bk_oauth2)
         return
     end
 
-    -- Get the access token from context (set by bk-oauth2-protected-resource)
-    local access_token = ctx.var.oauth2_access_token
+    -- Extract Bearer token from Authorization header
+    local access_token = extract_bearer_token(ctx)
     if pl_types.is_empty(access_token) then
-        local err = errorx.new_general_unauthorized():with_field("reason", "access token not found")
+        core.log.info("bk-oauth2-verify: Bearer token not found in Authorization header")
+        local err = errorx.new_general_unauthorized()
+            :with_field("reason", "Bearer token not found in Authorization header")
         return errorx.exit_with_apigw_err(ctx, err, _M)
     end
 
     -- Verify the token via bkauth (with caching)
     local result, err = verify_token(access_token)
     if result == nil then
-        local error_obj = errorx.new_general_unauthorized():with_field("reason", err or "token verification failed")
+        core.log.info("bk-oauth2-verify: token verification failed, token_hint=", mask_token(access_token),
+                      ", error=", err)
+        local error_obj = errorx.new_general_unauthorized()
+            :with_field("reason", err or "token verification failed")
+            :with_field("token_hint", mask_token(access_token))
         return errorx.exit_with_apigw_err(ctx, error_obj, _M)
     end
+
+    core.log.info("bk-oauth2-verify: token verified, app=", result.bk_app_code,
+                  ", user=", result.bk_username, ", audience_count=", #(result.audience or {}))
 
     -- Create and set app object
     local app = create_app_from_result(result)
@@ -131,6 +182,8 @@ end
 
 
 if _TEST then -- luacheck: ignore
+    _M._extract_bearer_token = extract_bearer_token
+    _M._mask_token = mask_token
     _M._verify_token = verify_token
     _M._create_app_from_result = create_app_from_result
     _M._create_user_from_result = create_user_from_result

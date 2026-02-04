@@ -101,6 +101,15 @@ skipped
             local plugin = require("apisix.plugins.bk-oauth2-verify")
             local core = require("apisix.core")
             
+            -- Mock core.request.header to return Authorization header
+            local original_header = core.request.header
+            core.request.header = function(ctx, name)
+                if name == "Authorization" then
+                    return "Bearer valid-token"
+                end
+                return nil
+            end
+
             -- Mock the cache to return a valid result
             local oauth2_cache = require("apisix.plugins.bk-cache.oauth2-access-token")
             local original_get = oauth2_cache.get_oauth2_access_token
@@ -114,56 +123,47 @@ skipped
 
             local ctx = {
                 var = {
-                    is_bk_oauth2 = true,
-                    oauth2_access_token = "valid-token"
+                    is_bk_oauth2 = true
                 }
             }
 
             local result = plugin.rewrite({}, ctx)
             
-            -- Restore original function
+            -- Restore original functions
+            core.request.header = original_header
             oauth2_cache.get_oauth2_access_token = original_get
 
             -- Check all expected ctx.var are set
             local errors = {}
 
-            -- Check bk_app is set and has correct app_code
             if not ctx.var.bk_app then
                 table.insert(errors, "bk_app is nil")
             elseif ctx.var.bk_app.app_code ~= "test-app" then
-                table.insert(errors, "bk_app.app_code mismatch: " .. tostring(ctx.var.bk_app.app_code))
+                table.insert(errors, "bk_app.app_code mismatch")
             end
 
-            -- Check bk_user is set and has correct username
             if not ctx.var.bk_user then
                 table.insert(errors, "bk_user is nil")
             elseif ctx.var.bk_user.username ~= "test-user" then
-                table.insert(errors, "bk_user.username mismatch: " .. tostring(ctx.var.bk_user.username))
+                table.insert(errors, "bk_user.username mismatch")
             end
 
-            -- Check bk_app_code
             if ctx.var.bk_app_code ~= "test-app" then
-                table.insert(errors, "bk_app_code mismatch: " .. tostring(ctx.var.bk_app_code))
+                table.insert(errors, "bk_app_code mismatch")
             end
 
-            -- Check bk_username
             if ctx.var.bk_username ~= "test-user" then
-                table.insert(errors, "bk_username mismatch: " .. tostring(ctx.var.bk_username))
+                table.insert(errors, "bk_username mismatch")
             end
 
-            -- Check audience
-            if not ctx.var.audience then
-                table.insert(errors, "audience is nil")
-            elseif #ctx.var.audience ~= 2 then
-                table.insert(errors, "audience count mismatch: " .. tostring(#ctx.var.audience))
+            if not ctx.var.audience or #ctx.var.audience ~= 2 then
+                table.insert(errors, "audience mismatch")
             end
 
-            -- Check auth_params_location
             if ctx.var.auth_params_location ~= "header" then
-                table.insert(errors, "auth_params_location mismatch: " .. tostring(ctx.var.auth_params_location))
+                table.insert(errors, "auth_params_location mismatch")
             end
 
-            -- Check result is nil (success)
             if result ~= nil then
                 table.insert(errors, "result should be nil but got: " .. tostring(result))
             end
@@ -183,25 +183,24 @@ pass
     location /t {
         content_by_lua_block {
             local plugin = require("apisix.plugins.bk-oauth2-verify")
+            local core = require("apisix.core")
+            
+            local original_header = core.request.header
+            core.request.header = function(ctx, name)
+                if name == "Authorization" then return "Bearer token" end
+                return nil
+            end
             
             local oauth2_cache = require("apisix.plugins.bk-cache.oauth2-access-token")
             local original_get = oauth2_cache.get_oauth2_access_token
             oauth2_cache.get_oauth2_access_token = function(token)
-                return {
-                    bk_app_code = "my-app",
-                    bk_username = "my-user",
-                    audience = {}
-                }, nil
+                return { bk_app_code = "my-app", bk_username = "my-user", audience = {} }, nil
             end
 
-            local ctx = {
-                var = {
-                    is_bk_oauth2 = true,
-                    oauth2_access_token = "token"
-                }
-            }
+            local ctx = { var = { is_bk_oauth2 = true } }
 
             plugin.rewrite({}, ctx)
+            core.request.header = original_header
             oauth2_cache.get_oauth2_access_token = original_get
 
             if ctx.var.bk_app and ctx.var.bk_app.verified == true then
@@ -219,28 +218,26 @@ pass
     location /t {
         content_by_lua_block {
             local plugin = require("apisix.plugins.bk-oauth2-verify")
+            local core = require("apisix.core")
+            
+            local original_header = core.request.header
+            core.request.header = function(ctx, name)
+                if name == "Authorization" then return "Bearer token" end
+                return nil
+            end
             
             local oauth2_cache = require("apisix.plugins.bk-cache.oauth2-access-token")
             local original_get = oauth2_cache.get_oauth2_access_token
             oauth2_cache.get_oauth2_access_token = function(token)
-                return {
-                    bk_app_code = "app",
-                    bk_username = "valid-user",
-                    audience = {}
-                }, nil
+                return { bk_app_code = "app", bk_username = "valid-user", audience = {} }, nil
             end
 
-            local ctx = {
-                var = {
-                    is_bk_oauth2 = true,
-                    oauth2_access_token = "token"
-                }
-            }
+            local ctx = { var = { is_bk_oauth2 = true } }
 
             plugin.rewrite({}, ctx)
+            core.request.header = original_header
             oauth2_cache.get_oauth2_access_token = original_get
 
-            -- User with non-empty username should have verified=true
             if ctx.var.bk_user and ctx.var.bk_user.verified == true and ctx.var.bk_user.username == "valid-user" then
                 ngx.say("pass")
             else
@@ -256,28 +253,26 @@ pass
     location /t {
         content_by_lua_block {
             local plugin = require("apisix.plugins.bk-oauth2-verify")
+            local core = require("apisix.core")
+            
+            local original_header = core.request.header
+            core.request.header = function(ctx, name)
+                if name == "Authorization" then return "Bearer token" end
+                return nil
+            end
             
             local oauth2_cache = require("apisix.plugins.bk-cache.oauth2-access-token")
             local original_get = oauth2_cache.get_oauth2_access_token
             oauth2_cache.get_oauth2_access_token = function(token)
-                return {
-                    bk_app_code = "app",
-                    bk_username = "",
-                    audience = {}
-                }, nil
+                return { bk_app_code = "app", bk_username = "", audience = {} }, nil
             end
 
-            local ctx = {
-                var = {
-                    is_bk_oauth2 = true,
-                    oauth2_access_token = "token"
-                }
-            }
+            local ctx = { var = { is_bk_oauth2 = true } }
 
             plugin.rewrite({}, ctx)
+            core.request.header = original_header
             oauth2_cache.get_oauth2_access_token = original_get
 
-            -- User with empty username should have verified=false
             if ctx.var.bk_user and ctx.var.bk_user.verified == false and ctx.var.bk_user.username == "" then
                 ngx.say("pass")
             else
@@ -293,25 +288,24 @@ pass
     location /t {
         content_by_lua_block {
             local plugin = require("apisix.plugins.bk-oauth2-verify")
+            local core = require("apisix.core")
+            
+            local original_header = core.request.header
+            core.request.header = function(ctx, name)
+                if name == "Authorization" then return "Bearer token" end
+                return nil
+            end
             
             local oauth2_cache = require("apisix.plugins.bk-cache.oauth2-access-token")
             local original_get = oauth2_cache.get_oauth2_access_token
             oauth2_cache.get_oauth2_access_token = function(token)
-                return {
-                    bk_app_code = "app",
-                    bk_username = "user",
-                    audience = {}
-                }, nil
+                return { bk_app_code = "app", bk_username = "user", audience = {} }, nil
             end
 
-            local ctx = {
-                var = {
-                    is_bk_oauth2 = true,
-                    oauth2_access_token = "token"
-                }
-            }
+            local ctx = { var = { is_bk_oauth2 = true } }
 
             plugin.rewrite({}, ctx)
+            core.request.header = original_header
             oauth2_cache.get_oauth2_access_token = original_get
 
             ngx.say(ctx.var.auth_params_location)

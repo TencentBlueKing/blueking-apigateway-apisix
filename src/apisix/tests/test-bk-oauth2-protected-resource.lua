@@ -39,8 +39,8 @@ describe(
                     end
                 )
                 stub(
-                    bk_core.config, "get_bkauth_origin", function()
-                        return "https://bkauth.example.com"
+                    bk_core.config, "get_bk_apigateway_api_addr", function()
+                        return "https://bk-apigateway-api.example.com"
                     end
                 )
             end
@@ -49,7 +49,7 @@ describe(
         after_each(
             function()
                 core.request.header:revert()
-                bk_core.config.get_bkauth_origin:revert()
+                bk_core.config.get_bk_apigateway_api_addr:revert()
             end
         )
 
@@ -98,17 +98,6 @@ describe(
 
                         assert.is_nil(result)
                         assert.is_true(ctx.var.is_bk_oauth2)
-                    end
-                )
-
-                it(
-                    "should extract bearer token correctly", function()
-                        headers["Authorization"] = "Bearer my-access-token"
-
-                        plugin.rewrite({}, ctx)
-
-                        assert.is_true(ctx.var.is_bk_oauth2)
-                        assert.is_equal("my-access-token", ctx.var.oauth2_access_token)
                     end
                 )
 

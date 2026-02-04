@@ -61,7 +61,7 @@ function _M.check_schema(conf)
 end
 
 
----Parse Bearer token from Authorization header
+---Parse Bearer token from Authorization header (RFC 6750 case-insensitive)
 ---@param authorization string|nil The Authorization header value
 ---@return string|nil token The extracted token, or nil if not a Bearer token
 local function parse_bearer_token(authorization)
@@ -69,12 +69,15 @@ local function parse_bearer_token(authorization)
         return nil
     end
 
+    -- Case-insensitive check for "Bearer " prefix (RFC 6750)
     local auth_lower = string_lower(authorization)
     if string_sub(auth_lower, 1, BEARER_PREFIX_LEN) ~= BEARER_PREFIX then
         return nil
     end
 
-    local token = string_match(authorization, "^[Bb]earer%s+(.+)$")
+    -- Extract token after prefix, trim leading whitespace
+    local token = string_sub(authorization, BEARER_PREFIX_LEN + 1)
+    token = string_match(token, "^%s*(.+)$")
     return token
 end
 
@@ -83,13 +86,19 @@ end
 ---@param ctx table The current context object
 ---@return string The WWW-Authenticate header value
 local function build_www_authenticate_header(ctx)
-    local origin = bk_core.config.get_bkauth_origin()
+    local addr = bk_core.config.get_bk_apigateway_api_addr()
+
+    -- If addr is not configured, return minimal header
+    if addr == "" then
+        return 'Bearer realm="bk-apigateway"'
+    end
+
     local path = ctx.var.uri or "/"
     local encoded_path = ngx_escape_uri(path)
 
     return string.format(
         'Bearer resource_metadata="%s/.well-known/oauth-protected-resource?resource=%s"',
-        origin,
+        addr,
         encoded_path
     )
 end
@@ -101,6 +110,7 @@ function _M.rewrite(conf, ctx) -- luacheck: no unused
     local bkapi_auth = core.request.header(ctx, BKAPI_AUTHORIZATION_HEADER)
     if not pl_types.is_empty(bkapi_auth) then
         ctx.var.is_bk_oauth2 = false
+        core.log.info("bk-oauth2-protected-resource: X-Bkapi-Authorization present, using legacy auth")
         return
     end
 
@@ -109,18 +119,21 @@ function _M.rewrite(conf, ctx) -- luacheck: no unused
     local bearer_token = parse_bearer_token(authorization)
 
     if bearer_token then
-        -- OAuth2 flow: set flag and store token for downstream plugins
+        -- OAuth2 flow: set flag for downstream plugins
         ctx.var.is_bk_oauth2 = true
-        ctx.var.oauth2_access_token = bearer_token
+        core.log.info("bk-oauth2-protected-resource: Bearer token detected, using OAuth2 flow")
         return
     end
 
     -- No valid auth headers present
     -- Return 401 with WWW-Authenticate header for OAuth2 discovery
+    core.log.info("bk-oauth2-protected-resource: no valid auth header, returning 401 with WWW-Authenticate")
     local www_authenticate = build_www_authenticate_header(ctx)
     ngx.header["WWW-Authenticate"] = www_authenticate
 
-    local err = errorx.new_general_unauthorized():with_field("reason", "authentication required")
+    local err = errorx.new_general_unauthorized()
+        :with_field("reason", "no valid authentication header found")
+        :with_field("expected", "Authorization: Bearer <token>")
     return errorx.exit_with_apigw_err(ctx, err, _M)
 end
 
