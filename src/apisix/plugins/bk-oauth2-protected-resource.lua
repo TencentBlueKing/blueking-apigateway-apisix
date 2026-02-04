@@ -97,7 +97,7 @@ local function build_www_authenticate_header(ctx)
     local encoded_path = ngx_escape_uri(path)
 
     return string.format(
-        'Bearer resource_metadata="%s/prod/.well-known/oauth-protected-resource?resource=%s"',
+        'Bearer resource_metadata="%s/prod/api/v2/open/.well-known/oauth-protected-resource?resource=%s"',
         addr,
         encoded_path
     )
