@@ -103,24 +103,12 @@ end
 
 function _M.rewrite(conf, ctx) -- luacheck: no unused
     local jwt_bk_app = ctx.var.bk_app
-    -- local jwt_bk_app_code = ctx.var.bk_app_code
+    local app_code = ctx.var.bk_app:get_app_code()
+    local real_app_code = ctx.var.bk_app:get_real_app_code()
 
-    -- if the app is a virtual app, should convert the app_code to the real app_code
-    -- v_mcp_{mcp_server_id}_{app_code}
-    if ctx.var.bk_app_code ~= nil and core.string.has_prefix(ctx.var.bk_app_code, "v_mcp_") then
-        -- split by _ and get the parts after third _
-        local real_app_code = string.match(ctx.var.bk_app_code,"^v_mcp_%d+_(.+)$")
-        if real_app_code == nil then
-            core.log.error(
-                "failed to get real app code from virtual app code, use the virtual app code instead: ",
-                ctx.var.bk_app_code
-            )
-            -- do nothing
-        else
-            -- deep copy the ctx.var.bk_app
-            jwt_bk_app = core.table.deepcopy(ctx.var.bk_app)
-            jwt_bk_app.app_code = real_app_code
-        end
+    if real_app_code ~= app_code then
+        jwt_bk_app = core.table.deepcopy(ctx.var.bk_app)
+        jwt_bk_app.app_code = real_app_code
     end
 
     -- generate bkapi headers

@@ -115,6 +115,18 @@ describe(
                 )
 
                 it(
+                    "get_real_app_code", function()
+                        assert.is_equal(bk_app:get_real_app_code(), "test")
+
+                        bk_app.app_code = "v_mcp_123_real_app"
+                        assert.is_equal(bk_app:get_real_app_code(), "real_app")
+
+                        bk_app.app_code = "v_mcp_bad"
+                        assert.is_equal(bk_app:get_real_app_code(), "v_mcp_bad")
+                    end
+                )
+
+                it(
                     "is_verified", function()
                         assert.is_true(bk_app:is_verified())
 

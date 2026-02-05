@@ -170,3 +170,4 @@ All new Lua files must include the TencentBlueKing MIT license header. The `make
 - Context injection plugins must NOT terminate requests (return early)
 - All plugins should use `bk-core.errorx` for error handling to ensure consistent error responses
 - The `bk-error-wrapper` plugin (priority: 0) wraps all errors in a standard format, so it runs last
+- MCP virtual app codes are formatted as `v_mcp_{mcp_service_id}_{app_code}`; use `bk_app:get_real_app_code()` when you need the real app code (tenant lookup, signing JWT, etc.)

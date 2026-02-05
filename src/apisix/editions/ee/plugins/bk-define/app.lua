@@ -18,6 +18,7 @@
 
 local table_concat = table.concat
 local setmetatable = setmetatable
+local string_match = string.match
 
 local ngx = ngx -- luacheck: ignore
 local ngx_md5 = ngx.md5
@@ -56,6 +57,15 @@ function _M.new_anonymous_app(valid_error_message)
 end
 
 function _M.get_app_code(self)
+    return self.app_code
+end
+
+function _M.get_real_app_code(self)
+    local real_app_code = string_match(self.app_code, "^v_mcp_%d+_(.+)$")
+    if real_app_code ~= nil then
+        return real_app_code
+    end
+
     return self.app_code
 end
 

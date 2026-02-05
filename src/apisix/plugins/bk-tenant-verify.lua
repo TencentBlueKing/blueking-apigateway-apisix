@@ -56,7 +56,8 @@ function _M.rewrite(conf, ctx) -- luacheck: ignore
     local app_code = ctx.var.bk_app:get_app_code()
     -- 2. get tenant_id from bkauth(app.tenant_mode/app.tenant_id)
     if app_code ~= "" and ctx.var.bk_app:is_verified() then
-        local app_tenant_info, err = bk_cache.get_app_tenant_info(app_code)
+        local real_app_code = ctx.var.bk_app:get_real_app_code()
+        local app_tenant_info, err = bk_cache.get_app_tenant_info(real_app_code)
         if err ~= nil then
             return errorx.exit_with_apigw_err(ctx, errorx.new_internal_server_error():with_field("reason", err), _M)
         end
