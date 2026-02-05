@@ -99,6 +99,25 @@ make edition-te
 make edition-reset
 ```
 
+#### Edition-Specific Links (TE/EE)
+
+Edition files in `src/apisix/editions/te/` and `src/apisix/editions/ee/` are
+linked into `src/apisix/` by `make edition-te` / `make edition-ee`. If you
+modify an edition-controlled file, change the file under `src/apisix/editions/*`
+and then re-link before running tests.
+
+```bash
+# EE flow
+make edition-reset && make edition-ee && make test
+
+# TE flow
+make edition-reset && make edition-te && make test
+```
+
+Notes:
+- Run tests from `src/apisix` (the repo root does not have `make test`).
+- In non-TTY environments, use `RUN_WITH_IT= make test`.
+
 ## Plugin Development Guidelines
 
 ### Naming Conventions
