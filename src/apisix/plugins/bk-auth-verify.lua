@@ -183,6 +183,12 @@ function _M.verify(ctx)
 end
 
 function _M.rewrite(conf, ctx) -- luacheck: no unused
+    -- Skip if OAuth2 flow is handling authentication
+    -- (is_bk_oauth2 is set by bk-oauth2-protected-resource plugin)
+    if ctx.var.is_bk_oauth2 == true then
+        return
+    end
+
     local app, user = _M.verify(ctx)
 
     ctx.var.bk_app = app

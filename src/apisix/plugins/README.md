@@ -36,7 +36,9 @@
 
 - ~~bk-workflow-parameters                    # priority: 18750 (abandonned)~~
 - ~~bk-auth-parameters                        # priority: 18740 (abandonned)~~
+- bk-oauth2-protected-resource              # priority: 18740  # OAuth2 资源保护：检测 OAuth2 vs 传统认证，返回 WWW-Authenticate 头
 - bk-access-token-source                    # priority: 18735
+- bk-oauth2-verify                          # priority: 18732  # OAuth2 令牌验证：通过 bkauth 验证 OAuth2 访问令牌
 - bk-auth-verify                            # priority: 18730
 - bk-username-required                      # priority: 18725
 
@@ -49,6 +51,7 @@
 - bk-request-body-limit                     # priority: 17690
 - bk-auth-validate                          # priority: 17680
 - bk-user-restriction                       # priority: 17679
+- bk-oauth2-audience-validate               # priority: 17678  # OAuth2 audience 验证：验证 MCP 服务器和网关 API 的 audience 声明
 - bk-tenant-verify                          # priority: 17675
 - bk-tenant-validate                        # priority: 17674
 - bk-jwt                                    # priority: 17670

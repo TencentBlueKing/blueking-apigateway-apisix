@@ -28,6 +28,7 @@ local ipairs = ipairs
 local VERIFY_APP_SECRET_URL = "/api/v1/apps/%s/access-keys/verify"
 local LIST_APP_SECRETS_URL = "/api/v1/apps/%s/access-keys"
 local GET_APP_URL = "/api/v1/apps/%s"
+local VERIFY_OAUTH2_ACCESS_TOKEN_URL = "/api/v1/oauth2/access-tokens/verify"
 
 local BKAUTH_TIMEOUT_MS = 5 * 1000
 
@@ -202,6 +203,71 @@ function _M.get_app_tenant_info(app_code)
         tenant_mode=result.data.bk_tenant.mode,
         tenant_id=result.data.bk_tenant.id,
         error_message=nil,
+    }, nil
+end
+
+
+---Verify an OAuth2 access token via bkauth service
+---@param access_token string The OAuth2 access token to verify
+---@return table|nil result The verification result containing bk_app_code, bk_username, audience
+---@return string|nil err The error message if verification failed
+function _M.verify_oauth2_access_token(access_token)
+    local request_id = uuid.generate_v4()
+    local path = VERIFY_OAUTH2_ACCESS_TOKEN_URL
+    local params = {
+        method = "POST",
+        body = core.json.encode(
+            {
+                token = access_token,
+            }
+        ),
+        ssl_verify = false,
+        headers = {
+            ["X-Bk-App-Code"] = _M.app_code,
+            ["X-Bk-App-Secret"] = _M.app_secret,
+            ["X-Request-Id"] = request_id,
+            ["Content-Type"] = "application/json",
+        },
+    }
+    local result, err = bkauth_do_request(_M.host, path, params, request_id)
+    if err ~= nil then
+        return nil, err
+    end
+
+    -- {
+    --     "active": true,
+    --     "username": "tom",          // 蓝鲸用户 login_name
+    --     "sub": "ujkcufku8gtm3h7l",  // 蓝鲸用户 bk_username
+    --     "exp": 1772640000,
+    --     "iat": 1770268847,
+    --     "nbf": 1770268847,
+    --     "iss": "https://bkauth.example.com/realm/blueking/oauth2",
+    --     "jti": "xoMP5wpMulg3YByyfvL0L",
+    --     "aud": ["mcp:bkmonitorv3-prod-log-query", "gateway:bk-log:api:esquery_search", "gateway:bk-cmdb:api:*"],
+    --     "scope": "",
+    --     "client_id": "dcr_cursor_42d5df",
+    --     "bk_app_code": "public"
+    --     "error": {
+    --         "code": "EXPIRED",
+    --         "message": "token expired"
+    --     }
+    -- }
+
+    local error = {}
+    if result.error then
+        error.code = result.error.code or ""
+        error.message = result.error.message or ""
+    end
+
+    -- NOTE: it's cacheable for all conditions
+    return {
+        active = result.active,
+        bk_app_code = result.bk_app_code or "",
+        bk_login_name = result.username or "",
+        bk_username = result.sub or "",
+        exp = result.exp or 0,
+        audience = result.aud or {},
+        error = error,
     }, nil
 end
 
