@@ -115,6 +115,8 @@ skipped
             local original_get = oauth2_cache.get_oauth2_access_token
             oauth2_cache.get_oauth2_access_token = function(token)
                 return {
+                    active = true,
+                    exp = 4102444800,
                     bk_app_code = "test-app",
                     bk_username = "test-user",
                     audience = {"gateway:demo/api:test", "mcp_server:my-server"}
@@ -194,7 +196,8 @@ pass
             local oauth2_cache = require("apisix.plugins.bk-cache.oauth2-access-token")
             local original_get = oauth2_cache.get_oauth2_access_token
             oauth2_cache.get_oauth2_access_token = function(token)
-                return { bk_app_code = "my-app", bk_username = "my-user", audience = {} }, nil
+                return { active = true, exp = 4102444800, bk_app_code = "my-app", bk_username = "my-user",
+                         audience = {} }, nil
             end
 
             local ctx = { var = { is_bk_oauth2 = true } }
@@ -229,7 +232,8 @@ pass
             local oauth2_cache = require("apisix.plugins.bk-cache.oauth2-access-token")
             local original_get = oauth2_cache.get_oauth2_access_token
             oauth2_cache.get_oauth2_access_token = function(token)
-                return { bk_app_code = "app", bk_username = "valid-user", audience = {} }, nil
+                return { active = true, exp = 4102444800, bk_app_code = "app", bk_username = "valid-user",
+                         audience = {} }, nil
             end
 
             local ctx = { var = { is_bk_oauth2 = true } }
@@ -264,7 +268,8 @@ pass
             local oauth2_cache = require("apisix.plugins.bk-cache.oauth2-access-token")
             local original_get = oauth2_cache.get_oauth2_access_token
             oauth2_cache.get_oauth2_access_token = function(token)
-                return { bk_app_code = "app", bk_username = "", audience = {} }, nil
+                return { active = true, exp = 4102444800, bk_app_code = "app", bk_username = "",
+                         audience = {} }, nil
             end
 
             local ctx = { var = { is_bk_oauth2 = true } }
@@ -299,7 +304,8 @@ pass
             local oauth2_cache = require("apisix.plugins.bk-cache.oauth2-access-token")
             local original_get = oauth2_cache.get_oauth2_access_token
             oauth2_cache.get_oauth2_access_token = function(token)
-                return { bk_app_code = "app", bk_username = "user", audience = {} }, nil
+                return { active = true, exp = 4102444800, bk_app_code = "app", bk_username = "user",
+                         audience = {} }, nil
             end
 
             local ctx = { var = { is_bk_oauth2 = true } }

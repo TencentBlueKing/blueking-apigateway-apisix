@@ -218,7 +218,7 @@ function _M.verify_oauth2_access_token(access_token)
         method = "POST",
         body = core.json.encode(
             {
-                access_token = access_token,
+                token = access_token,
             }
         ),
         ssl_verify = false,
@@ -234,16 +234,40 @@ function _M.verify_oauth2_access_token(access_token)
         return nil, err
     end
 
-    -- TODO:
-    -- 1. what if it expired?
-    -- 2. what if it is invalid?
-    -- we should make it cacheable for invalid tokens
+    -- {
+    --     "active": true,
+    --     "username": "tom",          // 蓝鲸用户 login_name
+    --     "sub": "ujkcufku8gtm3h7l",  // 蓝鲸用户 bk_username
+    --     "exp": 1772640000,
+    --     "iat": 1770268847,
+    --     "nbf": 1770268847,
+    --     "iss": "https://bkauth.example.com/realm/blueking/oauth2",
+    --     "jti": "xoMP5wpMulg3YByyfvL0L",
+    --     "aud": ["mcp:bkmonitorv3-prod-log-query", "gateway:bk-log:api:esquery_search", "gateway:bk-cmdb:api:*"],
+    --     "scope": "",
+    --     "client_id": "dcr_cursor_42d5df",
+    --     "bk_app_code": "public"
+    --     "error": {
+    --         "code": "EXPIRED",
+    --         "message": "token expired"
+    --     }
+    -- }
 
-    -- response: {"data": {"bk_app_code": "...", "bk_username": "...", "audience": [...]}}
+    local error = {}
+    if result.error then
+        error.code = result.error.code or ""
+        error.message = result.error.message or ""
+    end
+
+    -- NOTE: it's cacheable for all conditions
     return {
-        bk_app_code = result.data.bk_app_code,
-        bk_username = result.data.bk_username,
-        audience = result.data.audience or {},
+        active = result.active,
+        bk_app_code = result.bk_app_code or "",
+        bk_login_name = result.username or "",
+        bk_username = result.sub or "",
+        exp = result.exp or 0,
+        audience = result.aud or {},
+        error = error,
     }, nil
 end
 

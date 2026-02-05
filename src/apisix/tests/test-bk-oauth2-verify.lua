@@ -24,6 +24,7 @@ describe(
         local ctx
         local cached_result
         local authorization_header
+        local www_authenticate_header
 
         before_each(
             function()
@@ -32,6 +33,7 @@ describe(
                 }
                 cached_result = nil
                 authorization_header = nil
+                www_authenticate_header = nil
 
                 stub(
                     core.request, "header", function(_, name)
@@ -39,6 +41,17 @@ describe(
                             return authorization_header
                         end
                         return nil
+                    end
+                )
+
+                stub(
+                    core.response, "set_header", function(...)
+                        local args = {...}
+                        local name = args[1]
+                        local value = args[2]
+                        if name == "WWW-Authenticate" then
+                            www_authenticate_header = value
+                        end
                     end
                 )
 
@@ -56,6 +69,7 @@ describe(
         after_each(
             function()
                 core.request.header:revert()
+                core.response.set_header:revert()
                 oauth2_cache.get_oauth2_access_token:revert()
             end
         )
@@ -101,6 +115,8 @@ describe(
                         ctx.var.is_bk_oauth2 = true
                         authorization_header = "Bearer valid-token"
                         cached_result = {
+                            active = true,
+                            exp = 4102444800,
                             bk_app_code = "test-app",
                             bk_username = "test-user",
                             audience = {"gateway:demo/api:test"},
@@ -121,6 +137,8 @@ describe(
                         ctx.var.is_bk_oauth2 = true
                         authorization_header = "Bearer valid-token"
                         cached_result = {
+                            active = true,
+                            exp = 4102444800,
                             bk_app_code = "test-app",
                             bk_username = "test-user",
                             audience = {"mcp_server:my-server", "gateway:demo/api:*"},
@@ -142,6 +160,13 @@ describe(
                         local status = plugin.rewrite({}, ctx)
 
                         assert.is_equal(401, status)
+                        assert.is_truthy(www_authenticate_header)
+                        assert.is_true(
+                            string.find(www_authenticate_header, 'error="invalid_token"') ~= nil
+                        )
+                        assert.is_true(
+                            string.find(www_authenticate_header, 'error_description="call bkauth api to verify token failed') ~= nil
+                        )
                     end
                 )
 
@@ -153,6 +178,13 @@ describe(
                         local status = plugin.rewrite({}, ctx)
 
                         assert.is_equal(401, status)
+                        assert.is_truthy(www_authenticate_header)
+                        assert.is_true(
+                            string.find(
+                                www_authenticate_header,
+                                'error_description="Bearer token not found in Authorization header"'
+                            ) ~= nil
+                        )
                     end
                 )
             end
@@ -165,6 +197,8 @@ describe(
                         ctx.var.is_bk_oauth2 = true
                         authorization_header = "Bearer my-token-123"
                         cached_result = {
+                            active = true,
+                            exp = 4102444800,
                             bk_app_code = "app",
                             bk_username = "user",
                             audience = {},
@@ -181,6 +215,8 @@ describe(
                         ctx.var.is_bk_oauth2 = true
                         authorization_header = "bearer lowercase-token"
                         cached_result = {
+                            active = true,
+                            exp = 4102444800,
                             bk_app_code = "app",
                             bk_username = "user",
                             audience = {},
@@ -210,7 +246,7 @@ describe(
                 it(
                     "should mask long tokens", function()
                         local masked = plugin._mask_token("abcd1234efgh5678")
-                        assert.is_equal("abcd...5678", masked)
+                        assert.is_equal("abcd******5678", masked)
                     end
                 )
 

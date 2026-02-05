@@ -233,7 +233,7 @@ describe(
                         local header = plugin._build_www_authenticate_header(ctx)
 
                         assert.is_equal(
-                            'Bearer realm="bk-apigateway api tmpl is not configured on the bk-apigateway"',
+                            'Bearer realm="bk-apigateway", error="invalid_request", error_description="api tmpl is not configured"',
                             header
                         )
                     end
@@ -250,7 +250,10 @@ describe(
 
                         local header = plugin._build_www_authenticate_header(ctx)
 
-                        assert.is_equal('Bearer realm="invalid bk-apigateway api tmpl format"', header)
+                        assert.is_equal(
+                            'Bearer realm="bk-apigateway", error="invalid_request", error_description="invalid api tmpl format"',
+                            header
+                        )
                     end
                 )
 

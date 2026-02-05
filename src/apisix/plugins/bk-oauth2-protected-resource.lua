@@ -91,12 +91,12 @@ local function build_www_authenticate_header(ctx)
 
     -- If tmpl is not configured (nil or empty), return minimal header
     if tmpl == nil or tmpl == "" then
-        return 'Bearer realm="bk-apigateway api tmpl is not configured on the bk-apigateway"'
+        return 'Bearer realm="bk-apigateway", error="invalid_request", error_description="api tmpl is not configured"'
     end
 
     -- Validate that tmpl is a valid URL format (must start with http:// or https://)
     if not string_match(tmpl, "^https?://") then
-        return 'Bearer realm="invalid bk-apigateway api tmpl format"'
+        return 'Bearer realm="bk-apigateway", error="invalid_request", error_description="invalid api tmpl format"'
     end
 
     -- The tmpl can be in two formats:

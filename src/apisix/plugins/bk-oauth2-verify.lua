@@ -37,9 +37,12 @@ local oauth2_cache = require("apisix.plugins.bk-cache.oauth2-access-token")
 local bk_app_define = require("apisix.plugins.bk-define.app")
 local bk_user_define = require("apisix.plugins.bk-define.user")
 
+local ngx_time = ngx.time
 local string_lower = string.lower
 local string_sub = string.sub
 local string_match = string.match
+local string_gsub = string.gsub
+local string_format = string.format
 
 local plugin_name = "bk-oauth2-verify"
 local AUTHORIZATION_HEADER = "Authorization"
@@ -94,7 +97,40 @@ local function mask_token(token)
     if not token or #token < 8 then
         return "***"
     end
-    return string_sub(token, 1, 4) .. "..." .. string_sub(token, -4)
+    return string_sub(token, 1, 4) .. "******" .. string_sub(token, -4)
+end
+
+
+local function escape_auth_header_value(value)
+    if pl_types.is_empty(value) then
+        return ""
+    end
+
+    local escaped = string_gsub(value, "\\", "\\\\")
+    escaped = string_gsub(escaped, '"', '\\"')
+    return escaped
+end
+
+
+local function build_www_authenticate_header(ctx, reason, error)
+    local realm = "bk-apigateway"
+    if ctx and ctx.var and not pl_types.is_empty(ctx.var.bk_gateway_name) then
+        realm = ctx.var.bk_gateway_name
+    end
+
+    local description = reason or "token verification failed"
+    return string_format(
+        'Bearer realm="%s", error="%s", error_description="%s"',
+        escape_auth_header_value(realm),
+        escape_auth_header_value(error),
+        escape_auth_header_value(description)
+    )
+end
+
+
+local function set_www_authenticate_header(ctx, reason, error)
+    local header_value = build_www_authenticate_header(ctx, reason, error or "invalid_token")
+    core.response.set_header("WWW-Authenticate", header_value)
 end
 
 
@@ -143,22 +179,46 @@ function _M.rewrite(conf, ctx) -- luacheck: no unused
     end
 
     -- Extract Bearer token from Authorization header
-    local access_token = extract_bearer_token(ctx)
+    local access_token = extract_bearer_token(ctx) or ""
     if pl_types.is_empty(access_token) then
         core.log.info("bk-oauth2-verify: Bearer token not found in Authorization header")
+
         local err = errorx.new_general_unauthorized()
             :with_field("reason", "Bearer token not found in Authorization header")
+        set_www_authenticate_header(ctx, "Bearer token not found in Authorization header", "invalid_request")
         return errorx.exit_with_apigw_err(ctx, err, _M)
     end
+
+    local masked_token = mask_token(access_token)
+    local error_obj = errorx.new_general_unauthorized():with_field("token_hint", masked_token)
 
     -- Verify the token via bkauth (with caching)
     local result, err = verify_token(access_token)
     if result == nil then
-        core.log.info("bk-oauth2-verify: token verification failed, token_hint=", mask_token(access_token),
-                      ", error=", err)
-        local error_obj = errorx.new_general_unauthorized()
-            :with_field("reason", err or "token verification failed")
-            :with_field("token_hint", mask_token(access_token))
+        core.log.info("bk-oauth2-verify: token verification failed, token_hint=", masked_token, ", error=", err)
+
+        -- wrap it, it's an internal error
+        local error_message = "call bkauth api to verify token failed: " .. (err or "unknown error")
+        error_obj = error_obj:with_field("reason", error_message)
+        set_www_authenticate_header(ctx, error_message)
+        return errorx.exit_with_apigw_err(ctx, error_obj, _M)
+    end
+
+    if not result.active then
+        core.log.info("bk-oauth2-verify: token verification failed, token_hint=", masked_token, ", error=",
+                      result.error.message)
+
+        local reason = result.error.message or "token verification failed, active=false"
+        error_obj = error_obj:with_field("reason", reason)
+        set_www_authenticate_header(ctx, reason, result.error.code)
+        return errorx.exit_with_apigw_err(ctx, error_obj, _M)
+    end
+
+    -- the token verified is cached, so we need to check if it's expired
+    if result.exp < ngx_time() then
+        core.log.info("bk-oauth2-verify: token expired, token_hint=", masked_token, ", exp=", result.exp)
+        error_obj = error_obj:with_field("reason", "token expired")
+        set_www_authenticate_header(ctx, "token expired")
         return errorx.exit_with_apigw_err(ctx, error_obj, _M)
     end
 
