@@ -111,9 +111,9 @@ function _M.get_bk_apigateway_core_addr()
 end
 
 
-function _M.get_bk_apigateway_api_addr()
+function _M.get_bk_apigateway_api_tmpl()
     local conf = core.config.local_conf()
-    return core.table.try_read_attr(conf, "bk_gateway", "hosts", "bk-apigateway-api", "addr")
+    return core.table.try_read_attr(conf, "bk_gateway", "hosts", "bk-apigateway-api", "tmpl")
 end
 
 

@@ -39,7 +39,7 @@ describe(
                     end
                 )
                 stub(
-                    bk_core.config, "get_bk_apigateway_api_addr", function()
+                    bk_core.config, "get_bk_apigateway_api_tmpl", function()
                         return "https://bk-apigateway-api.example.com"
                     end
                 )
@@ -49,7 +49,7 @@ describe(
         after_each(
             function()
                 core.request.header:revert()
-                bk_core.config.get_bk_apigateway_api_addr:revert()
+                bk_core.config.get_bk_apigateway_api_tmpl:revert()
             end
         )
 
@@ -177,6 +177,99 @@ describe(
                     "should return nil for nil input", function()
                         local token = plugin._parse_bearer_token(nil)
                         assert.is_nil(token)
+                    end
+                )
+            end
+        )
+
+        context(
+            "_build_www_authenticate_header", function()
+                it(
+                    "should handle subpath template format", function()
+                        bk_core.config.get_bk_apigateway_api_tmpl:revert()
+                        stub(
+                            bk_core.config, "get_bk_apigateway_api_tmpl", function()
+                                return "http://bkapi.example.com/api/{api_name}"
+                            end
+                        )
+
+                        local header = plugin._build_www_authenticate_header(ctx)
+
+                        assert.is_not_nil(header)
+                        local expected = 'resource_metadata="http://bkapi.example.com/api/bk-apigateway/prod/'
+                        assert.is_truthy(string.find(header, expected, 1, true))
+                    end
+                )
+
+                it(
+                    "should handle subdomain template format", function()
+                        bk_core.config.get_bk_apigateway_api_tmpl:revert()
+                        stub(
+                            bk_core.config, "get_bk_apigateway_api_tmpl", function()
+                                return "http://{api_name}.bkapi.example.com"
+                            end
+                        )
+
+                        local header = plugin._build_www_authenticate_header(ctx)
+
+                        assert.is_not_nil(header)
+                        assert.is_truthy(
+                            string.find(
+                                header, 'resource_metadata="http://bk-apigateway.bkapi.example.com/prod/', 1, true
+                            )
+                        )
+                    end
+                )
+
+                it(
+                    "should return realm error when tmpl is empty", function()
+                        bk_core.config.get_bk_apigateway_api_tmpl:revert()
+                        stub(
+                            bk_core.config, "get_bk_apigateway_api_tmpl", function()
+                                return ""
+                            end
+                        )
+
+                        local header = plugin._build_www_authenticate_header(ctx)
+
+                        assert.is_equal(
+                            'Bearer realm="bk-apigateway api tmpl is not configured on the bk-apigateway"',
+                            header
+                        )
+                    end
+                )
+
+                it(
+                    "should return realm error for invalid tmpl format", function()
+                        bk_core.config.get_bk_apigateway_api_tmpl:revert()
+                        stub(
+                            bk_core.config, "get_bk_apigateway_api_tmpl", function()
+                                return "not-a-valid-url"
+                            end
+                        )
+
+                        local header = plugin._build_www_authenticate_header(ctx)
+
+                        assert.is_equal('Bearer realm="invalid bk-apigateway api tmpl format"', header)
+                    end
+                )
+
+                it(
+                    "should encode path correctly", function()
+                        bk_core.config.get_bk_apigateway_api_tmpl:revert()
+                        stub(
+                            bk_core.config, "get_bk_apigateway_api_tmpl", function()
+                                return "https://bkapi.example.com/api/{api_name}"
+                            end
+                        )
+                        ctx.var.uri = "/api/v1/users?query=test"
+
+                        local header = plugin._build_www_authenticate_header(ctx)
+
+                        -- The resource URL should be URL encoded
+                        -- Use plain text matching to avoid pattern issues with %2F
+                        local expected = "resource=https%3A%2F%2Fbkapi.example.com%2Fapi%2Fv1%2Fusers"
+                        assert.is_truthy(string.find(header, expected, 1, true))
                     end
                 )
             end

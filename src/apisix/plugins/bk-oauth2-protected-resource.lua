@@ -35,6 +35,7 @@ local ngx_escape_uri = ngx.escape_uri
 local string_sub = string.sub
 local string_lower = string.lower
 local string_match = string.match
+local string_gsub = string.gsub
 
 local plugin_name = "bk-oauth2-protected-resource"
 
@@ -86,20 +87,40 @@ end
 ---@param ctx table The current context object
 ---@return string The WWW-Authenticate header value
 local function build_www_authenticate_header(ctx)
-    local addr = bk_core.config.get_bk_apigateway_api_addr()
+    local tmpl = bk_core.config.get_bk_apigateway_api_tmpl()
 
-    -- If addr is not configured, return minimal header
-    if addr == "" then
-        return 'Bearer realm="bk-apigateway"'
+    -- If tmpl is not configured (nil or empty), return minimal header
+    if tmpl == nil or tmpl == "" then
+        return 'Bearer realm="bk-apigateway api tmpl is not configured on the bk-apigateway"'
     end
 
+    -- Validate that tmpl is a valid URL format (must start with http:// or https://)
+    if not string_match(tmpl, "^https?://") then
+        return 'Bearer realm="invalid bk-apigateway api tmpl format"'
+    end
+
+    -- The tmpl can be in two formats:
+    -- - subpath: http://bkapi.example.com/api/{api_name}
+    -- - subdomain: http://{api_name}.bkapi.example.com
+
+    -- Step 1: Replace {api_name} with "bk-apigateway" to get the base URL
+    local base_url = string_gsub(tmpl, "{api_name}", "bk-apigateway")
+
+    -- Step 2: Extract scheme and domain (host) from the rendered URL to get the origin
+    -- Pattern matches: scheme://host (stops at first / after host or end of string)
+    local gateway_name = ctx.var.bk_gateway_name or "unknown"
+    local rendered_url = string_gsub(tmpl, "{api_name}", gateway_name)
+    local rendered_origin = string_match(rendered_url, "^(https?://[^/]+)")
+
+    -- Step 3: Build the resource path and encode it
     local path = ctx.var.uri or "/"
-    local encoded_path = ngx_escape_uri(path)
+    local resource_url = rendered_origin .. path
+    local encoded_resource_url = ngx_escape_uri(resource_url)
 
     return string.format(
         'Bearer resource_metadata="%s/prod/api/v2/open/.well-known/oauth-protected-resource?resource=%s"',
-        addr,
-        encoded_path
+        base_url,
+        encoded_resource_url
     )
 end
 
