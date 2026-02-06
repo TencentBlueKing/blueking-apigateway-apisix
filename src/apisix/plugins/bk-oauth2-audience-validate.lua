@@ -70,7 +70,7 @@ local function parse_audience(audience_str)
     end
 
     -- Try mcp_server:{name} format
-    local mcp_name = string_match(audience_str, "^mcp_server:(.+)$")
+    local mcp_name = string_match(audience_str, "^mcp:(.+)$")
     if mcp_name then
         return {
             type = "mcp_server",

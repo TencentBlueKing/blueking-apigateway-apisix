@@ -44,7 +44,11 @@ local _M = {
     -- bkauth_access_token = bkapp.bkauth_access_token,
 }
 
-local function bkauth_do_request(host, path, params, request_id)
+local function bkauth_do_request(host, path, params, request_id, check_code)
+    if check_code == nil then
+        check_code = true
+    end
+
     if pl_types.is_empty(host) then
         return nil, "server error: bkauth host is not configured."
     end
@@ -92,7 +96,7 @@ local function bkauth_do_request(host, path, params, request_id)
         return nil, new_err
     end
 
-    if result.code ~= 0 then
+    if check_code and result.code ~= 0 then
         local new_err = string_format(
                 "failed to request third-party api, url: %s, request_id: %s, result.code!=0, status: %s, response: %s",
                 url, request_id, res.status, res.body
@@ -230,7 +234,7 @@ function _M.verify_oauth2_access_token(access_token)
             ["Content-Type"] = "application/json",
         },
     }
-    local result, err = bkauth_do_request(_M.host, path, params, request_id)
+    local result, err = bkauth_do_request(_M.host, path, params, request_id, false)
     if err ~= nil then
         return nil, err
     end
