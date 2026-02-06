@@ -28,7 +28,8 @@ local ipairs = ipairs
 local VERIFY_APP_SECRET_URL = "/api/v1/apps/%s/access-keys/verify"
 local LIST_APP_SECRETS_URL = "/api/v1/apps/%s/access-keys"
 local GET_APP_URL = "/api/v1/apps/%s"
-local VERIFY_OAUTH2_ACCESS_TOKEN_URL = "/api/v1/oauth2/access-tokens/verify"
+-- we use bkauth service addr to join with the path, more robust
+local VERIFY_OAUTH2_ACCESS_TOKEN_URL = "/realms/blueking/oauth2/introspect"
 
 local BKAUTH_TIMEOUT_MS = 5 * 1000
 
