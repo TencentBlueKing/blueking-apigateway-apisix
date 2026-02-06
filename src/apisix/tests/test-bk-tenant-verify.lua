@@ -32,6 +32,7 @@ describe(
                     var = {
                         bk_app = {
                             get_app_code = function() return "my-app" end,
+                            get_real_app_code = function() return "my-app" end,
                             is_verified = function() return true end,
                         },
                         bk_user = {
