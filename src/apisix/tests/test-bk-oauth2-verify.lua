@@ -16,6 +16,7 @@
 -- to the current version of the project delivered to anyone in the future.
 --
 local core = require("apisix.core")
+local bk_core = require("apisix.plugins.bk-core.init")
 local oauth2_cache = require("apisix.plugins.bk-cache.oauth2-access-token")
 local plugin = require("apisix.plugins.bk-oauth2-verify")
 
@@ -29,7 +30,10 @@ describe(
         before_each(
             function()
                 ctx = {
-                    var = {},
+                    var = {
+                        bk_gateway_name = "demo",
+                        uri = "/api/v1/users",
+                    },
                 }
                 cached_result = nil
                 authorization_header = nil
@@ -63,6 +67,12 @@ describe(
                         return nil, "token verification failed"
                     end
                 )
+
+                stub(
+                    bk_core.config, "get_bk_apigateway_api_tmpl", function()
+                        return "https://bk-apigateway-api.example.com"
+                    end
+                )
             end
         )
 
@@ -71,6 +81,7 @@ describe(
                 core.request.header:revert()
                 core.response.set_header:revert()
                 oauth2_cache.get_oauth2_access_token:revert()
+                bk_core.config.get_bk_apigateway_api_tmpl:revert()
             end
         )
 
@@ -161,11 +172,11 @@ describe(
 
                         assert.is_equal(401, status)
                         assert.is_truthy(www_authenticate_header)
+                        local expected_prefix = "resource_metadata="
+                            .. '"https://bk-apigateway-api.example.com/prod/api/v2/open/'
+                            .. '.well-known/oauth-protected-resource?resource='
                         assert.is_true(
-                            string.find(www_authenticate_header, 'error="invalid_token"') ~= nil
-                        )
-                        assert.is_true(
-                            string.find(www_authenticate_header, 'error_description="call bkauth api to verify token failed') ~= nil
+                            string.find(www_authenticate_header, expected_prefix, 1, true) ~= nil
                         )
                     end
                 )
@@ -182,7 +193,9 @@ describe(
                         assert.is_true(
                             string.find(
                                 www_authenticate_header,
-                                'error_description="Bearer token not found in Authorization header"'
+                                "resource=https%3A%2F%2Fbk-apigateway-api.example.com%2Fapi%2Fv1%2Fusers",
+                                1,
+                                true
                             ) ~= nil
                         )
                     end

@@ -23,4 +23,5 @@ return {
     url = require("apisix.plugins.bk-core.url"),
     hmac = require("apisix.plugins.bk-core.hmac"),
     cookie = require("apisix.plugins.bk-core.cookie"),
+    oauth2 = require("apisix.plugins.bk-core.oauth2"),
 }

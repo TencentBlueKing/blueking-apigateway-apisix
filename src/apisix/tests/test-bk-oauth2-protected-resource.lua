@@ -17,6 +17,7 @@
 --
 local core = require("apisix.core")
 local bk_core = require("apisix.plugins.bk-core.init")
+local oauth2 = require("apisix.plugins.bk-core.oauth2")
 local plugin = require("apisix.plugins.bk-oauth2-protected-resource")
 
 describe(
@@ -183,7 +184,7 @@ describe(
         )
 
         context(
-            "_build_www_authenticate_header", function()
+            "build_www_authenticate_header", function()
                 it(
                     "should handle subpath template format", function()
                         bk_core.config.get_bk_apigateway_api_tmpl:revert()
@@ -193,7 +194,7 @@ describe(
                             end
                         )
 
-                        local header = plugin._build_www_authenticate_header(ctx)
+                        local header = oauth2.build_www_authenticate_header(ctx)
 
                         assert.is_not_nil(header)
                         local expected = 'resource_metadata="http://bkapi.example.com/api/bk-apigateway/prod/'
@@ -210,7 +211,7 @@ describe(
                             end
                         )
 
-                        local header = plugin._build_www_authenticate_header(ctx)
+                        local header = oauth2.build_www_authenticate_header(ctx)
 
                         assert.is_not_nil(header)
                         assert.is_truthy(
@@ -230,7 +231,7 @@ describe(
                             end
                         )
 
-                        local header = plugin._build_www_authenticate_header(ctx)
+                        local header = oauth2.build_www_authenticate_header(ctx)
 
                         assert.is_equal(
                             'Bearer realm="bk-apigateway", error="invalid_request", error_description="api tmpl is not configured"',
@@ -248,7 +249,7 @@ describe(
                             end
                         )
 
-                        local header = plugin._build_www_authenticate_header(ctx)
+                        local header = oauth2.build_www_authenticate_header(ctx)
 
                         assert.is_equal(
                             'Bearer realm="bk-apigateway", error="invalid_request", error_description="invalid api tmpl format"',
@@ -267,7 +268,7 @@ describe(
                         )
                         ctx.var.uri = "/api/v1/users?query=test"
 
-                        local header = plugin._build_www_authenticate_header(ctx)
+                        local header = oauth2.build_www_authenticate_header(ctx)
 
                         -- The resource URL should be URL encoded
                         -- Use plain text matching to avoid pattern issues with %2F

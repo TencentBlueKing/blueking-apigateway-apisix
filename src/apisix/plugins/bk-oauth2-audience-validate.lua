@@ -33,6 +33,7 @@
 local pl_types = require("pl.types")
 local core = require("apisix.core")
 local errorx = require("apisix.plugins.bk-core.errorx")
+local oauth2 = require("apisix.plugins.bk-core.oauth2")
 local ngx = ngx
 local ngx_re = ngx.re
 local ipairs = ipairs
@@ -243,6 +244,9 @@ function _M.rewrite(conf, ctx) -- luacheck: no unused
             :with_field("reason", reason)
             :with_field("gateway", ctx.var.bk_gateway_name or "")
             :with_field("resource", ctx.var.bk_resource_name or "")
+
+        local www_auth = oauth2.build_www_authenticate_header(ctx, "invalid_audience", reason)
+        ngx.header["WWW-Authenticate"] = www_auth
         return errorx.exit_with_apigw_err(ctx, err, _M)
     end
 
