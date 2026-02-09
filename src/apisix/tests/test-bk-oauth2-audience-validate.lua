@@ -98,8 +98,8 @@ describe(
         context(
             "audience parsing", function()
                 it(
-                    "should parse mcp_server format correctly", function()
-                        local result = plugin._parse_audience("mcp_server:my-server")
+                    "should parse mcp format correctly", function()
+                        local result = plugin._parse_audience("mcp:my-server")
 
                         assert.is_equal("mcp_server", result.type)
                         assert.is_equal("my-server", result.name)
@@ -179,7 +179,7 @@ describe(
                         ctx.var.is_bk_oauth2 = true
                         ctx.var.bk_gateway_name = "bk-apigateway"
                         ctx.var.uri = "/api/v2/mcp-servers/my-server/resources"
-                        ctx.var.audience = {"mcp_server:my-server"}
+                        ctx.var.audience = {"mcp:my-server"}
 
                         local result = plugin.rewrite({}, ctx)
 
@@ -192,7 +192,7 @@ describe(
                         ctx.var.is_bk_oauth2 = true
                         ctx.var.bk_gateway_name = "bk-apigateway"
                         ctx.var.uri = "/api/v2/mcp-servers/other-server/resources"
-                        ctx.var.audience = {"mcp_server:my-server"}
+                        ctx.var.audience = {"mcp:my-server"}
 
                         local status = plugin.rewrite({}, ctx)
 
@@ -205,7 +205,7 @@ describe(
                         ctx.var.is_bk_oauth2 = true
                         ctx.var.bk_gateway_name = "other-gateway"
                         ctx.var.uri = "/api/v2/mcp-servers/my-server/resources"
-                        ctx.var.audience = {"mcp_server:my-server"}
+                        ctx.var.audience = {"mcp:my-server"}
 
                         local status = plugin.rewrite({}, ctx)
 
@@ -296,7 +296,7 @@ describe(
                         ctx.var.bk_resource_name = "test-api"
                         ctx.var.audience = {
                             "gateway:other/api:other",
-                            "mcp_server:my-server",
+                            "mcp:my-server",
                         }
 
                         local status = plugin.rewrite({}, ctx)

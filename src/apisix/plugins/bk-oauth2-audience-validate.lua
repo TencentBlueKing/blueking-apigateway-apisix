@@ -21,7 +21,7 @@
 -- the token is authorized for the specific resource being accessed.
 --
 -- Audience formats supported:
---   - mcp_server:{mcp_server_name} - Access to specific MCP server
+--   - mcp:{mcp_server_name} - Access to specific MCP server
 --   - gateway:{gateway_name}/api:{api_name} - Access to specific gateway API
 --   - gateway:{gateway_name}/api:* - Access to all APIs under a gateway (wildcard)
 --
@@ -33,6 +33,7 @@
 local pl_types = require("pl.types")
 local core = require("apisix.core")
 local errorx = require("apisix.plugins.bk-core.errorx")
+local oauth2 = require("apisix.plugins.bk-core.oauth2")
 local ngx = ngx
 local ngx_re = ngx.re
 local ipairs = ipairs
@@ -70,7 +71,7 @@ local function parse_audience(audience_str)
     end
 
     -- Try mcp_server:{name} format
-    local mcp_name = string_match(audience_str, "^mcp_server:(.+)$")
+    local mcp_name = string_match(audience_str, "^mcp:(.+)$")
     if mcp_name then
         return {
             type = "mcp_server",
@@ -243,6 +244,9 @@ function _M.rewrite(conf, ctx) -- luacheck: no unused
             :with_field("reason", reason)
             :with_field("gateway", ctx.var.bk_gateway_name or "")
             :with_field("resource", ctx.var.bk_resource_name or "")
+
+        local www_auth = oauth2.build_www_authenticate_header(ctx, "invalid_audience", reason)
+        ngx.header["WWW-Authenticate"] = www_auth
         return errorx.exit_with_apigw_err(ctx, err, _M)
     end
 
