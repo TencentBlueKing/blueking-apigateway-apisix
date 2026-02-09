@@ -37,6 +37,7 @@ local oauth2 = require("apisix.plugins.bk-core.oauth2")
 local oauth2_cache = require("apisix.plugins.bk-cache.oauth2-access-token")
 local bk_app_define = require("apisix.plugins.bk-define.app")
 local bk_user_define = require("apisix.plugins.bk-define.user")
+local ngx = ngx
 
 local ngx_time = ngx.time
 local string_lower = string.lower
@@ -153,7 +154,7 @@ function _M.rewrite(conf, ctx) -- luacheck: no unused
             :with_field("reason", "Bearer token not found in Authorization header")
         local www_auth = oauth2.build_www_authenticate_header(
             ctx, "invalid_request", "Bearer token not found in Authorization header")
-        core.response.set_header("WWW-Authenticate", www_auth)
+        ngx.header["WWW-Authenticate"] = www_auth
         return errorx.exit_with_apigw_err(ctx, err, _M)
     end
 
@@ -169,7 +170,7 @@ function _M.rewrite(conf, ctx) -- luacheck: no unused
         local error_message = "call bkauth api to verify token failed: " .. (err or "unknown error")
         error_obj = error_obj:with_field("reason", error_message)
         local www_auth = oauth2.build_www_authenticate_header(ctx, "invalid_token", error_message)
-        core.response.set_header("WWW-Authenticate", www_auth)
+        ngx.header["WWW-Authenticate"] = www_auth
         return errorx.exit_with_apigw_err(ctx, error_obj, _M)
     end
 
@@ -180,7 +181,7 @@ function _M.rewrite(conf, ctx) -- luacheck: no unused
         local reason = result.error.message or "token verification failed, active=false"
         error_obj = error_obj:with_field("reason", reason)
         local www_auth = oauth2.build_www_authenticate_header(ctx, result.error.code, reason)
-        core.response.set_header("WWW-Authenticate", www_auth)
+        ngx.header["WWW-Authenticate"] = www_auth
         return errorx.exit_with_apigw_err(ctx, error_obj, _M)
     end
 
@@ -189,7 +190,7 @@ function _M.rewrite(conf, ctx) -- luacheck: no unused
         core.log.info("bk-oauth2-verify: token expired, token_hint=", masked_token, ", exp=", result.exp)
         error_obj = error_obj:with_field("reason", "token expired")
         local www_auth = oauth2.build_www_authenticate_header(ctx, "invalid_token", "token expired")
-        core.response.set_header("WWW-Authenticate", www_auth)
+        ngx.header["WWW-Authenticate"] = www_auth
 
         return errorx.exit_with_apigw_err(ctx, error_obj, _M)
     end

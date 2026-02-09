@@ -48,16 +48,15 @@ describe(
                     end
                 )
 
-                stub(
-                    core.response, "set_header", function(...)
-                        local args = {...}
-                        local name = args[1]
-                        local value = args[2]
-                        if name == "WWW-Authenticate" then
+                ngx.header = {}
+                setmetatable(ngx.header, {
+                    __newindex = function(tbl, key, value)
+                        rawset(tbl, key, value)
+                        if key == "WWW-Authenticate" then
                             www_authenticate_header = value
                         end
-                    end
-                )
+                    end,
+                })
 
                 stub(
                     oauth2_cache, "get_oauth2_access_token", function(token)
@@ -79,7 +78,6 @@ describe(
         after_each(
             function()
                 core.request.header:revert()
-                core.response.set_header:revert()
                 oauth2_cache.get_oauth2_access_token:revert()
                 bk_core.config.get_bk_apigateway_api_tmpl:revert()
             end

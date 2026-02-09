@@ -21,7 +21,7 @@
 -- the token is authorized for the specific resource being accessed.
 --
 -- Audience formats supported:
---   - mcp_server:{mcp_server_name} - Access to specific MCP server
+--   - mcp:{mcp_server_name} - Access to specific MCP server
 --   - gateway:{gateway_name}/api:{api_name} - Access to specific gateway API
 --   - gateway:{gateway_name}/api:* - Access to all APIs under a gateway (wildcard)
 --

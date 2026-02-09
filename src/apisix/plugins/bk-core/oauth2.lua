@@ -38,8 +38,10 @@ end
 
 ---Build the WWW-Authenticate header value for OAuth2 discovery
 ---@param ctx table The current context object
+---@param error_code string|nil The OAuth2 error code (e.g., "invalid_token", "invalid_request")
+---@param error_description string|nil The human-readable error description
 ---@return string The WWW-Authenticate header value
-function _M.build_www_authenticate_header(ctx, error, error_description)
+function _M.build_www_authenticate_header(ctx, error_code, error_description)
     local tmpl = config.get_bk_apigateway_api_tmpl()
 
     -- If tmpl is not configured (nil or empty), return minimal header
@@ -70,14 +72,14 @@ function _M.build_www_authenticate_header(ctx, error, error_description)
     local resource_url = rendered_origin .. path
     local encoded_resource_url = ngx_escape_uri(resource_url)
 
-    if error and error_description then
+    if error_code and error_description then
         local tmpl_str = 'Bearer resource_metadata="%s/prod/api/v2/open/.well-known/' ..
             'oauth-protected-resource?resource=%s", error="%s", error_description="%s"'
         return string_format(
             tmpl_str,
             base_url,
             encoded_resource_url,
-            escape_auth_header_value(error),
+            escape_auth_header_value(error_code),
             escape_auth_header_value(error_description)
         )
     end
@@ -89,5 +91,9 @@ function _M.build_www_authenticate_header(ctx, error, error_description)
     )
 end
 
+
+if _TEST then -- luacheck: ignore
+    _M._escape_auth_header_value = escape_auth_header_value
+end
 
 return _M
