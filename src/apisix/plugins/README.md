@@ -73,6 +73,7 @@ proxy 预处理：17000 ~ 17500
 - bk-default-tenant                         # priority: 17425
 - bk-stage-header-rewrite                   # priority: 17421
 - bk-resource-header-rewrite                # priority: 17420
+- bk-query-string-rewrite                   # priority: 17410
 - bk-mock                                   # priority: 17150
 
 官方插件：

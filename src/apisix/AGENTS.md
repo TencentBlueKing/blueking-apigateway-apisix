@@ -1,6 +1,5 @@
 # AGENTS.md
 
-
 ### Plugin Architecture
 
 All BlueKing plugins follow the `bk-*` naming convention and execute in a specific priority order (17000-19000):
@@ -119,6 +118,13 @@ Notes:
 - In non-TTY environments, use `RUN_WITH_IT= make test`.
 
 ## Plugin Development Guidelines
+
+- You can read the other plugins source code and test code to help you write the new plugin and test code.
+
+### Plugin Isolation
+
+- New plugins MUST define their own schema and `check_schema` function inline. Do NOT import or depend on another plugin's schema, functions, or module.
+- Each plugin should be as self-contained as possible. Shared utilities from `bk-core/` are acceptable, but cross-plugin dependencies are not.
 
 ### Naming Conventions
 
