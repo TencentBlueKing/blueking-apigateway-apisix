@@ -54,6 +54,7 @@
 - bk-oauth2-audience-validate               # priority: 17678  # OAuth2 audience 验证：验证 MCP 服务器和网关 API 的 audience 声明
 - bk-tenant-verify                          # priority: 17675
 - bk-tenant-validate                        # priority: 17674
+- bk-tenant-restriction                     # priority: 17673
 - bk-jwt                                    # priority: 17670
 - bk-ip-restriction                         # priority: 17662
 - ~~bk-ip-group-restriction                   # priority: 17661 (1.18 removed)~~
