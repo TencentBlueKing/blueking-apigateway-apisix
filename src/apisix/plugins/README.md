@@ -63,6 +63,7 @@
 - ~~bk-global-rate-limit                      # priority: 17651 (1.18 removed)~~
 - bk-stage-global-rate-limit                # priority: 17651 (not used, but just keep in codebase, maybe will be used in the future)
 - bk-permission                             # priority: 17640
+- bk-content-moderation                     # priority: 17635  # 请求体内容审核（阿里云 TextModerationPlus），阻断式
 
 proxy 预处理：17000 ~ 17500
 
@@ -74,6 +75,7 @@ proxy 预处理：17000 ~ 17500
 - bk-stage-header-rewrite                   # priority: 17421
 - bk-resource-header-rewrite                # priority: 17420
 - bk-mock                                   # priority: 17150
+- bk-content-moderation-response            # priority: 17100  # 响应体内容审核代理（配合 bk-content-moderation 使用），支持流式
 
 官方插件：
 
