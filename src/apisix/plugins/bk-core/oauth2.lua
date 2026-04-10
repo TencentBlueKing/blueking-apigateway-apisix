@@ -22,8 +22,30 @@ local ngx_escape_uri = ngx.escape_uri
 local string_match = string.match
 local string_gsub = string.gsub
 local string_format = string.format
+local string_sub = string.sub
+local string_len = string.len
 
 local _M = {}
+
+
+local function strip_subpath_prefix(path, gateway_name)
+    local prefix = "/api/" .. gateway_name
+    local prefix_len = string_len(prefix)
+    if string_sub(path, 1, prefix_len) ~= prefix then
+        return path
+    end
+
+    local next_char = string_sub(path, prefix_len + 1, prefix_len + 1)
+    if next_char ~= "" and next_char ~= "/" then
+        return path
+    end
+
+    path = string_sub(path, prefix_len + 1)
+    if path == "" then
+        path = "/"
+    end
+    return path
+end
 
 
 local function escape_auth_header_value(value)
@@ -69,6 +91,12 @@ function _M.build_www_authenticate_header(ctx, error_code, error_description)
 
     -- Step 3: Build the resource path and encode it
     local path = (ctx and ctx.var and ctx.var.uri) or "/"
+
+    -- In some envs, nginx rewrites subdomain to subpath, so the path has an extra /api/{gateway_name} prefix
+    -- e.g. /api/bk-apigateway/prod/api/v2/... should be /prod/api/v2/...
+    if config.should_strip_subpath_prefix() then
+        path = strip_subpath_prefix(path, gateway_name)
+    end
     local resource_url = rendered_origin .. path
     local encoded_resource_url = ngx_escape_uri(resource_url)
 
@@ -94,6 +122,7 @@ end
 
 if _TEST then -- luacheck: ignore
     _M._escape_auth_header_value = escape_auth_header_value
+    _M._strip_subpath_prefix = strip_subpath_prefix
 end
 
 return _M
