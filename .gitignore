@@ -38,3 +38,7 @@ src/apisix/edition-metadata.json
 build.yml
 .lua_modules
 
+# agent
+.claude
+.cursor
+.specify

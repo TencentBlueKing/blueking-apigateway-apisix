@@ -1,0 +1,9 @@
+source:
+  test_source:
+    # the busted and nginx tests
+    filepath_regex: [".*/src/apisix/t/.*", ".*/src/apisix/tests/.*", ".*/src/apisix/editions/ee/tests/.*"]
+  auto_generate_source:
+    filepath_regex:
+  third_party_source:
+    # this is the submodule of official apache/apisix repo
+    filepath_regex: [".*/src/apisix-core/.*"]
