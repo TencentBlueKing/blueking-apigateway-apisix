@@ -128,3 +128,105 @@ Authorization: Basic dXNlcjpwYXNz
 --- error_code: 401
 --- response_headers_like
 WWW-Authenticate: Bearer .*
+
+=== TEST 8: should strip /api/{gateway_name} prefix when enabled
+--- config
+    location /t {
+        content_by_lua_block {
+            local bk_core = require("apisix.plugins.bk-core.init")
+            local oauth2 = require("apisix.plugins.bk-core.oauth2")
+            local old_get_tmpl = bk_core.config.get_bk_apigateway_api_tmpl
+            local old_should_strip = bk_core.config.should_strip_subpath_prefix
+
+            bk_core.config.get_bk_apigateway_api_tmpl = function()
+                return "http://{api_name}.bkapi.example.com"
+            end
+            bk_core.config.should_strip_subpath_prefix = function()
+                return true
+            end
+
+            local header = oauth2.build_www_authenticate_header({
+                var = {
+                    bk_gateway_name = "bk-apigateway",
+                    uri = "/api/bk-apigateway/prod/api/v2/mcp-servers/bk-apigateway-prod-debugger/mcp/",
+                },
+            }, "invalid_request", "no valid authentication header found")
+
+            bk_core.config.get_bk_apigateway_api_tmpl = old_get_tmpl
+            bk_core.config.should_strip_subpath_prefix = old_should_strip
+
+            ngx.say(header)
+        }
+    }
+--- request
+GET /t
+--- response_body_like
+resource=http%3A%2F%2Fbk-apigateway.bkapi.example.com%2Fprod%2Fapi%2Fv2%2Fmcp-servers%2Fbk-apigateway-prod-debugger%2Fmcp%2F.*
+
+=== TEST 9: should not strip prefix when disabled
+--- config
+    location /t {
+        content_by_lua_block {
+            local bk_core = require("apisix.plugins.bk-core.init")
+            local oauth2 = require("apisix.plugins.bk-core.oauth2")
+            local old_get_tmpl = bk_core.config.get_bk_apigateway_api_tmpl
+            local old_should_strip = bk_core.config.should_strip_subpath_prefix
+
+            bk_core.config.get_bk_apigateway_api_tmpl = function()
+                return "http://{api_name}.bkapi.example.com"
+            end
+            bk_core.config.should_strip_subpath_prefix = function()
+                return false
+            end
+
+            local header = oauth2.build_www_authenticate_header({
+                var = {
+                    bk_gateway_name = "bk-apigateway",
+                    uri = "/api/bk-apigateway/prod/api/v2/mcp-servers/bk-apigateway-prod-debugger/mcp/",
+                },
+            }, "invalid_request", "no valid authentication header found")
+
+            bk_core.config.get_bk_apigateway_api_tmpl = old_get_tmpl
+            bk_core.config.should_strip_subpath_prefix = old_should_strip
+
+            ngx.say(header)
+        }
+    }
+--- request
+GET /t
+--- response_body_like
+resource=http%3A%2F%2Fbk-apigateway.bkapi.example.com%2Fapi%2Fbk-apigateway%2Fprod%2Fapi%2Fv2%2Fmcp-servers%2Fbk-apigateway-prod-debugger%2Fmcp%2F.*
+
+=== TEST 10: should not strip partial gateway name prefix
+--- config
+    location /t {
+        content_by_lua_block {
+            local bk_core = require("apisix.plugins.bk-core.init")
+            local oauth2 = require("apisix.plugins.bk-core.oauth2")
+            local old_get_tmpl = bk_core.config.get_bk_apigateway_api_tmpl
+            local old_should_strip = bk_core.config.should_strip_subpath_prefix
+
+            bk_core.config.get_bk_apigateway_api_tmpl = function()
+                return "http://{api_name}.bkapi.example.com"
+            end
+            bk_core.config.should_strip_subpath_prefix = function()
+                return true
+            end
+
+            local header = oauth2.build_www_authenticate_header({
+                var = {
+                    bk_gateway_name = "bk-apigateway",
+                    uri = "/api/bk-apigateway-extra/prod/api/v2/mcp-servers",
+                },
+            }, "invalid_request", "no valid authentication header found")
+
+            bk_core.config.get_bk_apigateway_api_tmpl = old_get_tmpl
+            bk_core.config.should_strip_subpath_prefix = old_should_strip
+
+            ngx.say(header)
+        }
+    }
+--- request
+GET /t
+--- response_body_like
+resource=http%3A%2F%2Fbk-apigateway.bkapi.example.com%2Fapi%2Fbk-apigateway-extra%2Fprod%2Fapi%2Fv2%2Fmcp-servers.*
