@@ -80,21 +80,30 @@ local function _get_upstream_error_msg(ctx)
     local ngx_status = ngx.status
 
     if ngx_status >= 500 and ngx_status <= 599 then
+        -- keeps time spent on establishing a connection with the upstream server
+        -- 0 if keep-alive is used
         local upstream_connect_time = ctx.var.upstream_connect_time or 0
+        -- keeps time spent on receiving the response header from the upstream server
         local upstream_header_time = ctx.var.upstream_header_time or 0
+        -- keeps time spent on receiving the response from the upstream server
         local upstream_response_time = ctx.var.upstream_response_time or 0
+        -- number of bytes sent to an upstream server
         local upstream_bytes_sent = bk_upstream.get_last_upstream_bytes_sent(ctx)
+        -- number of bytes received from an upstream server
         local upstream_bytes_received = bk_upstream.get_last_upstream_bytes_received(ctx)
 
         if ngx_status == 502 then
             if upstream_connect_time == 0 then
-                if upstream_bytes_sent == 0 then
+                -- 连接建立耗时为0，且什么都没发， 什么也没收到 → 连接直接被拒绝
+                if upstream_bytes_sent == 0 and upstream_bytes_received == 0 then
                     -- connect() failed (111: Connection refused) while connecting to upstream
                     return proxy_phases.CONNECTING, "connection refused"
                 end
             else
                 -- upstream_connect_time is ok, connected
                 if upstream_bytes_sent > 0 and upstream_bytes_received == 0 then
+                    -- 成功建立连接并发送了请求，但收到 0 字节响应
+                    -- → upstream 在响应前就 RST 或关闭了连接
                     -- readv() failed (104: Connection reset by peer) while reading upstream
                     -- recv() failed (104: Connection reset by peer) while reading response header from upstream
                     -- upstream prematurely closed connection while reading upstream
@@ -103,14 +112,32 @@ local function _get_upstream_error_msg(ctx)
                         "connection reset by peer OR upstream prematurely closed connection"
                 end
 
+                -- legacy logical moved here:
+                -- upstream_connect_time > 0 and upstream_bytes_received == 0 => "cannot read header from upstream"
+                if upstream_bytes_received == 0 then
+                    return proxy_phases.HEADER_WAITING, "cannot read header from upstream"
+                end
+
+                if upstream_bytes_received > 0 and upstream_header_time == 0 then
+                    -- 收到了一些字节，但 header 始终没有完整解析出来
+                    -- 可能是：upstream 发了一半就断了，或者响应不是合法 HTTP
+                    return proxy_phases.HEADER_RECEIVING,
+                        "cannot read header from upstream OR upstream prematurely closed connection"
+                end
+
             end
         end
 
         if ngx_status == 504 then
             if upstream_bytes_sent == 0 then
+                -- 什么都没发出去 → 连接阶段就超时了
+                -- nginx error: upstream timed out (110: Connection timed out) while connecting to upstream
                 return proxy_phases.CONNECTING, "connection timed out while connecting to upstream"
             end
             if upstream_bytes_sent > 0 and upstream_bytes_received == 0 then
+                -- 连上了、发了请求，但一个字节响应都没收到 → 等 header 超时
+                -- nginx error: upstream timed out (110: Connection timed out)
+                --              while reading response header from upstream
                 return proxy_phases.HEADER_WAITING,
                     "connection timed out while reading response header from upstream OR reading upstream"
             end
@@ -130,6 +157,7 @@ local function _get_upstream_error_msg(ctx)
 
     -- the legacy logical
     if not ctx.var.upstream_connect_time then -- 握手失败
+        -- NOTE: 线上没有命中这个的记录
         return proxy_phases.CONNECTING, "failed to connect to upstream"
     -- note: 此处删掉对$upstream_bytes_sent判断的原因是
     -- 在header_filter阶段，upstream_bytes_sent只生效与响应头读取失败的情况响应头成功读取时,
@@ -137,9 +165,13 @@ local function _get_upstream_error_msg(ctx)
     -- elseif not pl_types.to_bool(bk_upstream.get_last_upstream_bytes_sent()) then -- 握手成功，发送请求失败
     --     upstream_error_msg = "cannot send request to upstream"
     elseif not pl_types.to_bool(bk_upstream.get_last_upstream_bytes_received(ctx)) then -- 读取头失败
-        return proxy_phases.HEADER_WAITING, "cannot read header from upstream"
+        -- TODO: 线上有, 带优化后，去掉 legacy logical
+        -- upstream_connect_time > 0 and upstream_bytes_received == 0
+        -- move to the line 115
+        return proxy_phases.HEADER_WAITING, "cannot read header from upstream."
     elseif not ctx.var.upstream_header_time then -- 读到了头，但未读完，可能是读头超时，可能是头格式不对
-        return proxy_phases.HEAEDER_RECEIVING, "failed to read header from upstream"
+        -- NOTE: 线上没有命中这个的记录
+        return proxy_phases.HEADER_RECEIVING, "failed to read header from upstream"
     end
 
     return proxy_phases.FINISH

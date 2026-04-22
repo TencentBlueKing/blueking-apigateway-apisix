@@ -405,7 +405,7 @@ describe(
                             ctx.var.bk_apigw_error.error.message, "failed to read header from upstream", 1, true
                         )
                         assert.is_not_nil(start)
-                        assert.is_equal(ctx.var.proxy_phase, proxy_phases.HEAEDER_RECEIVING)
+                        assert.is_equal(ctx.var.proxy_phase, proxy_phases.HEADER_RECEIVING)
                     end
                 )
             end
@@ -601,6 +601,26 @@ describe(
                 )
 
                 it(
+                    "502 cannot read complete header", function()
+                        ngx.status = 502
+                        local ctx = {
+                            var = {
+                                upstream_connect_time = 0.1,
+                                upstream_bytes_sent = "256",
+                                upstream_bytes_received = "64",
+                                upstream_header_time = 0,
+                            },
+                        }
+                        local phase, err = plugin._get_upstream_error_msg(ctx)
+                        assert.is_equal(proxy_phases.HEADER_RECEIVING, phase)
+                        assert.is_equal(
+                            "cannot read header from upstream OR upstream prematurely closed connection", err
+                        )
+
+                    end
+                )
+
+                it(
                     "legacy fallback - cannot read header", function()
                         ngx.status = 200  -- Not 5xx, uses legacy logic
                         local ctx = {
@@ -612,7 +632,7 @@ describe(
                         }
                         local phase, err = plugin._get_upstream_error_msg(ctx)
                         assert.is_equal(proxy_phases.HEADER_WAITING, phase)
-                        assert.is_equal("cannot read header from upstream", err)
+                        assert.is_equal("cannot read header from upstream.", err)
 
                     end
                 )
