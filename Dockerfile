@@ -38,6 +38,9 @@ RUN ls /usr/local/apisix/patches | sort | xargs -I __patch_file__ sh -c 'cat ./p
 
 RUN chmod 755 /data/bkgateway/bin/* && chmod 777 /usr/local/apisix/logs
 
+ADD ./src/ops/ /usr/local/apisix/ops/
+RUN chmod 755 /usr/local/apisix/ops/*.sh
+
 # 6. clean up
 RUN yum remove -y wget unzip patch make && yum clean all && rm -rf /var/cache/yum
 
