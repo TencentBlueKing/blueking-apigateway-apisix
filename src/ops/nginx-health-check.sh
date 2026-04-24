@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# shellcheck disable=SC2329
 
 set -u
 
@@ -140,6 +141,112 @@ command_exists() {
   command -v "$1" >/dev/null 2>&1
 }
 
+is_nginx_process_cmdline() {
+  case "$1" in
+    "nginx: master process"*|"nginx: worker process"*|"nginx: cache manager process"*|"nginx: cache loader process"*|"nginx: privileged agent process"*|"nginx: privileged process"*)
+      return 0
+      ;;
+    *)
+      return 1
+      ;;
+  esac
+}
+
+print_nginx_process_list() {
+  local proc_cmdline pid cmdline output=""
+  local found=1
+
+  if [ -d /proc ]; then
+    for proc_cmdline in /proc/[0-9]*/cmdline; do
+      [ -r "$proc_cmdline" ] || continue
+      pid="${proc_cmdline%/cmdline}"
+      pid="${pid#/proc/}"
+      cmdline="$(tr '\0' ' ' <"$proc_cmdline" 2>/dev/null)"
+      [ -n "$cmdline" ] || continue
+      if is_nginx_process_cmdline "$cmdline"; then
+        printf '%s\t%s\n' "$pid" "$cmdline"
+        found=0
+      fi
+    done
+    if [ "$found" -eq 0 ]; then
+      return 0
+    fi
+  fi
+
+  if ! command_exists ps; then
+    return 1
+  fi
+
+  output="$(ps -eo pid=,args= 2>/dev/null | awk '
+    {
+      line = $0
+      pid = $1
+      sub(/^[[:space:]]*[0-9]+[[:space:]]+/, "", line)
+      if (line ~ /^nginx: (master|worker|cache|privileged)/) {
+        print pid "\t" line
+      }
+    }
+  ')"
+  if [ -n "$output" ]; then
+    printf '%s\n' "$output"
+    return 0
+  fi
+
+  ps -ef 2>/dev/null | awk '
+    {
+      cmd = $0
+      for (i = 1; i <= 7; i++) {
+        sub(/^[^[:space:]]+[[:space:]]+/, "", cmd)
+      }
+      if (cmd ~ /^nginx: (master|worker|cache|privileged)/) {
+        print $2 "\t" cmd
+      }
+    }
+  '
+}
+
+print_nginx_process_snapshot() {
+  local output=""
+
+  if command_exists ps; then
+    output="$(ps -eo pid=,ppid=,etime=,%cpu=,%mem=,args= 2>/dev/null | awk '
+      {
+        line = $0
+        cmd = line
+        for (i = 1; i <= 5; i++) {
+          sub(/^[^[:space:]]+[[:space:]]+/, "", cmd)
+        }
+        if (cmd ~ /^nginx: (master|worker|cache|privileged)/) {
+          sub(/^[[:space:]]+/, "", line)
+          print line
+        }
+      }
+    ')"
+    if [ -n "$output" ]; then
+      printf '%s\n' "$output"
+      return 0
+    fi
+
+    output="$(ps -ef 2>/dev/null | awk '
+      {
+        cmd = $0
+        for (i = 1; i <= 7; i++) {
+          sub(/^[^[:space:]]+[[:space:]]+/, "", cmd)
+        }
+        if (cmd ~ /^nginx: (master|worker|cache|privileged)/) {
+          print
+        }
+      }
+    ')"
+    if [ -n "$output" ]; then
+      printf '%s\n' "$output"
+      return 0
+    fi
+  fi
+
+  print_nginx_process_list | awk -F '\t' '{print "pid=" $1 " cmd=" $2}'
+}
+
 resolve_nginx_binary() {
   if [ -n "${NGINX_RUNTIME_BIN:-}" ]; then
     printf "%s" "$NGINX_RUNTIME_BIN"
@@ -152,7 +259,15 @@ resolve_nginx_binary() {
   elif command_exists openresty; then
     candidate="$(command -v openresty)"
   else
-    candidate="$(ps -eo args= 2>/dev/null | sed -n 's/^nginx: master process //p' | awk 'NR == 1 {print $1}')"
+    candidate="$(print_nginx_process_list 2>/dev/null | awk -F '\t' '
+      /nginx: master process/ {
+        cmd = $2
+        sub(/^nginx: master process[[:space:]]+/, "", cmd)
+        split(cmd, parts, /[[:space:]]+/)
+        print parts[1]
+        exit
+      }
+    ')"
     if [ -z "$candidate" ] || [ ! -x "$candidate" ]; then
       for candidate in \
         /usr/local/openresty/bin/openresty \
@@ -552,16 +667,137 @@ read_sysctl_value() {
   fi
 }
 
+append_nginx_config_error() {
+  local message="$1"
+  if [ -z "$message" ]; then
+    return
+  fi
+  if [ -n "${NGINX_CONFIG_ERROR:-}" ]; then
+    NGINX_CONFIG_ERROR="${NGINX_CONFIG_ERROR}; ${message}"
+  else
+    NGINX_CONFIG_ERROR="$message"
+  fi
+}
+
+resolve_nginx_conf_path() {
+  if [ -n "$NGINX_CONF" ]; then
+    printf "%s" "$NGINX_CONF"
+    return
+  fi
+
+  print_nginx_process_list 2>/dev/null | awk -F '\t' '
+    /nginx: master process/ {
+      cmd = $2
+      sub(/^nginx: master process[[:space:]]+/, "", cmd)
+      count = split(cmd, parts, /[[:space:]]+/)
+      for (i = 1; i <= count; i++) {
+        if (parts[i] == "-c" && i < count) {
+          print parts[i + 1]
+          exit
+        }
+      }
+    }
+  '
+}
+
+resolve_nginx_include_paths() {
+  local include_pattern="$1"
+  local base_dir="$2"
+  local expanded=()
+
+  case "$include_pattern" in
+    /*) ;;
+    *) include_pattern="$base_dir/$include_pattern" ;;
+  esac
+
+  shopt -s nullglob
+  # shellcheck disable=SC2206
+  expanded=( $include_pattern )
+  shopt -u nullglob
+
+  if [ "${#expanded[@]}" -gt 0 ]; then
+    printf "%s\n" "${expanded[@]}"
+  fi
+}
+
+render_nginx_config_tree() {
+  local config_path="$1"
+  local depth="${2:-0}"
+  local config_dir stripped include_pattern resolved_path
+
+  if [ "$depth" -gt 20 ]; then
+    append_nginx_config_error "nginx config include depth exceeded at $config_path"
+    return
+  fi
+
+  if [ ! -r "$config_path" ]; then
+    append_nginx_config_error "nginx config not readable: $config_path"
+    return
+  fi
+
+  case "${NGINX_CONFIG_SEEN_FILES:-}" in
+    *$'\n'"$config_path"$'\n'*)
+      return
+      ;;
+  esac
+  NGINX_CONFIG_SEEN_FILES="${NGINX_CONFIG_SEEN_FILES:-}"$'\n'"$config_path"$'\n'
+
+  config_dir="$(dirname "$config_path")"
+
+  printf "# configuration file %s\n" "$config_path"
+  while IFS= read -r line || [ -n "$line" ]; do
+    printf "%s\n" "$line"
+
+    stripped="${line%%#*}"
+    stripped="$(printf "%s" "$stripped" | sed 's/^[[:space:]]*//; s/[[:space:]]*$//')"
+    case "$stripped" in
+      include[[:space:]]*)
+        include_pattern="$(printf "%s" "$stripped" | sed -E 's/^include[[:space:]]+//; s/;$//')"
+        include_pattern="${include_pattern#\"}"
+        include_pattern="${include_pattern%\"}"
+        while IFS= read -r resolved_path; do
+          [ -n "$resolved_path" ] || continue
+          render_nginx_config_tree "$resolved_path" $(( depth + 1 ))
+        done < <(resolve_nginx_include_paths "$include_pattern" "$config_dir")
+        ;;
+    esac
+  done <"$config_path"
+}
+
 load_nginx_config() {
-  # Captures `nginx -T` stdout (the merged config) separately from stderr so
-  # a failing `-T` (syntax error, include not readable, etc.) surfaces in
-  # NGINX_CONFIG_ERROR instead of being silently treated as empty config.
+  # For pod/host mode, read nginx config files directly so the health check
+  # never executes `nginx -T`. Other modes fall back to the runtime binary.
   if [ -z "${NGINX_CONFIG_LOADED:-}" ]; then
     NGINX_CONFIG_LOADED=1
     NGINX_CONFIG_TEXT=""
     NGINX_CONFIG_SOURCE="nginx/openresty -T"
     NGINX_CONFIG_ERROR=""
+    NGINX_CONFIG_SEEN_FILES=""
     local nginx_bin stderr_tmp rc=0
+
+    if [ "$MODE" = "host" ] || [ "$MODE" = "pod" ]; then
+      local config_path config_tmp=""
+      config_path="$(resolve_nginx_conf_path)"
+      if [ -z "$config_path" ]; then
+        append_nginx_config_error "${MODE} mode could not resolve nginx config path"
+        return
+      fi
+      if [ ! -r "$config_path" ]; then
+        append_nginx_config_error "nginx config not readable: $config_path"
+        return
+      fi
+      NGINX_CONFIG_SOURCE="file-scan: $config_path"
+      config_tmp="$(mktemp 2>/dev/null)" || config_tmp=""
+      if [ -n "$config_tmp" ]; then
+        render_nginx_config_tree "$config_path" >"$config_tmp"
+        NGINX_CONFIG_TEXT="$(cat "$config_tmp" 2>/dev/null)"
+        rm -f "$config_tmp"
+      else
+        NGINX_CONFIG_TEXT="$(render_nginx_config_tree "$config_path")"
+      fi
+      return
+    fi
+
     nginx_bin="$(resolve_nginx_binary)"
 
     if [ -z "$nginx_bin" ]; then
@@ -1083,6 +1319,7 @@ read_softnet_drops_total() {
   local total=0
   if [ -r /proc/net/softnet_stat ]; then
     while read -r line; do
+      # shellcheck disable=SC2086
       set -- $line
       total=$(( total + 16#$2 ))
     done </proc/net/softnet_stat
@@ -1195,11 +1432,9 @@ collect_pod_log_paths() {
 
   # Keep pod-mode capture narrow by default: nginx-discovered log files,
   # explicit --log-path overrides, and the conventional /var/log/nginx dir.
-  for path in /var/log/nginx; do
-    if [ -e "$path" ]; then
-      paths+=("$path")
-    fi
-  done
+  if [ -e /var/log/nginx ]; then
+    paths+=("/var/log/nginx")
+  fi
 
   if [ "${#paths[@]}" -gt 0 ]; then
     printf "%s\n" "${paths[@]}" | sort -u
@@ -1324,7 +1559,7 @@ print_pod_worker_status_dump() {
       }' "/proc/$pid/stat" 2>/dev/null || true
     fi
     printf "\n"
-  done < <(ps -eo pid=,args= 2>/dev/null | awk '/nginx: (master|worker|cache|privileged)/ {print $1}')
+  done < <(print_nginx_process_list | awk -F '\t' '{print $1}')
 }
 
 extract_nginx_upstreams() {
@@ -1956,14 +2191,14 @@ write_common_raw_bundle() {
 write_pod_raw_bundle() {
   local -a log_paths=()
   local -a error_log_paths=()
-  local log_path quoted_conf nginx_bin
+  local nginx_bin
 
   nginx_bin="$(resolve_nginx_binary)"
   if [ -n "$nginx_bin" ]; then
     capture_shell_output "raw/nginx_version.txt" "$(shell_quote "$nginx_bin") -V"
   fi
   capture_function_output "raw/nginx_T.txt" print_nginx_config_dump
-  capture_shell_output "raw/nginx_processes.txt" "ps -eo pid,ppid,etime,%cpu,%mem,args | grep -E 'nginx: (master|worker|cache|privileged)' | grep -v grep"
+  capture_function_output "raw/nginx_processes.txt" print_nginx_process_snapshot
   capture_shell_output "raw/ip_local_port_range.txt" "cat /proc/sys/net/ipv4/ip_local_port_range"
   capture_function_output "raw/cgroup_memory.txt" print_pod_cgroup_memory
   capture_function_output "raw/cgroup_cpu.txt" print_pod_cgroup_cpu
@@ -2067,7 +2302,7 @@ write_host_raw_bundle() {
     capture_shell_output "raw/nginx_version.txt" "$(shell_quote "$nginx_bin") -V"
   fi
   capture_function_output "raw/nginx_T.txt" print_nginx_config_dump
-  capture_shell_output "raw/nginx_processes.txt" "ps -eo pid,ppid,etime,%cpu,%mem,args | grep -E 'nginx: (master|worker|cache|privileged)' | grep -v grep"
+  capture_function_output "raw/nginx_processes.txt" print_nginx_process_snapshot
   capture_shell_output "raw/ip_local_port_range.txt" "cat /proc/sys/net/ipv4/ip_local_port_range"
   capture_function_output "raw/host_log_paths.txt" collect_pod_log_paths
   capture_function_output "raw/error_log_paths.txt" extract_nginx_error_log_paths
@@ -2194,7 +2429,6 @@ write_bundle_outputs() {
 }
 
 check_pod_mode() {
-  local pod_status="OK"
   local nginx_master_pid=""
   local -a nginx_worker_pids=()
   local -a nginx_cache_pids=()
@@ -2222,7 +2456,7 @@ check_pod_mode() {
         nginx_privileged_pids+=("$pid")
         ;;
     esac
-  done < <(ps -eo pid=,args= 2>/dev/null | awk '/nginx: (master|worker|cache|privileged)/ {print $1 "\t" substr($0, index($0, $2))}')
+  done < <(print_nginx_process_list)
 
   if [ "${#nginx_all_pids[@]}" -eq 0 ]; then
     add_result "nginx_process" "not found" "must exist" "CRIT" \
@@ -2278,7 +2512,7 @@ check_pod_mode() {
   done < <(extract_nginx_listen_bindings)
   local listen_value="unknown"
   local listen_status="OK"
-  local listen_detail="nginx/openresty -T unavailable, skipped config-based listen check."
+  local listen_detail="nginx config unavailable, skipped config-based listen check."
   if [ "${#listen_bindings[@]}" -gt 0 ]; then
     local -a missing_bindings=()
     local b
@@ -2307,7 +2541,8 @@ check_pod_mode() {
 
   local connection_status="OK"
   local connection_limit="state mix sanity"
-  local connection_detail="$(format_state_ratio "$estab" "$tcp_total" "ESTAB"), $(format_state_ratio "$time_wait" "$tcp_total" "TIME-WAIT"), $(format_state_ratio "$close_wait" "$tcp_total" "CLOSE-WAIT"), $(format_state_ratio "$syn_recv" "$tcp_total" "SYN-RECV"), top_estab_peer=$(format_top_tcp_peer "ESTAB")"
+  local connection_detail
+  connection_detail="$(format_state_ratio "$estab" "$tcp_total" "ESTAB"), $(format_state_ratio "$time_wait" "$tcp_total" "TIME-WAIT"), $(format_state_ratio "$close_wait" "$tcp_total" "CLOSE-WAIT"), $(format_state_ratio "$syn_recv" "$tcp_total" "SYN-RECV"), top_estab_peer=$(format_top_tcp_peer "ESTAB")"
   if [ "$theoretical_capacity" -gt 0 ]; then
     local capacity_status
     capacity_status="$(status_by_ratio "$estab" "$theoretical_capacity" 70 85)"
@@ -2373,7 +2608,8 @@ check_pod_mode() {
   read -r nginx_rss nginx_rss_kind <<<"$(sum_proc_rss_bytes "${nginx_all_pids[@]}")"
   local memory_status="INFO"
   local memory_limit_display="unlimited"
-  local memory_value_display="$(human_bytes "$memory_current")"
+  local memory_value_display
+  memory_value_display="$(human_bytes "$memory_current")"
   if [ "$memory_max" -gt 0 ]; then
     memory_status="$(status_by_ratio "$memory_current" "$memory_max" 80 90)"
     memory_value_display="used=$(human_bytes "$memory_current") free=$(human_bytes "$(free_of "$memory_max" "$memory_current")")"
@@ -2381,7 +2617,8 @@ check_pod_mode() {
   fi
   local memory_events
   memory_events="$(read_pod_memory_events)"
-  local memory_detail="cgroup current=$(human_bytes "$memory_current"), nginx ${nginx_rss_kind}=$(human_bytes "$nginx_rss")"
+  local memory_detail
+  memory_detail="cgroup current=$(human_bytes "$memory_current"), nginx ${nginx_rss_kind}=$(human_bytes "$nginx_rss")"
   if printf "%s" "$memory_events" | grep -Eq 'oom_kill [1-9]'; then
     memory_status="CRIT"
     memory_detail="$memory_detail, memory.events reports oom_kill > 0"
@@ -2538,10 +2775,10 @@ check_pod_mode() {
         "Failed to fetch nginx stub_status endpoint."
     else
       local a_active a_reading a_writing a_waiting a_accepts a_handled a_requests
-      local b_active b_reading b_writing b_waiting b_accepts b_handled b_requests
+      local _ _ _ _ b_accepts b_handled b_requests
       read -r a_active a_reading a_writing a_waiting a_accepts a_handled a_requests \
         <<<"$(parse_stub_status_values "$stub_body_after")"
-      read -r b_active b_reading b_writing b_waiting b_accepts b_handled b_requests \
+      read -r _ _ _ _ b_accepts b_handled b_requests \
         <<<"$(parse_stub_status_values "${stub_body_before:-$stub_body_after}")"
 
       local accepts_delta=$(( a_accepts - b_accepts ))
@@ -2622,7 +2859,7 @@ check_host_mode() {
         nginx_privileged_pids+=("$pid")
         ;;
     esac
-  done < <(ps -eo pid=,args= 2>/dev/null | awk '/nginx: (master|worker|cache|privileged)/ {print $1 "\t" substr($0, index($0, $2))}')
+  done < <(print_nginx_process_list)
 
   if [ "${#nginx_all_pids[@]}" -eq 0 ]; then
     add_result "nginx_process" "not found" "must exist" "CRIT" \
@@ -2674,7 +2911,7 @@ check_host_mode() {
   done < <(extract_nginx_listen_bindings)
   local listen_value="unknown"
   local listen_status="OK"
-  local listen_detail="nginx/openresty -T unavailable, skipped config-based listen check."
+  local listen_detail="nginx config unavailable, skipped config-based listen check."
   if [ "${#listen_bindings[@]}" -gt 0 ]; then
     local -a missing_bindings=()
     local b
@@ -2703,7 +2940,8 @@ check_host_mode() {
 
   local connection_status="OK"
   local connection_limit="state mix sanity"
-  local connection_detail="$(format_state_ratio "$estab" "$tcp_total" "ESTAB"), $(format_state_ratio "$time_wait" "$tcp_total" "TIME-WAIT"), $(format_state_ratio "$close_wait" "$tcp_total" "CLOSE-WAIT"), $(format_state_ratio "$syn_recv" "$tcp_total" "SYN-RECV"), top_estab_peer=$(format_top_tcp_peer "ESTAB")"
+  local connection_detail
+  connection_detail="$(format_state_ratio "$estab" "$tcp_total" "ESTAB"), $(format_state_ratio "$time_wait" "$tcp_total" "TIME-WAIT"), $(format_state_ratio "$close_wait" "$tcp_total" "CLOSE-WAIT"), $(format_state_ratio "$syn_recv" "$tcp_total" "SYN-RECV"), top_estab_peer=$(format_top_tcp_peer "ESTAB")"
   if [ "$theoretical_capacity" -gt 0 ]; then
     local capacity_status
     capacity_status="$(status_by_ratio "$estab" "$theoretical_capacity" 70 85)"
@@ -2906,10 +3144,10 @@ check_host_mode() {
         "Failed to fetch nginx stub_status endpoint."
     else
       local a_active a_reading a_writing a_waiting a_accepts a_handled a_requests
-      local b_active b_reading b_writing b_waiting b_accepts b_handled b_requests
+      local _ _ _ _ b_accepts b_handled b_requests
       read -r a_active a_reading a_writing a_waiting a_accepts a_handled a_requests \
         <<<"$(parse_stub_status_values "$stub_body_after")"
-      read -r b_active b_reading b_writing b_waiting b_accepts b_handled b_requests \
+      read -r _ _ _ _ b_accepts b_handled b_requests \
         <<<"$(parse_stub_status_values "${stub_body_before:-$stub_body_after}")"
 
       local accepts_delta=$(( a_accepts - b_accepts ))

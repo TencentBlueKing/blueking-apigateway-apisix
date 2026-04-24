@@ -30,3 +30,7 @@ src/
 - src/apisix/ is the main working dir, we do all the works here, please read @src/apisix/AGENTS.md
 - src/apisix-core/ is the official apisix source code, is a git submodule at `src/apisix-core/`, if you need to read some apisix source code, find it under this dir.(normally you don't need to read this)
 
+## Verification
+
+- For changes limited to `src/ops`, do not run `make lint` or `make test`.
+- For `src/ops` changes, verify with script-appropriate checks such as `bash -n` and `shellcheck` on the touched scripts.
