@@ -47,10 +47,10 @@ fi
 usage() {
   cat <<EOF
 Usage:
-  $SCRIPT_NAME --mode pod|node [options]
+  $SCRIPT_NAME --mode pod|node|host [options]
 
 Options:
-  --mode MODE            Run in "pod" or "node" mode. Required.
+  --mode MODE            Run in "pod", "node", or "host" mode. Required.
   --delta-seconds N      Sample delta counters over N seconds. Default: 3.
   --nginx-conf PATH      Optional nginx config path for custom layouts.
   --log-path PATH        Optional extra log file or directory to inspect.
@@ -370,7 +370,7 @@ get_mode_required_commands() {
   if ! command_exists ss && ! command_exists netstat; then
     required+=("ss_or_netstat")
   fi
-  if [ "$mode" = "node" ]; then
+  if [ "$mode" = "node" ] || [ "$mode" = "host" ]; then
     required+=("dmesg")
   fi
   printf "%s\n" "${required[@]}"
@@ -379,10 +379,12 @@ get_mode_required_commands() {
 get_mode_optional_commands() {
   local mode="$1"
   local optional=("lsof" "sort" "head")
-  if [ "$mode" = "pod" ]; then
-    optional+=("nginx_or_openresty" "curl_or_wget")
-  else
+  if [ "$mode" = "node" ]; then
     optional+=("sysctl")
+  elif [ "$mode" = "host" ]; then
+    optional+=("nginx_or_openresty" "curl_or_wget" "sysctl")
+  else
+    optional+=("nginx_or_openresty" "curl_or_wget")
   fi
   printf "%s\n" "${optional[@]}"
 }
@@ -1746,15 +1748,15 @@ emit_bundle_agents_md() {
   cat <<EOF
 # AGENTS.md
 
-This bundle is intended for remote reviewers and agents who do not have shell access to the original pod or node.
+This bundle is intended for remote reviewers and agents who do not have shell access to the original pod, node, or host.
 
 ## Goal
 
 Use this bundle to answer four questions:
 
 1. Is NGINX itself unhealthy, overloaded, or misconfigured?
-2. Is the pod close to a resource limit such as memory, CPU quota, FD limit, or log growth?
-3. Is the node dropping or delaying traffic because of conntrack, socket pressure, backlog drops, softnet drops, NIC drops, or system pressure?
+2. Is the runtime close to a resource limit such as memory, CPU quota, FD limit, or log growth?
+3. Is the node or host dropping or delaying traffic because of conntrack, socket pressure, backlog drops, softnet drops, NIC drops, or system pressure?
 4. Which upstream, peer, port, or log file is the most likely next investigation target?
 
 ## Reading order
@@ -1771,7 +1773,7 @@ Use this bundle to answer four questions:
 - If \`overall\` is \`CRIT\`, start with every \`CRIT\` row in \`summary.txt\`; do not average the signals together.
 - If \`overall\` is \`WARN\`, check whether the warning is already close to a hard limit or whether multiple warnings point to the same subsystem.
 - If \`overall\` is \`OK\` but users saw failures, this snapshot may have missed a short spike. Ask the on-site executor to rerun with a larger \`--delta-seconds\`, such as 10 or 30.
-- If this is one of many pods or nodes, compare \`meta.txt\` across bundles first to avoid mixing evidence from different places.
+- If this is one of many pods, nodes, or hosts, compare \`meta.txt\` across bundles first to avoid mixing evidence from different places.
 
 ## Root files
 
@@ -1794,8 +1796,8 @@ Use this table to map summary checks to evidence files and likely interpretation
 | \`fd_usage\` | \`raw/nginx_processes.txt\`, \`raw/nginx_T.txt\` | FD usage close to limit can cause accept/connect/open failures even if CPU and memory are fine. Detail contains the hottest pid for focused investigation. |
 | \`listen_queues\` | \`raw/ss_listen.txt\`, \`raw/netstat.txt\` | Recv-Q close to Send-Q on a LISTEN socket means the accept queue is filling; correlate with \`ListenOverflows\` under \`listen_backlog\`. |
 | \`error_log_signals\` | \`raw/error_log_tails.txt\`, \`raw/nginx_T.txt\` | Aggregated hit counts of known fatal strings (worker_connections exhausted, Too many open files, upstream timed out, no live upstreams, TLS handshake, conntrack table full). Use the counts to pick which raw tail to read. |
-| \`memory\` | \`raw/cgroup_memory.txt\`, \`raw/log_tails.txt\`, \`top/log_files.txt\` | Look for cgroup OOM events, memory close to limit, and large logs contributing to pressure. |
-| \`cpu_throttle\` | \`raw/cgroup_cpu.txt\` | Increasing throttle counters mean the pod may be CPU-limited, which can surface as latency or 504. |
+| \`memory\` | \`raw/cgroup_memory.txt\` or \`raw/meminfo.txt\`, \`raw/log_tails.txt\`, \`top/log_files.txt\` | In pod mode, look for cgroup OOM events and quota pressure. In host mode, look for low \`MemAvailable\`, large nginx RSS, and logs contributing to pressure. |
+| \`cpu_throttle\` | \`raw/cgroup_cpu.txt\` | Pod mode only. Increasing throttle counters mean the pod may be CPU-limited, which can surface as latency or 504. |
 | \`log_volume\` | \`top/log_files.txt\`, \`raw/log_tails.txt\`, \`raw/error_log_tails.txt\` | Large or fast-growing logs can cause disk pressure, memory pressure, or hidden deleted-open-file usage. |
 | \`deleted_open_logs\` | \`raw/deleted_open_logs.txt\` | Deleted but open files still consume disk until NGINX closes/reopens them. Reload or restart may be needed after log rotation. |
 | \`stub_status\` | \`raw/stub_status.txt\` | Summary reports live active + delta-window accepts/sec, requests/sec, handled/sec, and \`dropped_accepts\` (non-zero means the accept queue overflowed during the window). High active/writing with low waiting suggests active upstream work. High waiting can indicate idle keepalive-heavy traffic. |
@@ -1804,9 +1806,9 @@ Use this table to map summary checks to evidence files and likely interpretation
 | \`sockstat\` | \`raw/sockstat.txt\`, \`raw/sysctl_network.txt\` | High \`tw\`, \`orphan\`, or allocation pressure points to node-wide TCP/socket pressure. |
 | \`listen_backlog\` | \`raw/netstat.txt\`, \`raw/snmp.txt\` | Increasing \`ListenDrops\`, \`ListenOverflows\`, or \`TCPBacklogDrop\` means the node is dropping queued connections. |
 | \`packet_drop\` | \`raw/softnet_stat.txt\`, \`raw/nic_stats.txt\`, \`raw/system_log_tails.txt\`, \`raw/dmesg_filtered.txt\` | Softnet or NIC drops mean packets may be lost before reaching NGINX or upstream. |
-| \`node_memory\` | \`raw/meminfo.txt\`, \`raw/pressure_memory.txt\`, \`raw/system_log_tails.txt\`, \`raw/dmesg_filtered.txt\` | Low available memory or OOM messages can explain broad latency, drops, or restarts. |
+| \`node_memory\` | \`raw/meminfo.txt\`, \`raw/pressure_memory.txt\`, \`raw/system_log_tails.txt\`, \`raw/dmesg_filtered.txt\` | Node mode only. Low available memory or OOM messages can explain broad latency, drops, or restarts. |
 | \`disk_root\`, \`inode_root\` | \`raw/df.txt\`, \`raw/df_inode.txt\`, \`top/container_log_files.txt\` | Disk or inode pressure can break logging, container runtime behavior, or node stability. |
-| \`container_logs\` | \`top/container_log_files.txt\`, \`raw/node_extra_log_tails.txt\` | Large container logs can explain node disk pressure. Use the inventory first; if you need a specific pod or service log tail, rerun with an explicit \`--log-path\`. |
+| \`container_logs\` | \`top/container_log_files.txt\`, \`raw/node_extra_log_tails.txt\` | Node mode only. Large container logs can explain node disk pressure. Use the inventory first; if you need a specific pod or service log tail, rerun with an explicit \`--log-path\`. |
 | \`psi_cpu\`, \`psi_memory\`, \`psi_io\` | \`raw/pressure_cpu.txt\`, \`raw/pressure_memory.txt\`, \`raw/pressure_io.txt\` | PSI shows time lost waiting for CPU, memory, or IO and is useful when ordinary utilization looks acceptable. |
 
 ## Common diagnosis paths
@@ -1814,8 +1816,8 @@ Use this table to map summary checks to evidence files and likely interpretation
 ### Intermittent 504 or upstream timeout
 
 1. Check \`summary.txt\` for \`conntrack\`, \`packet_drop\`, \`listen_backlog\`, \`tcp_states\`, and \`cpu_throttle\`.
-2. On node bundles, read \`raw/dmesg_filtered.txt\`, \`raw/system_log_tails.txt\`, \`raw/conntrack.txt\`, \`raw/netstat.txt\`, and \`raw/softnet_stat.txt\`.
-3. On pod bundles, read \`raw/error_log_tails.txt\`, \`top/estab-remote-peers.txt\`, and \`top/close-wait-remote-peers.txt\`.
+2. On node or host bundles, read \`raw/dmesg_filtered.txt\`, \`raw/system_log_tails.txt\`, \`raw/conntrack.txt\`, \`raw/netstat.txt\`, and \`raw/softnet_stat.txt\`.
+3. On pod or host bundles, read \`raw/error_log_tails.txt\`, \`top/estab-remote-peers.txt\`, and \`top/close-wait-remote-peers.txt\`.
 4. If only one upstream appears hot in \`top/*remote-peers.txt\`, treat that upstream path as the leading suspect.
 
 ### High short-connection pressure or port exhaustion
@@ -1823,7 +1825,7 @@ Use this table to map summary checks to evidence files and likely interpretation
 1. Check \`ephemeral_ports\` and \`tcp_states\`.
 2. Read \`raw/ip_local_port_range.txt\`, \`top/time-wait-local-ports.txt\`, and \`top/time-wait-remote-peers.txt\`.
 3. Compare \`TIME-WAIT\` volume with the local port range. A high ratio means connection churn may be consuming available ports.
-4. If this appears only on nodes, inspect \`raw/sockstat.txt\` to see whether the pressure is node-wide.
+4. If this appears only on nodes or hosts, inspect \`raw/sockstat.txt\` to see whether the pressure is node-wide.
 
 ### conntrack table pressure
 
@@ -1832,22 +1834,23 @@ Use this table to map summary checks to evidence files and likely interpretation
 3. Look for historical evidence in \`raw/system_log_tails.txt\` and \`raw/dmesg_filtered.txt\`; the count may have recovered by the time the script ran.
 4. If table-full messages exist, treat intermittent packet loss as plausible even when the current count is below the max.
 
-### Pod OOM or log-growth issue
+### Memory or log-growth issue
 
 1. Check \`memory\`, \`log_volume\`, and \`deleted_open_logs\`.
-2. Read \`raw/cgroup_memory.txt\` for \`oom\`, \`oom_kill\`, or fail counters.
-3. Read \`top/log_files.txt\` to find the largest files or directories.
-4. Read \`raw/deleted_open_logs.txt\`; deleted-open files still consume disk space.
-5. Read \`raw/error_log_tails.txt\` and \`raw/log_tails.txt\` for repeated errors or log storms.
+2. On pod bundles, read \`raw/cgroup_memory.txt\` for \`oom\`, \`oom_kill\`, or fail counters.
+3. On host bundles, read \`raw/meminfo.txt\`, \`raw/pressure_memory.txt\`, \`raw/system_log_tails.txt\`, and \`raw/dmesg_filtered.txt\`.
+4. Read \`top/log_files.txt\` to find the largest files or directories.
+5. Read \`raw/deleted_open_logs.txt\`; deleted-open files still consume disk space.
+6. Read \`raw/error_log_tails.txt\` and \`raw/log_tails.txt\` for repeated errors or log storms.
 
 ### CPU throttling or resource-limit latency
 
 1. Check \`cpu_throttle\`, \`psi_cpu\`, and \`node_memory\`.
 2. For pod bundles, read \`raw/cgroup_cpu.txt\`.
-3. For node bundles, read \`raw/pressure_cpu.txt\`, \`raw/pressure_memory.txt\`, and \`raw/pressure_io.txt\`.
+3. For node or host bundles, read \`raw/pressure_cpu.txt\`, \`raw/pressure_memory.txt\`, and \`raw/pressure_io.txt\`.
 4. If throttle counters increased during the sampling window, latency may come from quota pressure rather than network faults.
 
-### Node network-stack drops
+### Node or host network-stack drops
 
 1. Check \`listen_backlog\` and \`packet_drop\`.
 2. Read \`raw/netstat.txt\` for \`ListenDrops\`, \`ListenOverflows\`, and \`TCPBacklogDrop\`.
@@ -1879,7 +1882,7 @@ Pod-mode files you may see:
 - \`top/error_log_top_messages.txt\` (most frequent normalized error-log messages)
 - \`raw/stub_status.txt\`
 
-Node-mode files you may see:
+Node/host-mode files you may see:
 
 - \`raw/conntrack.txt\`
 - \`raw/sysctl_network.txt\`
@@ -1889,7 +1892,14 @@ Node-mode files you may see:
 - \`raw/node_extra_log_paths.txt\`, \`raw/node_extra_log_tails.txt\` (explicit \`--log-path\` captures)
 - \`raw/ethtool_stats.txt\` (\`ethtool -S\` drop/err/miss counters and \`ethtool -g\` ring sizes when the tool is present)
 - \`raw/dmesg_filtered.txt\`, \`raw/dmesg_tail.txt\`
-- \`raw/node_container_log_dirs.txt\`, \`top/container_log_files.txt\`
+- \`raw/node_container_log_dirs.txt\`, \`top/container_log_files.txt\` (node mode only)
+
+Host-mode files you may see:
+
+- \`raw/host_log_paths.txt\`
+- \`raw/nginx_T.txt\`, \`raw/nginx_processes.txt\`, \`raw/nginx_worker_status.txt\`
+- \`raw/listen_bindings.txt\`, \`raw/error_log_tails.txt\`, \`raw/log_tails.txt\`
+- \`raw/meminfo.txt\`, \`raw/system_log_tails.txt\`, \`raw/dmesg_filtered.txt\`
 
 ## top/
 
@@ -1902,7 +1912,7 @@ This directory stores ranked views that are easier to scan than raw dumps, for e
 ## How to reason about the bundle
 
 - Treat \`summary.txt\` or \`summary.json\` as the entry point, not the final truth.
-- Use \`meta.txt\` to confirm whether the bundle came from a pod or a node and whether custom paths were used.
+- Use \`meta.txt\` to confirm whether the bundle came from a pod, node, or host and whether custom paths were used.
 - When a check is \`WARN\` or \`CRIT\`, go to the most relevant file in \`raw/\` or \`top/\` and verify the underlying evidence.
 - For accumulated kernel counters, prefer deltas reported in \`summary.txt\`; raw files may show lifetime totals.
 - For missing files, do not assume the signal was healthy. It may simply mean the command, kernel file, or configured path was unavailable in this runtime.
@@ -2045,6 +2055,86 @@ write_node_raw_bundle() {
   fi
 }
 
+write_host_raw_bundle() {
+  local -a log_paths=()
+  local -a error_log_paths=()
+  local -a system_log_files=()
+  local -a extra_log_paths=()
+  local quoted_conf nginx_bin
+
+  nginx_bin="$(resolve_nginx_binary)"
+  if [ -n "$nginx_bin" ]; then
+    capture_shell_output "raw/nginx_version.txt" "$(shell_quote "$nginx_bin") -V"
+  fi
+  capture_function_output "raw/nginx_T.txt" print_nginx_config_dump
+  capture_shell_output "raw/nginx_processes.txt" "ps -eo pid,ppid,etime,%cpu,%mem,args | grep -E 'nginx: (master|worker|cache|privileged)' | grep -v grep"
+  capture_shell_output "raw/ip_local_port_range.txt" "cat /proc/sys/net/ipv4/ip_local_port_range"
+  capture_function_output "raw/host_log_paths.txt" collect_pod_log_paths
+  capture_function_output "raw/error_log_paths.txt" extract_nginx_error_log_paths
+
+  mapfile -t log_paths < <(collect_pod_log_paths)
+  mapfile -t error_log_paths < <(extract_nginx_error_log_paths)
+  if [ "${#log_paths[@]}" -gt 0 ]; then
+    capture_function_output "top/log_files.txt" print_path_inventory "${log_paths[@]}"
+    capture_function_output "raw/log_tails.txt" print_top_file_tails "$TAIL_LINES" "${log_paths[@]}"
+  fi
+  if [ "${#error_log_paths[@]}" -gt 0 ]; then
+    capture_function_output "raw/error_log_tails.txt" print_error_log_tails "$TAIL_LINES" "${error_log_paths[@]}"
+    capture_function_output "top/error_log_top_messages.txt" print_error_log_top_messages "$TAIL_LINES" "${error_log_paths[@]}"
+  fi
+
+  capture_function_output "raw/nginx_worker_status.txt" print_pod_worker_status_dump
+  capture_function_output "raw/nginx_upstreams.txt" extract_nginx_upstreams
+  capture_function_output "raw/resolv.conf.txt" print_resolv_conf
+  capture_function_output "raw/listen_bindings.txt" extract_nginx_listen_bindings
+  capture_function_output "raw/sysctl_network.txt" print_selected_sysctls
+  capture_function_output "raw/conntrack.txt" print_conntrack_snapshot
+  capture_shell_output "raw/netstat.txt" "cat /proc/net/netstat"
+  capture_shell_output "raw/snmp.txt" "cat /proc/net/snmp"
+  capture_shell_output "raw/softnet_stat.txt" "cat /proc/net/softnet_stat"
+  capture_function_output "raw/nic_stats.txt" print_nic_stats
+  capture_function_output "raw/ethtool_stats.txt" print_node_ethtool_dump
+  capture_shell_output "raw/file_nr.txt" "cat /proc/sys/fs/file-nr"
+  capture_shell_output "raw/meminfo.txt" "cat /proc/meminfo"
+  capture_shell_output "raw/pressure_cpu.txt" "cat /proc/pressure/cpu"
+  capture_shell_output "raw/pressure_memory.txt" "cat /proc/pressure/memory"
+  capture_shell_output "raw/pressure_io.txt" "cat /proc/pressure/io"
+  capture_shell_output "raw/df.txt" "df -h"
+  capture_shell_output "raw/df_inode.txt" "df -ih"
+  capture_shell_output "raw/dmesg_tail.txt" "dmesg | tail -n $(shell_quote "$TAIL_LINES")"
+  capture_shell_output "raw/dmesg_filtered.txt" "dmesg | grep -Ei 'conntrack|nf_conntrack|oom|killed process|drop|timeout|tcp|memory' | tail -n $(shell_quote "$TAIL_LINES")"
+
+  mapfile -t system_log_files < <(collect_node_system_log_files)
+  if [ "${#system_log_files[@]}" -gt 0 ]; then
+    capture_function_output "raw/system_log_paths.txt" collect_node_system_log_files
+    capture_function_output "raw/system_log_tails.txt" print_top_file_tails "$TAIL_LINES" "${system_log_files[@]}"
+  fi
+
+  mapfile -t extra_log_paths < <(collect_node_extra_log_paths)
+  if [ "${#extra_log_paths[@]}" -gt 0 ]; then
+    capture_function_output "raw/node_extra_log_paths.txt" collect_node_extra_log_paths
+    capture_function_output "top/node_extra_log_files.txt" print_path_inventory "${extra_log_paths[@]}"
+    capture_function_output "raw/node_extra_log_tails.txt" print_top_file_tails "$TAIL_LINES" "${extra_log_paths[@]}"
+  fi
+
+  if command_exists lsof; then
+    capture_shell_output "raw/deleted_open_logs.txt" "lsof -nP +L1 | grep nginx"
+  fi
+  if [ -n "$STATUS_URL" ]; then
+    capture_function_output "raw/stub_status.txt" print_stub_status_dump
+  fi
+  if [ -n "$TCP_PROBE" ]; then
+    capture_function_output "raw/tcp_probe.txt" print_probe_result
+  fi
+  if [ -n "$nginx_bin" ]; then
+    capture_shell_output "raw/nginx_runtime_bin.txt" "ls -l $(shell_quote "$nginx_bin")"
+  fi
+  if [ -n "$NGINX_CONF" ]; then
+    quoted_conf="$(shell_quote "$NGINX_CONF")"
+    capture_shell_output "raw/nginx_config_path.txt" "ls -l $quoted_conf"
+  fi
+}
+
 write_bundle_index_files() {
   [ -n "$BUNDLE_DIR" ] || return 0
 
@@ -2065,6 +2155,9 @@ write_bundle_raw_files() {
         ;;
       node)
         write_node_raw_bundle
+        ;;
+      host)
+        write_host_raw_bundle
         ;;
     esac
   fi
@@ -2503,6 +2596,530 @@ check_pod_mode() {
   fi
 }
 
+check_host_mode() {
+  local nginx_master_pid=""
+  local -a nginx_worker_pids=()
+  local -a nginx_cache_pids=()
+  local -a nginx_privileged_pids=()
+  local -a nginx_all_pids=()
+
+  while read -r pid cmdline; do
+    if [ -z "$pid" ]; then
+      continue
+    fi
+    nginx_all_pids+=("$pid")
+    case "$cmdline" in
+      *"nginx: master process"*)
+        nginx_master_pid="$pid"
+        ;;
+      *"nginx: worker process"*)
+        nginx_worker_pids+=("$pid")
+        ;;
+      *"nginx: cache manager process"*|*"nginx: cache loader process"*)
+        nginx_cache_pids+=("$pid")
+        ;;
+      *"nginx: privileged agent process"*|*"nginx: privileged process"*)
+        nginx_privileged_pids+=("$pid")
+        ;;
+    esac
+  done < <(ps -eo pid=,args= 2>/dev/null | awk '/nginx: (master|worker|cache|privileged)/ {print $1 "\t" substr($0, index($0, $2))}')
+
+  if [ "${#nginx_all_pids[@]}" -eq 0 ]; then
+    add_result "nginx_process" "not found" "must exist" "CRIT" \
+      "No nginx process is visible on this host."
+    return
+  fi
+
+  local worker_count="${#nginx_worker_pids[@]}"
+  local cache_count="${#nginx_cache_pids[@]}"
+  local privileged_count="${#nginx_privileged_pids[@]}"
+  local process_value
+  process_value="master=${nginx_master_pid:-none}, workers=${worker_count}, cache=${cache_count}, privileged=${privileged_count}"
+  local process_status="OK"
+  if [ -z "$nginx_master_pid" ] || [ "$worker_count" -eq 0 ]; then
+    process_status="WARN"
+  fi
+  add_result "nginx_process" "$process_value" "master + worker processes" "$process_status" \
+    "Counts cover master, worker, cache manager/loader, and privileged agent processes."
+
+  load_nginx_config
+
+  local configured_workers
+  configured_workers="$(resolve_worker_processes)"
+  local worker_connections
+  worker_connections="$(extract_nginx_value "worker_connections")"
+  local worker_nofile
+  worker_nofile="$(extract_nginx_value "worker_rlimit_nofile")"
+  local theoretical_capacity=0
+  if [ -n "$configured_workers" ] && [ "$configured_workers" -gt 0 ] && [ -n "$worker_connections" ]; then
+    theoretical_capacity=$(( configured_workers * worker_connections ))
+  fi
+  local capacity_detail="worker_processes=${configured_workers:-unknown}, worker_connections=${worker_connections:-unknown}"
+  if [ -n "$worker_nofile" ]; then
+    capacity_detail="$capacity_detail, worker_rlimit_nofile=$worker_nofile"
+  fi
+  if [ -n "${NGINX_CONFIG_SOURCE:-}" ]; then
+    capacity_detail="$capacity_detail, config_source=${NGINX_CONFIG_SOURCE}"
+  fi
+  if [ -n "${NGINX_CONFIG_ERROR:-}" ]; then
+    capacity_detail="$capacity_detail, config_error=${NGINX_CONFIG_ERROR}"
+  fi
+  add_result "nginx_capacity" \
+    "$( [ "$theoretical_capacity" -gt 0 ] && printf "%s" "$theoretical_capacity" || printf "unknown" )" \
+    "config-derived theoretical max" "INFO" "$capacity_detail"
+
+  local -a listen_bindings=()
+  while IFS= read -r binding; do
+    [ -n "$binding" ] && listen_bindings+=("$binding")
+  done < <(extract_nginx_listen_bindings)
+  local listen_value="unknown"
+  local listen_status="OK"
+  local listen_detail="nginx/openresty -T unavailable, skipped config-based listen check."
+  if [ "${#listen_bindings[@]}" -gt 0 ]; then
+    local -a missing_bindings=()
+    local b
+    for b in "${listen_bindings[@]}"; do
+      if ! listener_present "$b"; then
+        missing_bindings+=("$b")
+      fi
+    done
+    listen_value="$(join_by "," "${listen_bindings[@]}")"
+    listen_detail="Configured bindings from ${NGINX_CONFIG_SOURCE:-nginx config}. *:PORT matches any bind-address on that port; IP:PORT requires exact match."
+    if [ "${#missing_bindings[@]}" -gt 0 ]; then
+      listen_status="CRIT"
+      listen_detail="Configured bindings missing from listen sockets: $(join_by "," "${missing_bindings[@]}")"
+    fi
+  elif [ -n "${NGINX_CONFIG_ERROR:-}" ]; then
+    listen_detail="$NGINX_CONFIG_ERROR"
+  fi
+  add_result "nginx_listen" "$listen_value" "configured listen bindings" "$listen_status" "$listen_detail"
+
+  local tcp_total estab time_wait close_wait syn_recv
+  tcp_total="$(count_total_tcp)"
+  estab="$(count_tcp_state "ESTAB")"
+  time_wait="$(count_tcp_state "TIME-WAIT")"
+  close_wait="$(count_tcp_state "CLOSE-WAIT")"
+  syn_recv="$(count_tcp_state "SYN-RECV")"
+
+  local connection_status="OK"
+  local connection_limit="state mix sanity"
+  local connection_detail="$(format_state_ratio "$estab" "$tcp_total" "ESTAB"), $(format_state_ratio "$time_wait" "$tcp_total" "TIME-WAIT"), $(format_state_ratio "$close_wait" "$tcp_total" "CLOSE-WAIT"), $(format_state_ratio "$syn_recv" "$tcp_total" "SYN-RECV"), top_estab_peer=$(format_top_tcp_peer "ESTAB")"
+  if [ "$theoretical_capacity" -gt 0 ]; then
+    local capacity_status
+    capacity_status="$(status_by_ratio "$estab" "$theoretical_capacity" 70 85)"
+    connection_status="$(merge_status "$connection_status" "$capacity_status")"
+    connection_limit="ESTAB/${theoretical_capacity}"
+  fi
+  if [ "$close_wait" -ge 1000 ]; then
+    connection_status="$(merge_status "$connection_status" "CRIT")"
+  elif [ "$close_wait" -ge 200 ]; then
+    connection_status="$(merge_status "$connection_status" "WARN")"
+  fi
+  if [ "$syn_recv" -ge 1024 ]; then
+    connection_status="$(merge_status "$connection_status" "CRIT")"
+  elif [ "$syn_recv" -ge 256 ]; then
+    connection_status="$(merge_status "$connection_status" "WARN")"
+  fi
+  add_result "tcp_states" "total=$tcp_total" "$connection_limit" "$connection_status" "$connection_detail"
+
+  local port_low port_high port_span ephemeral_used
+  read -r port_low port_high <<<"$(read_ip_local_port_range)"
+  if [ -n "${port_low:-}" ] && [ -n "${port_high:-}" ]; then
+    port_span=$(( port_high - port_low + 1 ))
+    ephemeral_used="$(count_unique_ephemeral_ports "$port_low" "$port_high")"
+    local ephemeral_status
+    ephemeral_status="$(status_by_ratio "$ephemeral_used" "$port_span" 60 80)"
+    if [ "$time_wait" -gt 0 ]; then
+      local tw_status
+      tw_status="$(status_by_ratio "$time_wait" "$port_span" 40 60)"
+      ephemeral_status="$(merge_status "$ephemeral_status" "$tw_status")"
+    fi
+    add_result "ephemeral_ports" \
+      "$(format_ephemeral_current "$ephemeral_used" "$port_span" "$time_wait")" \
+      "$(format_ephemeral_limit "$port_low" "$port_high" "$port_span")" \
+      "$ephemeral_status" \
+      "Used ratio=$(percent_of "$ephemeral_used" "$port_span"). High TIME-WAIT or used-port ratio means short-connection churn may exhaust client ports."
+  else
+    add_result "ephemeral_ports" "unknown" "ip_local_port_range" "INFO" \
+      "Cannot read /proc/sys/net/ipv4/ip_local_port_range on this host."
+  fi
+
+  local max_fd_used max_fd_limit max_fd_pid
+  read -r max_fd_used max_fd_limit max_fd_pid <<<"$(max_proc_fd_usage "${nginx_all_pids[@]}")"
+  local fd_status="INFO"
+  local fd_limit_display="process limits unavailable"
+  local fd_value_display="$max_fd_used open"
+  if [ -n "$worker_nofile" ] && [ "$worker_nofile" -gt 0 ]; then
+    max_fd_limit="$worker_nofile"
+  fi
+  if [ -n "$max_fd_limit" ] && [ "$max_fd_limit" -gt 0 ]; then
+    fd_status="$(status_by_ratio "$max_fd_used" "$max_fd_limit" 70 85)"
+    fd_value_display="$(format_usage_pair "$max_fd_used" "$max_fd_limit" "used")"
+    fd_limit_display="$(format_limit_usage "$max_fd_limit" "$max_fd_used" "limit")"
+  fi
+  local fd_detail="Highest FD ratio across visible nginx processes."
+  if [ -n "$max_fd_pid" ]; then
+    fd_detail="${fd_detail} Hottest pid=${max_fd_pid}."
+  fi
+  add_result "fd_usage" "$fd_value_display" "$fd_limit_display" "$fd_status" "$fd_detail"
+
+  local mem_total_kb mem_available_kb mem_used_kb
+  mem_total_kb="$(read_meminfo_value_kb MemTotal)"
+  mem_available_kb="$(read_meminfo_value_kb MemAvailable)"
+  mem_total_kb="${mem_total_kb:-0}"
+  mem_available_kb="${mem_available_kb:-0}"
+  mem_used_kb=$(( mem_total_kb - mem_available_kb ))
+  local nginx_rss nginx_rss_kind
+  read -r nginx_rss nginx_rss_kind <<<"$(sum_proc_rss_bytes "${nginx_all_pids[@]}")"
+  local memory_status="INFO"
+  local memory_limit_display="unavailable"
+  local memory_value_display="unavailable"
+  local memory_detail="MemAvailable unavailable."
+  if [ "$mem_total_kb" -gt 0 ]; then
+    memory_status="$(status_by_ratio "$mem_used_kb" "$mem_total_kb" 85 95)"
+    memory_limit_display="total=$(human_bytes "$(( mem_total_kb * 1024 ))") usage=$(percent_of "$mem_used_kb" "$mem_total_kb")"
+    memory_value_display="used=$(human_bytes "$(( mem_used_kb * 1024 ))") free=$(human_bytes "$(( mem_available_kb * 1024 ))")"
+    memory_detail="host MemAvailable=$(human_bytes "$(( mem_available_kb * 1024 ))"), nginx ${nginx_rss_kind}=$(human_bytes "$nginx_rss")"
+  fi
+  add_result "memory" "$memory_value_display" "$memory_limit_display" "$memory_status" "$memory_detail"
+
+  local stub_body_before=""
+  if [ -n "$STATUS_URL" ]; then
+    stub_body_before="$(read_stub_status "$STATUS_URL")"
+  fi
+
+  local listen_overflows_before listen_drops_before backlog_drop_before syncookies_before tcp_timeouts_before
+  listen_overflows_before="$(read_netstat_counter ListenOverflows)"
+  listen_drops_before="$(read_netstat_counter ListenDrops)"
+  backlog_drop_before="$(read_netstat_counter TCPBacklogDrop)"
+  syncookies_before="$(read_netstat_counter SyncookiesSent)"
+  tcp_timeouts_before="$(read_netstat_counter TCPTimeouts)"
+  local softnet_before nic_rx_before nic_tx_before
+  softnet_before="$(read_softnet_drops_total)"
+  read -r nic_rx_before nic_tx_before <<<"$(read_nic_drop_totals)"
+
+  if [ "$DELTA_SECONDS" -gt 0 ]; then
+    sleep "$DELTA_SECONDS"
+  fi
+
+  local stub_body_after=""
+  if [ -n "$STATUS_URL" ]; then
+    stub_body_after="$(read_stub_status "$STATUS_URL")"
+  fi
+
+  local lq_ratio lq_rq lq_sq lq_addr lq_total
+  read -r lq_ratio lq_rq lq_sq lq_addr lq_total <<<"$(analyze_listen_queues)"
+  if [ "${lq_total:-0}" -gt 0 ]; then
+    local lq_status="OK"
+    if [ "${lq_ratio:-0}" -ge 80 ]; then
+      lq_status="CRIT"
+    elif [ "${lq_ratio:-0}" -ge 50 ]; then
+      lq_status="WARN"
+    fi
+    add_result "listen_queues" \
+      "max_recvq=${lq_rq:-0}/${lq_sq:-0} (${lq_ratio:-0}%)" \
+      "${lq_total:-0} listen sockets" \
+      "$lq_status" \
+      "Hottest listener: ${lq_addr:-n/a}. Recv-Q near Send-Q means the accept queue is backing up; watch ListenOverflows."
+  else
+    add_result "listen_queues" "no listeners" "ss/netstat listen" "INFO" \
+      "No LISTEN sockets visible; ss/netstat may be restricted on this host."
+  fi
+
+  local -a log_paths=()
+  mapfile -t log_paths < <(collect_pod_log_paths)
+  local total_log_bytes=0
+  local biggest_log_bytes=0
+  local biggest_log_path=""
+  if [ "${#log_paths[@]}" -gt 0 ]; then
+    total_log_bytes="$(sum_paths_bytes "${log_paths[@]}")"
+    read -r biggest_log_bytes biggest_log_path <<<"$(largest_existing_path "${log_paths[@]}")"
+  fi
+  local log_status="OK"
+  if [ "$total_log_bytes" -ge $(( 2 * 1024 * 1024 * 1024 )) ]; then
+    log_status="CRIT"
+  elif [ "$total_log_bytes" -ge $(( 512 * 1024 * 1024 )) ]; then
+    log_status="WARN"
+  fi
+  add_result "log_volume" \
+    "$(human_bytes "$total_log_bytes")" \
+    "warn>512MiB crit>2GiB" \
+    "$log_status" \
+    "Largest visible log path: ${biggest_log_path:-n/a} ($(human_bytes "$biggest_log_bytes")). top1=$(format_top_path_hint "${log_paths[@]}"). Sources include nginx config, --log-path overrides, and common defaults."
+
+  local -a error_log_paths=()
+  mapfile -t error_log_paths < <(extract_nginx_error_log_paths)
+  if [ "${#error_log_paths[@]}" -gt 0 ]; then
+    local signal_raw signal_total signal_summary
+    signal_raw="$(scan_error_log_signals "$TAIL_LINES" "${error_log_paths[@]}")"
+    signal_total="${signal_raw%%$'\t'*}"
+    signal_summary="${signal_raw#*$'\t'}"
+    local signal_status="OK"
+    if [ "${signal_total:-0}" -ge 50 ]; then
+      signal_status="CRIT"
+    elif [ "${signal_total:-0}" -gt 0 ]; then
+      signal_status="WARN"
+    fi
+    local signal_detail="Scanned last ${TAIL_LINES} lines across ${#error_log_paths[@]} error_log files."
+    if [ -n "$signal_summary" ]; then
+      signal_detail="${signal_detail} Hits: ${signal_summary}."
+    fi
+    add_result "error_log_signals" "${signal_total:-0} hits" "last ${TAIL_LINES} lines" \
+      "$signal_status" "$signal_detail"
+  else
+    add_result "error_log_signals" "no error_log" "nginx -T required" "INFO" \
+      "No nginx error_log paths resolved from config; scan skipped."
+  fi
+
+  if command_exists lsof; then
+    local deleted_count deleted_bytes
+    read -r deleted_count deleted_bytes <<<"$(
+      lsof -nP +L1 2>/dev/null | awk '
+        NR > 1 && $NF == "(deleted)" && $1 == "nginx" {
+          count++
+          if ($7 ~ /^[0-9]+$/) {
+            bytes += $7
+          }
+        }
+        END {print count + 0, bytes + 0}
+      '
+    )"
+    local deleted_status="OK"
+    if [ "$deleted_bytes" -ge $(( 256 * 1024 * 1024 )) ]; then
+      deleted_status="CRIT"
+    elif [ "$deleted_count" -gt 0 ]; then
+      deleted_status="WARN"
+    fi
+    add_result "deleted_open_logs" \
+      "$deleted_count files" \
+      "0 expected" \
+      "$deleted_status" \
+      "Deleted-but-open bytes=$(human_bytes "$deleted_bytes"). These files keep disk space until nginx closes them."
+  else
+    add_result "deleted_open_logs" "skipped" "requires lsof" "INFO" \
+      "Install lsof to detect deleted-but-open log files."
+  fi
+
+  if [ -n "$STATUS_URL" ]; then
+    if [ -z "$stub_body_after" ]; then
+      add_result "stub_status" "unreachable" "$STATUS_URL" "WARN" \
+        "Failed to fetch nginx stub_status endpoint."
+    else
+      local a_active a_reading a_writing a_waiting a_accepts a_handled a_requests
+      local b_active b_reading b_writing b_waiting b_accepts b_handled b_requests
+      read -r a_active a_reading a_writing a_waiting a_accepts a_handled a_requests \
+        <<<"$(parse_stub_status_values "$stub_body_after")"
+      read -r b_active b_reading b_writing b_waiting b_accepts b_handled b_requests \
+        <<<"$(parse_stub_status_values "${stub_body_before:-$stub_body_after}")"
+
+      local accepts_delta=$(( a_accepts - b_accepts ))
+      local handled_delta=$(( a_handled - b_handled ))
+      local requests_delta=$(( a_requests - b_requests ))
+      local dropped_delta=$(( accepts_delta - handled_delta ))
+      [ "$dropped_delta" -lt 0 ] && dropped_delta=0
+
+      local rate_denom="$DELTA_SECONDS"
+      local rate_detail="rate window=${DELTA_SECONDS}s"
+      if [ "${rate_denom:-0}" -le 0 ]; then
+        rate_denom=1
+        rate_detail="no rate window (--delta-seconds=0)"
+      fi
+      local accepts_rate=$(( accepts_delta / rate_denom ))
+      local handled_rate=$(( handled_delta / rate_denom ))
+      local requests_rate=$(( requests_delta / rate_denom ))
+
+      local stub_status="OK"
+      if [ "$theoretical_capacity" -gt 0 ]; then
+        stub_status="$(status_by_ratio "$a_active" "$theoretical_capacity" 70 85)"
+      fi
+      if [ "$dropped_delta" -gt 0 ]; then
+        stub_status="$(merge_status "$stub_status" "WARN")"
+      fi
+
+      add_result "stub_status" \
+        "active=${a_active} req/s=${requests_rate}" \
+        "${STATUS_URL}" \
+        "$stub_status" \
+        "reading=${a_reading}, writing=${a_writing}, waiting=${a_waiting}, accepts/s=${accepts_rate}, handled/s=${handled_rate}, dropped_accepts=${dropped_delta} (${rate_detail})."
+    fi
+  fi
+
+  local conntrack_count conntrack_max
+  conntrack_count="$(read_proc_value /proc/sys/net/netfilter/nf_conntrack_count 0)"
+  conntrack_max="$(read_proc_value /proc/sys/net/netfilter/nf_conntrack_max 0)"
+  local conntrack_status="INFO"
+  if [ "$conntrack_max" -gt 0 ]; then
+    conntrack_status="$(status_by_ratio "$conntrack_count" "$conntrack_max" 70 85)"
+  fi
+  local conntrack_detail="nf_conntrack_count=${conntrack_count}"
+  if command_exists dmesg; then
+    local table_full_hits
+    table_full_hits="$(dmesg 2>/dev/null | grep -ci 'nf_conntrack: table full' || true)"
+    if [ "${table_full_hits:-0}" -gt 0 ]; then
+      conntrack_status="$(merge_status "$conntrack_status" "WARN")"
+      conntrack_detail="$conntrack_detail, dmesg has ${table_full_hits} 'table full' hits"
+    fi
+  fi
+  local conntrack_value_display="$conntrack_count"
+  local conntrack_limit_display="${conntrack_max:-unknown}"
+  if [ "$conntrack_max" -gt 0 ]; then
+    conntrack_value_display="$(format_usage_pair "$conntrack_count" "$conntrack_max" "used")"
+    conntrack_limit_display="$(format_limit_usage "$conntrack_max" "$conntrack_count" "max")"
+  fi
+  add_result "conntrack" "$conntrack_value_display" "$conntrack_limit_display" "$conntrack_status" \
+    "$conntrack_detail"
+
+  local sockstat_line tcp_inuse tcp_orphan tcp_tw tcp_alloc tcp_mem
+  sockstat_line="$(awk '/^TCP:/ {print $0; exit}' /proc/net/sockstat 2>/dev/null)"
+  tcp_inuse="$(printf "%s\n" "$sockstat_line" | awk '{for (i = 1; i <= NF; i++) if ($i == "inuse") print $(i + 1)}')"
+  tcp_orphan="$(printf "%s\n" "$sockstat_line" | awk '{for (i = 1; i <= NF; i++) if ($i == "orphan") print $(i + 1)}')"
+  tcp_tw="$(printf "%s\n" "$sockstat_line" | awk '{for (i = 1; i <= NF; i++) if ($i == "tw") print $(i + 1)}')"
+  tcp_alloc="$(printf "%s\n" "$sockstat_line" | awk '{for (i = 1; i <= NF; i++) if ($i == "alloc") print $(i + 1)}')"
+  tcp_mem="$(printf "%s\n" "$sockstat_line" | awk '{for (i = 1; i <= NF; i++) if ($i == "mem") print $(i + 1)}')"
+  local tcp_max_orphans
+  tcp_max_orphans="$(read_sysctl_value net.ipv4.tcp_max_orphans)"
+  local sock_status="OK"
+  if [ -n "$tcp_max_orphans" ] && [ "$tcp_max_orphans" -gt 0 ]; then
+    sock_status="$(merge_status "$sock_status" "$(status_by_ratio "${tcp_orphan:-0}" "$tcp_max_orphans" 50 80)")"
+  elif [ "${tcp_orphan:-0}" -ge 30000 ]; then
+    sock_status="CRIT"
+  elif [ "${tcp_orphan:-0}" -ge 10000 ]; then
+    sock_status="WARN"
+  fi
+  local tcp_total_host
+  tcp_total_host="$(count_total_tcp)"
+  add_result "sockstat" \
+    "inuse=${tcp_inuse:-0}, tw=${tcp_tw:-0}, orphan=${tcp_orphan:-0}" \
+    "orphan<${tcp_max_orphans:-unknown}" \
+    "$sock_status" \
+    "alloc=${tcp_alloc:-0}, mem=${tcp_mem:-0}, ratios: $(format_state_ratio "${tcp_inuse:-0}" "$tcp_total_host" "inuse"), $(format_state_ratio "${tcp_tw:-0}" "$tcp_total_host" "tw"), top_estab_peer=$(format_top_tcp_peer "ESTAB")"
+
+  local files_allocated files_limit
+  read -r files_allocated _ files_limit <<<"$(awk '{print $1, $2, $3}' /proc/sys/fs/file-nr 2>/dev/null)"
+  files_allocated="${files_allocated:-0}"
+  files_limit="${files_limit:-0}"
+  local file_status="INFO"
+  local file_limit_display="unavailable"
+  local file_value_display="$files_allocated open"
+  if [ -n "$files_limit" ] && [ "$files_limit" -gt 0 ]; then
+    file_status="$(status_by_ratio "$files_allocated" "$files_limit" 70 85)"
+    file_value_display="$(format_usage_pair "$files_allocated" "$files_limit" "used")"
+    file_limit_display="$(format_limit_usage "$files_limit" "$files_allocated" "limit")"
+  fi
+  add_result "file_handles" "$file_value_display" "$file_limit_display" "$file_status" \
+    "System-wide file handle usage from /proc/sys/fs/file-nr."
+
+  local listen_overflows_after listen_drops_after backlog_drop_after syncookies_after tcp_timeouts_after
+  listen_overflows_after="$(read_netstat_counter ListenOverflows)"
+  listen_drops_after="$(read_netstat_counter ListenDrops)"
+  backlog_drop_after="$(read_netstat_counter TCPBacklogDrop)"
+  syncookies_after="$(read_netstat_counter SyncookiesSent)"
+  tcp_timeouts_after="$(read_netstat_counter TCPTimeouts)"
+  local softnet_after nic_rx_after nic_tx_after
+  softnet_after="$(read_softnet_drops_total)"
+  read -r nic_rx_after nic_tx_after <<<"$(read_nic_drop_totals)"
+
+  local listen_overflows_delta=$(( ${listen_overflows_after:-0} - ${listen_overflows_before:-0} ))
+  local listen_drops_delta=$(( ${listen_drops_after:-0} - ${listen_drops_before:-0} ))
+  local backlog_drop_delta=$(( ${backlog_drop_after:-0} - ${backlog_drop_before:-0} ))
+  local syncookies_delta=$(( ${syncookies_after:-0} - ${syncookies_before:-0} ))
+  local tcp_timeouts_delta=$(( ${tcp_timeouts_after:-0} - ${tcp_timeouts_before:-0} ))
+  local softnet_delta=$(( softnet_after - softnet_before ))
+  local nic_rx_delta=$(( nic_rx_after - nic_rx_before ))
+  local nic_tx_delta=$(( nic_tx_after - nic_tx_before ))
+
+  local backlog_status="OK"
+  if [ "$listen_overflows_delta" -gt 0 ] || [ "$listen_drops_delta" -gt 0 ] || [ "$backlog_drop_delta" -gt 0 ]; then
+    backlog_status="CRIT"
+  elif [ "$syncookies_delta" -gt 100 ] || [ "$tcp_timeouts_delta" -gt 100 ]; then
+    backlog_status="WARN"
+  fi
+  local backlog_total_bad_delta=$(( listen_drops_delta + listen_overflows_delta + backlog_drop_delta ))
+  add_result "listen_backlog" \
+    "drop=${listen_drops_delta}, overflow=${listen_overflows_delta}, bad=${backlog_total_bad_delta}" \
+    "${DELTA_SECONDS}s delta" \
+    "$backlog_status" \
+    "TCPBacklogDrop=${backlog_drop_delta}, SyncookiesSent=${syncookies_delta}, TCPTimeouts=${tcp_timeouts_delta}"
+
+  local softnet_status="OK"
+  if [ "$softnet_delta" -gt 100 ] || [ "$nic_rx_delta" -gt 100 ] || [ "$nic_tx_delta" -gt 100 ]; then
+    softnet_status="CRIT"
+  elif [ "$softnet_delta" -gt 0 ] || [ "$nic_rx_delta" -gt 0 ] || [ "$nic_tx_delta" -gt 0 ]; then
+    softnet_status="WARN"
+  fi
+  local packet_total_delta=$(( softnet_delta + nic_rx_delta + nic_tx_delta ))
+  add_result "packet_drop" \
+    "softnet=${softnet_delta}, rx=${nic_rx_delta}, tx=${nic_tx_delta}, total=${packet_total_delta}" \
+    "${DELTA_SECONDS}s delta" \
+    "$softnet_status" \
+    "Any sustained increase means the host network stack or NIC is dropping packets."
+
+  local root_usage inode_usage
+  root_usage="$(read_df_usage_pct /)"
+  inode_usage="$(read_df_inode_pct /)"
+  local root_total_bytes root_used_bytes root_avail_bytes
+  read -r root_total_bytes root_used_bytes root_avail_bytes <<<"$(read_df_bytes_triplet /)"
+  local disk_root_value="${root_usage:-unknown}%"
+  local disk_root_limit="warn>=80 crit>=90"
+  if [ -n "${root_total_bytes:-}" ] && [ "$root_total_bytes" -gt 0 ]; then
+    disk_root_value="used=${root_usage:-unknown}% free=$(human_bytes "${root_avail_bytes:-0}")"
+    disk_root_limit="total=$(human_bytes "$root_total_bytes") used=$(human_bytes "${root_used_bytes:-0}")"
+  fi
+  add_result "disk_root" "$disk_root_value" "$disk_root_limit" \
+    "$(status_by_threshold "${root_usage:-0}" 80 90)" \
+    "Filesystem usage for /."
+  local inode_total inode_used inode_free
+  read -r inode_total inode_used inode_free <<<"$(read_df_inode_triplet /)"
+  local inode_root_value="${inode_usage:-unknown}%"
+  local inode_root_limit="warn>=80 crit>=90"
+  if [ -n "${inode_total:-}" ] && [ "$inode_total" -gt 0 ]; then
+    inode_root_value="used=${inode_usage:-unknown}% free=${inode_free:-0}"
+    inode_root_limit="total=${inode_total:-0} used=${inode_used:-0}"
+  fi
+  add_result "inode_root" "$inode_root_value" "$inode_root_limit" \
+    "$(status_by_threshold "${inode_usage:-0}" 80 90)" \
+    "Inode usage for /."
+
+  local cpu_some_avg10 mem_full_avg10 io_full_avg10
+  cpu_some_avg10="$(read_psi_avg10 /proc/pressure/cpu some)"
+  mem_full_avg10="$(read_psi_avg10 /proc/pressure/memory full)"
+  io_full_avg10="$(read_psi_avg10 /proc/pressure/io full)"
+  if [ -n "$cpu_some_avg10" ]; then
+    add_result "psi_cpu" "${cpu_some_avg10} avg10" "warn>=20 crit>=50" \
+      "$(awk -v v="$cpu_some_avg10" 'BEGIN { if (v + 0 >= 50) print "CRIT"; else if (v + 0 >= 20) print "WARN"; else print "OK" }')" \
+      "CPU pressure avg10 from /proc/pressure/cpu."
+  fi
+  if [ -n "$mem_full_avg10" ]; then
+    add_result "psi_memory" "${mem_full_avg10} avg10" "warn>0 crit>=1" \
+      "$(awk -v v="$mem_full_avg10" 'BEGIN { if (v + 0 >= 1) print "CRIT"; else if (v + 0 > 0) print "WARN"; else print "OK" }')" \
+      "Memory full pressure avg10 from /proc/pressure/memory."
+  fi
+  if [ -n "$io_full_avg10" ]; then
+    add_result "psi_io" "${io_full_avg10} avg10" "warn>=1 crit>=5" \
+      "$(awk -v v="$io_full_avg10" 'BEGIN { if (v + 0 >= 5) print "CRIT"; else if (v + 0 >= 1) print "WARN"; else print "OK" }')" \
+      "IO full pressure avg10 from /proc/pressure/io."
+  fi
+
+  if [ -n "$TCP_PROBE" ]; then
+    local probe_result
+    probe_result="$(run_tcp_probe "$TCP_PROBE" "$PROBE_TIMEOUT")"
+    case "$probe_result" in
+      ok)
+        add_result "tcp_probe" "connect ok" "$TCP_PROBE" "OK" "Simple TCP connect succeeded."
+        ;;
+      failed)
+        add_result "tcp_probe" "connect failed" "$TCP_PROBE" "CRIT" "Simple TCP connect failed."
+        ;;
+      missing-timeout)
+        add_result "tcp_probe" "skipped" "requires timeout" "INFO" "Install coreutils timeout to enable --probe."
+        ;;
+      *)
+        add_result "tcp_probe" "invalid target" "$TCP_PROBE" "WARN" "Use host:port format."
+        ;;
+    esac
+  fi
+}
+
 check_node_mode() {
   local conntrack_count conntrack_max
   conntrack_count="$(read_proc_value /proc/sys/net/netfilter/nf_conntrack_count 0)"
@@ -2820,9 +3437,9 @@ parse_args() {
   done
 
   case "$MODE" in
-    pod|node) ;;
+    pod|node|host) ;;
     *)
-      printf '%s\n\n' "--mode pod|node is required." >&2
+      printf '%s\n\n' "--mode pod|node|host is required." >&2
       usage >&2
       exit 2
       ;;
@@ -2843,8 +3460,8 @@ parse_args() {
     exit 2
   fi
 
-  if [ -n "$NGINX_CONF" ] && [ "$MODE" != "pod" ]; then
-    printf '%s\n' "--nginx-conf is only supported in pod mode." >&2
+  if [ -n "$NGINX_CONF" ] && [ "$MODE" != "pod" ] && [ "$MODE" != "host" ]; then
+    printf '%s\n' "--nginx-conf is only supported in pod or host mode." >&2
     exit 2
   fi
 
@@ -2903,6 +3520,9 @@ main() {
       ;;
     node)
       check_node_mode
+      ;;
+    host)
+      check_host_mode
       ;;
   esac
 
