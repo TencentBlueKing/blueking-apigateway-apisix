@@ -1,192 +1,254 @@
 # AGENTS.md
 
+## Scope
 
-### Plugin Architecture
+This guide applies to `src/apisix/`, the BlueKing APISIX data-plane plugin
+tree. The repository root `AGENTS.md` is the project map; for normal plugin
+work, use this file as the closer instruction source.
 
-All BlueKing plugins follow the `bk-*` naming convention and execute in a specific priority order (17000-19000):
+Do not edit `../apisix-core/` for BlueKing plugin work unless the task is
+explicitly about APISIX upstream behavior. APISIX source is a submodule used
+for reference. Local APISIX patches live under `../build/patches/`.
 
-You can read the @plugins/README.md for more details
+## Project Layout
 
-1. **Context Injection Phase (18800-19000)**: Inject request context
-   - `bk-request-id`, `bk-stage-context`, `bk-resource-context`, `bk-log-context`, etc.
+- `plugins/`: BlueKing APISIX plugins and shared Lua modules.
+- `plugins/bk-core/`: common helpers such as `errorx`, `config`, `request`,
+  `upstream`, `oauth2`, `proxy_phases`, `url`, and string helpers.
+- `plugins/bk-components/`: clients for BlueKing services such as bkauth,
+  bklogin, bkuser, ssm, and bk-apigateway-core.
+- `plugins/bk-cache/` and `plugins/bk-cache-fallback/`: lrucache-backed
+  auth, tenant, JWT, OAuth2, and fallback cache helpers.
+- `plugins/bk-define/`: small domain objects for apps, users, access tokens,
+  and context data.
+- `tests/`: Busted unit tests. Top-level plugin tests use
+  `tests/test-bk-*.lua`; helper module tests live in subdirectories such as
+  `tests/bk-auth-verify/test-*.lua`.
+- `t/`: test-nginx functional tests. Cases are named `t/bk-*.t`.
+- `ci/`: Dockerfiles and scripts used by `make test-busted` and
+  `make test-nginx`.
+- `editions/`: edition-specific source files linked into this tree by
+  `editionctl`.
 
-2. **Authentication Phase (18700-18800)**: Verify access tokens and users
-   - `bk-access-token-source`, `bk-auth-verify`, `bk-username-required`
+## Setup
 
-3. **Authorization/Rate Limiting Phase (17600-17700)**: Apply security policies
-   - `bk-auth-validate`, `bk-jwt`, `bk-ip-restriction`, `bk-permission`, rate limiters
-
-4. **Proxy Pre-processing Phase (17000-17500)**: Transform requests before proxying
-   - `bk-delete-sensitive`, `bk-proxy-rewrite`, `bk-mock`
-
-5. **Response Post-processing Phase (0-200)**: Handle responses
-   - `bk-response-check`, `bk-debug`, `bk-error-wrapper`
-
-### Shared Components (bk-core)
-
-The `plugins/bk-core/` directory contains shared utilities:
-- `errorx.lua`: Standardized error handling and response formatting
-- `config.lua`: Configuration management
-- `request.lua`: Request utilities
-- `upstream.lua`: Upstream handling
-- Other utilities: `cookie.lua`, `hmac.lua`, `url.lua`, `string.lua`
-
-### Error Handling Pattern
-
-All plugins use the standardized error handling from `bk-core.errorx`:
-
-```lua
-local errorx = require("apisix.plugins.bk-core.errorx")
-
--- Generate error
-local err = errorx.new_user_verify_failed()
-err = err:with_field("key", "value")
-
--- Exit with error
-return errorx.exit_with_apigw_err(ctx, err, _M)
-```
-
-## Development Commands
-
-
-### Testing
+From the repository root, install the Python dependency that provides
+`editionctl`:
 
 ```bash
-# Build test images (required first time, or when ci/Dockerfile.apisix-test-busted or ci/Dockerfile.apisix-test-nginx change)
+python -m pip install -r src/apisix/requirements.txt
+```
+
+Build the Docker test images before running lint or tests for the first time,
+or after changing `ci/Dockerfile.apisix-test-*` or `ci/run-test-*.sh`:
+
+```bash
+cd src/apisix
+make apisix-test-images
+```
+
+The GitHub Actions workflow for APISIX uses Python `3.10.16`, installs
+`src/apisix/requirements.txt`, switches to EE with `make edition-ee`, then runs
+`make lint RUN_WITH_IT=""` and `make test RUN_WITH_IT=""` from `src/apisix`.
+
+## Common Commands
+
+Run these from `src/apisix` unless noted.
+
+```bash
+# Show or switch edition
+make edition
+make edition-ee
+make edition-te
+make edition-reset
+
+# Build test images
 make apisix-test-images
 
-# Run all tests (busted unit tests + test-nginx functional tests)
+# Lint plugins with luacheck
+make lint
+
+# Run all APISIX tests
 make test
 
-# Run only busted unit tests
+# Run only Busted unit tests
 make test-busted
 
-# Run only test-nginx functional tests
+# Run only test-nginx cases
 make test-nginx
 
-# Run specific test-nginx test case
+# Run one test-nginx case; the runner also runs t/bk-00.t
 make test-nginx CASE_FILE=bk-traffic-label.t
 ```
 
-### Linting and Code Quality
+In non-TTY environments, clear `RUN_WITH_IT`:
 
 ```bash
-# Run luacheck linter
-make lint
+RUN_WITH_IT= make lint
+RUN_WITH_IT= make test
+```
 
-# Check license headers on all Lua files
+The license check is a repository-root target, not a `src/apisix` target:
+
+```bash
+cd ../..
 make check-license
-
-# Pre-commit hooks run automatically on commit
-# Manually run: pre-commit run --all-files
 ```
 
-### Edition Management
+## Edition Workflow
 
-The project supports multiple editions (TE/EE):
+`editionctl.toml` defines `TE` and `EE`. `edition-metadata.json` records the
+currently linked edition and the external files controlled by that edition. CI
+switches to EE before lint and tests.
+
+When touching an edition-controlled file, edit the source under
+`editions/<edition>/...` first, then relink and test from `src/apisix`:
 
 ```bash
-# Check current edition
-make edition
-
-# Switch to Enterprise Edition (EE)
-make edition-ee
-
-# Switch to Tencent Edition (TE)
-make edition-te
-
-# Reset to base edition
 make edition-reset
+make edition-ee
+make test
 ```
 
-#### Edition-Specific Links (TE/EE)
+Check that the target edition directory exists in the current checkout before
+assuming TE or EE files are available.
 
-Edition files in `src/apisix/editions/te/` and `src/apisix/editions/ee/` are
-linked into `src/apisix/` by `make edition-te` / `make edition-ee`. If you
-modify an edition-controlled file, change the file under `src/apisix/editions/*`
-and then re-link before running tests.
+## Plugin Architecture
 
-```bash
-# EE flow
-make edition-reset && make edition-ee && make test
+BlueKing plugins normally use the `bk-*` naming convention, but priority values
+are not limited to one range. The source of truth is the `priority` field in
+each plugin module. Keep `plugins/README.md` in sync when adding a plugin or
+changing a priority.
 
-# TE flow
-make edition-reset && make edition-te && make test
-```
+Current priority bands:
 
-Notes:
-- Run tests from `src/apisix` (the repo root does not have `make test`).
-- In non-TTY environments, use `RUN_WITH_IT= make test`.
+- Context and compatibility: high `188xx` priorities, including request,
+  stage, backend, resource, real-IP, and log context plugins.
+- Authentication and OAuth2: `187xx` priorities, including
+  `bk-oauth2-protected-resource`, `bk-access-token-source`,
+  `bk-oauth2-verify`, `bk-auth-verify`, and `bk-username-required`.
+- Request validation, tenant checks, authorization, and rate limiting:
+  `176xx` to `179xx` priorities.
+- Proxy preprocessing: `174xx` priorities, including traffic labels,
+  sensitive data removal, tenant defaults, and header or proxy rewrite plugins.
+- Response, logging, and wrappers: lower priorities such as `399`, `153`,
+  `145`, and `0`. `bk-error-wrapper` runs at priority `0`.
 
-## Plugin Development Guidelines
+Before adding an early return to a high-priority context plugin, verify the
+priority contract in `plugins/README.md` and nearby plugins. Some handlers are
+special purpose, but context setup is usually expected to prepare `ctx.var` for
+later plugins.
 
-### Naming Conventions
+## Auth and Context Contracts
 
-- Plugin file: `src/apisix/plugins/bk-{name}.lua`
-- Busted unit test: `src/apisix/tests/test-bk-{name}.lua`
-- Test-nginx file: `src/apisix/t/bk-{name}.t`
-- Update `src/apisix/plugins/README.md` with plugin priority and description
+- Use `bk-core.errorx` for user-facing APIGW errors:
 
-### Code Style (from Cursor rules)
+  ```lua
+  local errorx = require("apisix.plugins.bk-core.errorx")
 
-1. **Indentation**: 4 spaces
-2. **Spacing**: Spaces around operators (`local i = 1`)
-3. **No semicolons**
-4. **Two blank lines** between functions
-5. **One blank line** between elseif branches
-6. **Max line length**: 100 characters
-7. **Variable naming**: `snake_case` (constants: `UPPER_CASE`)
-8. **Function naming**: `snake_case`
-9. **Return early** from functions
-10. **Return pattern**: `<boolean>, err` (success flag, error message)
+  local err = errorx.new_user_verify_failed()
+  err = err:with_field("key", "value")
 
-### Required Patterns
+  return errorx.exit_with_apigw_err(ctx, err, _M)
+  ```
 
-```lua
--- Localize all requires and ngx at the top
-local ngx = ngx
-local require = require
-local core = require("apisix.core")
-local errorx = require("apisix.plugins.bk-core.errorx")
+- `bk-auth-verify` chooses verifiers in this order: `jwt`, then
+  `access_token`, then `inner_jwt`. Preserve that order unless the task
+  explicitly changes the auth contract and includes focused tests.
+- OAuth2 flow depends on `ctx.var.is_bk_oauth2` and `ctx.var.audience` across
+  `bk-oauth2-protected-resource`, `bk-oauth2-verify`, and
+  `bk-oauth2-audience-validate`.
+- MCP virtual app codes use `v_mcp_{mcp_service_id}_{app_code}`. Use
+  `bk_app:get_real_app_code()` when downstream services expect the real app
+  code, such as tenant lookup or signing JWTs.
+- Do not log raw tokens or secrets. Follow existing masking patterns such as
+  the OAuth2 token hint logs.
 
--- Pre-allocate tables
-local new_tab = require("table.new")
-local t = new_tab(100, 0)
+## Lua Style
 
--- Error handling (check for nil/falsy, then return error string)
-local result, err = func()
-if not result then
-    return nil, "failed to call func(): " .. err
-end
+Follow the existing Lua style in nearby files:
 
--- Export private functions for testing
-if _TEST then
-    _M._private_function = private_function
-end
-```
+- 4-space indentation, no semicolons, and 100-column-ish lines.
+- `snake_case` for variables and functions; `UPPER_CASE` for constants.
+- Localize globals and requires near the top:
 
-### Testing Patterns
+  ```lua
+  local ngx = ngx
+  local require = require
+  local core = require("apisix.core")
+  ```
 
-**Busted Unit Tests** (`tests/test-bk-*.lua`):
-- Use stubs to mock external dependencies
-- Test private functions by exporting them with `if _TEST then`
-- Clear/revert stubs in `after_each`
-- Use assertions: `assert.is_nil(err)`, `assert.is_true(ok)`, `assert.is_equal(a, b)`
+- Prefer early returns and simple `<value>, err` returns for helpers.
+- Return string error messages from internal helpers:
 
-**Test-nginx** (`t/bk-*.t`):
-- Functional/integration tests that simulate real HTTP requests
-- Test full request/response flow through APISIX
-- Reference: https://openresty.gitbooks.io/programming-openresty/content/testing/index.html
+  ```lua
+  local result, err = func()
+  if not result then
+      return nil, "failed to call func(): " .. err
+  end
+  ```
 
-## License
+- Export private helpers only under `_TEST`:
 
-All new Lua files must include the TencentBlueKing MIT license header. The `make check-license` command verifies this.
+  ```lua
+  if _TEST then
+      _M._private_function = private_function
+  end
+  ```
 
-## Important Notes
+- `src/apisix/.luacheckrc` uses `std = "bkgw+ngx_lua"`, permits `_TEST`, and
+  sets `unused_args = false`.
 
-- Custom plugins should NOT modify APISIX core directly; use patches in `src/build/patches/`
-- Plugin priority determines execution order - consult `src/apisix/plugins/README.md` before setting
-- Context injection plugins must NOT terminate requests (return early)
-- All plugins should use `bk-core.errorx` for error handling to ensure consistent error responses
-- The `bk-error-wrapper` plugin (priority: 0) wraps all errors in a standard format, so it runs last
-- MCP virtual app codes are formatted as `v_mcp_{mcp_service_id}_{app_code}`; use `bk_app:get_real_app_code()` when you need the real app code (tenant lookup, signing JWT, etc.)
+## Testing Guidance
+
+Busted unit tests:
+
+- Add or update Busted tests for plugin helper logic and branchy auth/cache
+  behavior.
+- `tests/busted_helper.lua` sets `_TEST = true`, defines helpers such as
+  `CTX`, `RANDSTR`, `RANDINT`, and clears `busted_resty` state after each test.
+- Revert or clear stubs in `after_each`.
+- Common assertions include `assert.is_nil(err)`, `assert.is_true(ok)`,
+  `assert.is_false(ok)`, `assert.is_equal(a, b)`, and
+  `assert.stub(s).was_called_with(...)`.
+
+test-nginx functional tests:
+
+- Use `t/bk-*.t` for request/response flow through APISIX.
+- `ci/run-test-nginx.sh` starts etcd, copies `plugins/` and `t/` into the
+  APISIX test runtime, registers `bk-*.lua` plugins, injects `bk_gateway`
+  config, and runs `prove`.
+- `make test-nginx CASE_FILE=name.t` runs `t/bk-00.t` plus the named case.
+
+For plugin changes, prefer a focused Busted test first. Add a test-nginx case
+when behavior depends on APISIX request phases, routing, headers, response
+filters, or log-phase behavior.
+
+## Verification Before Handoff
+
+- Markdown-only changes can skip `make lint` and `make test`; verify the diff
+  instead.
+- Lua or test changes should pass, from `src/apisix`:
+
+  ```bash
+  RUN_WITH_IT= make lint
+  RUN_WITH_IT= make test
+  ```
+
+- If you add a new Lua file, also run the root license check:
+
+  ```bash
+  cd ../..
+  make check-license
+  ```
+
+- If test images are missing or stale, run `make apisix-test-images` before
+  lint/test. If Docker or the images are unavailable, report that explicitly
+  instead of claiming the checks passed.
+
+## PR Notes
+
+The repository PR template expects a description, related issue or context,
+code style check, unit tests, passing tests, and local integration validation
+when applicable. Keep PRs narrow: plugin behavior, edition source files,
+README/priority docs, and tests should stay in sync with the specific change.
