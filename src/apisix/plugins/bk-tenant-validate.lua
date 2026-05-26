@@ -155,6 +155,10 @@ local function validate_header_tenant_id(ctx, gateway_tenant_mode, gateway_tenan
 end
 
 function _M.rewrite(conf, ctx) -- luacheck: ignore
+    if ctx.var.bk_skip_tenant_validate then
+        return
+    end
+
     local gateway_tenant_mode = conf.tenant_mode
     local gateway_tenant_id = conf.tenant_id
 
