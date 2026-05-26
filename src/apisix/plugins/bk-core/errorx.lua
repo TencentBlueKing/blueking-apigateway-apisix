@@ -279,6 +279,35 @@ function _M.new_bk_user_not_allowed()
     return setmetatable(error, mt)
 end
 
+function _M.new_bk_tenant_not_allowed()
+    local error = {
+        error = {
+            code = 1640304,
+            code_name = "BK_TENANT_NOT_ALLOWED",
+            message = "Request rejected by bk-tenant restriction",
+            result = false,
+            data = cjson_null,
+        },
+        status = 403,
+    }
+    return setmetatable(error, mt)
+end
+
+function _M.new_content_blocked_by_moderation()
+    local error = {
+        error = {
+            code = 1640305,
+            code_name = "CONTENT_BLOCKED_BY_MODERATION",
+            message = "Request blocked by content moderation policy",
+            result = false,
+            data = cjson_null,
+        },
+        status = 403,
+    }
+    return setmetatable(error, mt)
+end
+
+
 function _M.new_request_body_size_exceed()
     local error = {
         error = {

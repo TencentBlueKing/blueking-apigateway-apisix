@@ -75,11 +75,13 @@ apisix-core: .gitmodules
 apisix-dependencies: apisix-core
 	# yum install -y openresty-openssl-devel
 	luarocks install --tree .lua_modules --only-deps --keep \
-	${WORKSPACE}/src/apisix-core/rockspec/apisix-3.2.0-0.rockspec --server https://luarocks.cn
+	${WORKSPACE}/src/apisix-core/apisix-master-0.rockspec --server https://luarocks.cn
 
 .PHONY: apisix-dev-image
 apisix-dev-image: edition-ee
 	docker build -f Dockerfile . -t bk-micro-gateway-apisix:development
+	docker tag bk-micro-gateway-apisix:development mirrors.tencent.com/build/blueking/bk-micro-gateway-apisix:v1.20.0
+
 
 
 
