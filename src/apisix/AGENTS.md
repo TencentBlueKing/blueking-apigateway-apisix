@@ -199,7 +199,63 @@ Follow the existing Lua style in nearby files:
 - `src/apisix/.luacheckrc` uses `std = "bkgw+ngx_lua"`, permits `_TEST`, and
   sets `unused_args = false`.
 
-## Testing Guidance
+Notes:
+- Run tests from `src/apisix` (the repo root does not have `make test`).
+- In non-TTY environments, use `RUN_WITH_IT= make test`.
+
+## Plugin Development Guidelines
+
+- You can read the other plugins source code and test code to help you write the new plugin and test code.
+
+### Plugin Isolation
+
+- New plugins MUST define their own schema and `check_schema` function inline. Do NOT import or depend on another plugin's schema, functions, or module.
+- Each plugin should be as self-contained as possible. Shared utilities from `bk-core/` are acceptable, but cross-plugin dependencies are not.
+
+### Naming Conventions
+
+- Plugin file: `src/apisix/plugins/bk-{name}.lua`
+- Busted unit test: `src/apisix/tests/test-bk-{name}.lua`
+- Test-nginx file: `src/apisix/t/bk-{name}.t`
+- Update `src/apisix/plugins/README.md` with plugin priority and description
+
+### Code Style (from Cursor rules)
+
+1. **Indentation**: 4 spaces
+2. **Spacing**: Spaces around operators (`local i = 1`)
+3. **No semicolons**
+4. **Two blank lines** between functions
+5. **One blank line** between elseif branches
+6. **Max line length**: 100 characters
+7. **Variable naming**: `snake_case` (constants: `UPPER_CASE`)
+8. **Function naming**: `snake_case`
+9. **Return early** from functions
+10. **Return pattern**: `<boolean>, err` (success flag, error message)
+
+### Required Patterns
+
+```lua
+-- Localize all requires and ngx at the top
+local ngx = ngx
+local require = require
+local core = require("apisix.core")
+local errorx = require("apisix.plugins.bk-core.errorx")
+
+-- Pre-allocate tables
+local new_tab = require("table.new")
+local t = new_tab(100, 0)
+
+-- Error handling (check for nil/falsy, then return error string)
+local result, err = func()
+if not result then
+    return nil, "failed to call func(): " .. err
+end
+
+-- Export private functions for testing
+if _TEST then
+    _M._private_function = private_function
+end
+```
 
 Busted unit tests:
 
