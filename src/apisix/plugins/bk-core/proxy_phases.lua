@@ -21,6 +21,6 @@ return {
     PROXYING = "proxing",
     CONNECTING = "connecting",
     HEADER_WAITING = "header-waiting",
-    HEAEDER_RECEIVING = "header-receiving",
+    HEADER_RECEIVING = "header-receiving",
     FINISH = "finish",
 }
