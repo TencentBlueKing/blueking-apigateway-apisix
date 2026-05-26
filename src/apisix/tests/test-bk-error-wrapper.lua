@@ -601,7 +601,7 @@ describe(
                 )
 
                 it(
-                    "502 cannot read complete header", function()
+                    "502 partial header shape waits for refactor evidence", function()
                         ngx.status = 502
                         local ctx = {
                             var = {
@@ -612,10 +612,8 @@ describe(
                             },
                         }
                         local phase, err = plugin._get_upstream_error_msg(ctx)
-                        assert.is_equal(proxy_phases.HEADER_RECEIVING, phase)
-                        assert.is_equal(
-                            "cannot read header from upstream OR upstream prematurely closed connection", err
-                        )
+                        assert.is_equal(proxy_phases.FINISH, phase)
+                        assert.is_nil(err)
 
                     end
                 )

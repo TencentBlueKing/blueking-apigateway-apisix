@@ -118,12 +118,22 @@ local function _get_upstream_error_msg(ctx)
                     return proxy_phases.HEADER_WAITING, "cannot read header from upstream"
                 end
 
-                if upstream_bytes_received > 0 and upstream_header_time == 0 then
-                    -- 收到了一些字节，但 header 始终没有完整解析出来
-                    -- 可能是：upstream 发了一半就断了，或者响应不是合法 HTTP
-                    return proxy_phases.HEADER_RECEIVING,
-                        "cannot read header from upstream OR upstream prematurely closed connection"
-                end
+                -- TODO(refactor): keep this branch in this PR, but it is broader
+                -- than the connection-refused fix above. In header_filter, any
+                -- non-FINISH phase sets proxy_error=1 and may rewrite the client
+                -- response with upstream_error, so this is not only a log label.
+                -- The intended signal is: upstream sent some bytes, but NGINX did
+                -- not receive a complete response header. This can describe a
+                -- malformed/partial upstream header, but it can also match a very
+                -- fast real upstream 502 when bytes were received and header_time
+                -- is recorded as 0. Refactor this after collecting production or
+                -- test-nginx evidence for the exact malformed-header shape.
+                -- if upstream_bytes_received > 0 and upstream_header_time == 0 then
+                --     -- 收到了一些字节，但 header 始终没有完整解析出来
+                --     -- 可能是：upstream 发了一半就断了，或者响应不是合法 HTTP
+                --     return proxy_phases.HEADER_RECEIVING,
+                --         "cannot read header from upstream OR upstream prematurely closed connection"
+                -- end
 
             end
         end
