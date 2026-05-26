@@ -121,10 +121,19 @@ function _M.get_username_by_bk_token(bk_token)
     end
     -- {"data": {"bk_username": "cpyjg3xo3ta0op6t", "tenant_id": "system"}}
 
+
+    -- legacy verify
+    -- status: 200, but result is false
+    -- {"result": false, "bk_error_code": 1302100, "bk_error_msg": "\u53c2\u6570 bk_token \u975e\u6cd5", "data": {}}
+    if not _M.enable_multi_tenant_mode and result.result == false then
+        return {
+            error_message = result.bk_error_msg,
+        }, nil
+    end
+
     return {
         username = result.data.bk_username,
     }, nil
 end
 
 return _M
-
