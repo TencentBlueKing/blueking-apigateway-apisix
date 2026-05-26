@@ -132,6 +132,23 @@ function _M.get_enable_multi_tenant_mode()
     return enable_multi_tenant_mode
 end
 
+function _M.should_strip_subpath_prefix()
+    local conf = core.config.local_conf()
+    local strip_subpath_prefix = core.table.try_read_attr(conf, "bk_gateway", "strip_subpath_prefix")
+    if strip_subpath_prefix == nil then
+        return false
+    end
+
+    if type(strip_subpath_prefix) == "boolean" then
+        return strip_subpath_prefix
+    end
+
+    if type(strip_subpath_prefix) == "string" then
+        return string_lower(strip_subpath_prefix) == "true"
+    end
+
+    return false
+end
 
 function _M.is_cache_disabled()
     local conf = core.config.local_conf()

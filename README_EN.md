@@ -15,7 +15,6 @@ This project is the "BlueKing API Gateway - Data Plane".
 
 - BlueKing API Gateway - [Control Plane](https://github.com/TencentBlueKing/blueking-apigateway)
 - BlueKing API Gateway - [Data Plane](https://github.com/TencentBlueKing/blueking-apigateway-apisix)
-- BlueKing API Gateway - [Operator](https://github.com/TencentBlueKing/blueking-apigateway-operator)
 
 ## Features
 

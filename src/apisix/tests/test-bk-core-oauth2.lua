@@ -36,12 +36,19 @@ describe(
                         return "http://bkapi.example.com/api/{api_name}"
                     end
                 )
+
+                stub(
+                    bk_core.config, "should_strip_subpath_prefix", function()
+                        return false
+                    end
+                )
             end
         )
 
         after_each(
             function()
                 bk_core.config.get_bk_apigateway_api_tmpl:revert()
+                bk_core.config.should_strip_subpath_prefix:revert()
             end
         )
 
@@ -86,6 +93,61 @@ describe(
                     "should escape both backslashes and double quotes", function()
                         local result = oauth2._escape_auth_header_value('a\\"b')
                         assert.is_equal('a\\\\\\"b', result)
+                    end
+                )
+            end
+        )
+
+        context(
+            "strip_subpath_prefix", function()
+                it(
+                    "should strip /api/{gateway_name} prefix from path", function()
+                        local result = oauth2._strip_subpath_prefix("/api/demo/prod/api/v2/users", "demo")
+                        assert.is_equal("/prod/api/v2/users", result)
+                    end
+                )
+
+                it(
+                    "should return / when path equals the prefix exactly", function()
+                        local result = oauth2._strip_subpath_prefix("/api/demo", "demo")
+                        assert.is_equal("/", result)
+                    end
+                )
+
+                it(
+                    "should not strip when path does not start with prefix", function()
+                        local result = oauth2._strip_subpath_prefix("/prod/api/v2/users", "demo")
+                        assert.is_equal("/prod/api/v2/users", result)
+                    end
+                )
+
+                it(
+                    "should not strip partial gateway name match", function()
+                        local result = oauth2._strip_subpath_prefix("/api/demo-extra/prod", "demo")
+                        assert.is_equal("/api/demo-extra/prod", result)
+                    end
+                )
+
+                it(
+                    "should handle path with only slash after prefix", function()
+                        local result = oauth2._strip_subpath_prefix("/api/demo/", "demo")
+                        assert.is_equal("/", result)
+                    end
+                )
+
+                it(
+                    "should handle gateway name with hyphens", function()
+                        local result = oauth2._strip_subpath_prefix(
+                            "/api/bk-apigateway/prod/api/v2/mcp-servers", "bk-apigateway"
+                        )
+                        assert.is_equal("/prod/api/v2/mcp-servers", result)
+                    end
+                )
+
+                it(
+                    "should return path unchanged when prefix is for different gateway", function()
+                        local result = oauth2._strip_subpath_prefix("/api/other-gw/prod", "demo")
+                        assert.is_equal("/api/other-gw/prod", result)
                     end
                 )
             end
@@ -346,6 +408,82 @@ describe(
                         -- The resource URL should end with just the origin + "/"
                         assert.is_truthy(
                             string.find(header, "resource_metadata=", 1, true)
+                        )
+                    end
+                )
+            end
+        )
+
+        context(
+            "build_www_authenticate_header - subpath prefix stripping", function()
+                it(
+                    "should strip /api/{gateway_name} from path when enabled", function()
+                        bk_core.config.should_strip_subpath_prefix:revert()
+                        stub(
+                            bk_core.config, "should_strip_subpath_prefix", function()
+                                return true
+                            end
+                        )
+                        bk_core.config.get_bk_apigateway_api_tmpl:revert()
+                        stub(
+                            bk_core.config, "get_bk_apigateway_api_tmpl", function()
+                                return "http://{api_name}.bkapi.example.com"
+                            end
+                        )
+                        ctx.var.bk_gateway_name = "bk-apigateway"
+                        ctx.var.uri = "/api/bk-apigateway/prod/api/v2/mcp-servers"
+
+                        local header = oauth2.build_www_authenticate_header(ctx)
+
+                        -- The resource URL should NOT contain /api/bk-apigateway prefix
+                        assert.is_truthy(
+                            string.find(
+                                header,
+                                "bk-apigateway.bkapi.example.com%2Fprod%2Fapi%2Fv2%2Fmcp-servers",
+                                1, true
+                            )
+                        )
+                    end
+                )
+
+                it(
+                    "should not strip when config is disabled", function()
+                        ctx.var.bk_gateway_name = "demo"
+                        ctx.var.uri = "/api/demo/prod/api/v2/users"
+
+                        local header = oauth2.build_www_authenticate_header(ctx)
+
+                        -- The resource URL should still contain /api/demo
+                        assert.is_truthy(
+                            string.find(
+                                header,
+                                "%2Fapi%2Fdemo%2Fprod%2Fapi%2Fv2%2Fusers",
+                                1, true
+                            )
+                        )
+                    end
+                )
+
+                it(
+                    "should not strip when path does not match gateway prefix", function()
+                        bk_core.config.should_strip_subpath_prefix:revert()
+                        stub(
+                            bk_core.config, "should_strip_subpath_prefix", function()
+                                return true
+                            end
+                        )
+                        ctx.var.bk_gateway_name = "demo"
+                        ctx.var.uri = "/other/path/prod"
+
+                        local header = oauth2.build_www_authenticate_header(ctx)
+
+                        -- Path should remain unchanged
+                        assert.is_truthy(
+                            string.find(
+                                header,
+                                "%2Fother%2Fpath%2Fprod",
+                                1, true
+                            )
                         )
                     end
                 )
