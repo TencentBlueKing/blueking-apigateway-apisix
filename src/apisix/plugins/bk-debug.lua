@@ -53,6 +53,13 @@ local function get_debug_info(ctx)
     return {
         bk_request_id = ctx.var.bk_request_id,
         x_request_id = ctx.var.x_request_id,
+        bk_gateway_name = ctx.var.bk_gateway_name,
+        bk_gateway_id = ctx.var.bk_gateway_id,
+        bk_stage_name = ctx.var.bk_stage_name,
+        bk_resource_id = ctx.var.bk_resource_id,
+        bk_resource_name = ctx.var.bk_resource_name,
+        bk_backend_id = ctx.var.bk_backend_id,
+        bk_backend_name = ctx.var.bk_backend_name,
         bk_app_code = ctx.var.bk_app_code,
         bk_username = ctx.var.bk_username,
         instance_id = ctx.var.instance_id,
