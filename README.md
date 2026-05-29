@@ -15,7 +15,6 @@
 
 - 蓝鲸 API 网关 - [控制面](https://github.com/TencentBlueKing/blueking-apigateway)
 - 蓝鲸 API 网关 - [数据面](https://github.com/TencentBlueKing/blueking-apigateway-apisix)
-- 蓝鲸 API 网关 - [Operator](https://github.com/TencentBlueKing/blueking-apigateway-operator)
 
 ## 特性
 

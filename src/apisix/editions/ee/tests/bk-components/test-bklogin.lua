@@ -23,11 +23,13 @@ describe(
     "bklogin", function()
 
         local response, response_err
+        local enable_multi_tenant_mode
 
         before_each(
             function()
                 response = nil
                 response_err = nil
+                enable_multi_tenant_mode = bklogin.enable_multi_tenant_mode
 
                 stub(
                     bk_components_utils, "handle_request", function()
@@ -39,6 +41,7 @@ describe(
 
         after_each(
             function()
+                bklogin.enable_multi_tenant_mode = enable_multi_tenant_mode
                 bk_components_utils.handle_request:revert()
             end
         )
@@ -108,6 +111,55 @@ describe(
                         assert.is_nil(result)
                         assert.is_true(core.string.has_prefix(err, "failed to request third-party api"))
                         assert.is_true(core.string.find(err, "request_id") ~= nil)
+                    end
+                )
+
+                it(
+                    "legacy protocol result false", function()
+                        bklogin.enable_multi_tenant_mode = false
+                        response = {
+                            status = 200,
+                            body = core.json.encode(
+                                {
+                                    result = false,
+                                    bk_error_code = 1302100,
+                                    bk_error_msg = "bk_token is not valid",
+                                    data = {},
+                                }
+                            ),
+                        }
+                        response_err = nil
+
+                        local result, err = bklogin.get_username_by_bk_token("fake-bk-token")
+                        assert.is_same(
+                            result, {
+                                error_message = "bk_token is not valid",
+                            }
+                        )
+                        assert.is_nil(err)
+                    end
+                )
+
+                it(
+                    "legacy protocol success without result field", function()
+                        bklogin.enable_multi_tenant_mode = false
+                        response = {
+                            status = 200,
+                            body = core.json.encode(
+                                {
+                                    bk_error_code = 0,
+                                    bk_error_msg = "",
+                                    data = {
+                                        bk_username = "admin",
+                                    },
+                                }
+                            ),
+                        }
+                        response_err = nil
+
+                        local result, err = bklogin.get_username_by_bk_token("fake-bk-token")
+                        assert.is_equal(result.username, "admin")
+                        assert.is_nil(err)
                     end
                 )
 
