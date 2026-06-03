@@ -1,9 +1,11 @@
 #!/usr/bin/env bash
 
 # CHANGES:
-# 1. remove unused tools in install_dependencies
+# 1. based on APISIX 3.16 redhat-ci.sh
+# 2. use UBI9 repos to match apache/apisix:3.16.0-redhat
+# 3. remove unused tools in install_dependencies
 
-# reference: https://github.com/apache/apisix/blob/release/3.11/ci/redhat-ci.sh
+# reference: https://github.com/apache/apisix/blob/3.16.0/ci/redhat-ci.sh
 #
 # Licensed to the Apache Software Foundation (ASF) under one or more
 # contributor license agreements.  See the NOTICE file distributed with
@@ -30,7 +32,7 @@ install_dependencies() {
     # install build & runtime deps
     yum install -y --disablerepo=* --enablerepo=ubi-9-appstream-rpms --enablerepo=ubi-9-baseos-rpms \
     wget tar gcc gcc-c++ automake autoconf libtool make unzip git sudo openldap-devel hostname patch \
-    which ca-certificates pcre pcre-devel xz \
+    which ca-certificates pcre pcre-devel pcre2 pcre2-devel xz \
     openssl-devel
 
     # FIXME: yum uninstall the build tools
@@ -111,6 +113,7 @@ run_case() {
     set_coredns
     # run test cases
     FLUSH_ETCD=1 TEST_EVENTS_MODULE=$TEST_EVENTS_MODULE prove --timer -Itest-nginx/lib -I./ -r ${TEST_FILE_SUB_DIR} | tee /tmp/test.result
+    fail_on_bailout /tmp/test.result
     rerun_flaky_tests /tmp/test.result
 }
 

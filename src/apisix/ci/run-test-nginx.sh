@@ -25,6 +25,9 @@ ls /bkgateway/apisix/plugins/ | egrep "bk-.*.lua" | awk -F '.' '{print "    \""$
 echo "append the bk-apigateway config into user_yaml_config"
 cat << EOF | sed -i '/my $profile = $ENV{"APISIX_PROFILE"};/r /dev/stdin' /usr/local/apisix/t/APISIX.pm
 \$user_yaml_config = <<_EOC_;
+apisix:
+  trusted_addresses:
+    - "127.0.0.1"
 bk_gateway:
   bkauth:
     authorization_keys:
@@ -79,4 +82,3 @@ if [ -n "$1" ]; then
 else
     FLUSH_ETCD=1 prove --timer -Itest-nginx/lib -I./ t/bk-*.t
 fi
-
