@@ -145,6 +145,7 @@
 ---@field bk_backend_id integer|nil 网关后端 ID
 ---@field bk_backend_name string|nil 网关后端名称
 ---@field bk_skip_error_wrapper boolean|nil 是否跳过错误拦截器
+---@field bk_skip_tenant_validate boolean|nil 是否跳过租户校验
 ---@field bk_status_rewrite_200 boolean|nil 是否重写 200 状态码
 ---@field bk_api_auth bk_gateway.ApiAuth|nil 应用认证配置
 ---@field bk_resource_auth bk_gateway.ResourceAuth|nil 资源权限配置

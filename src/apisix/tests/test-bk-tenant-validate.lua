@@ -286,6 +286,12 @@ describe("bk-tenant-validate", function()
 
         end)
 
+        it("should skip when bk_skip_tenant_validate is true", function()
+            ctx.var.bk_skip_tenant_validate = true
+            local err = validate.rewrite(conf, ctx)
+            assert.is_nil(err)
+        end)
+
         after_each(function()
         end)
 
