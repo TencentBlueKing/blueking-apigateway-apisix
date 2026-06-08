@@ -279,6 +279,20 @@ function _M.new_bk_user_not_allowed()
     return setmetatable(error, mt)
 end
 
+function _M.new_bk_tenant_not_allowed()
+    local error = {
+        error = {
+            code = 1640304,
+            code_name = "BK_TENANT_NOT_ALLOWED",
+            message = "Request rejected by bk-tenant restriction",
+            result = false,
+            data = cjson_null,
+        },
+        status = 403,
+    }
+    return setmetatable(error, mt)
+end
+
 function _M.new_request_body_size_exceed()
     local error = {
         error = {

@@ -55,6 +55,7 @@
 - bk-tenant-validate-exempt                 # priority: 17676  # 如果资源配置了此插件, 则跳过 bk-tenant-validate 校验
 - bk-tenant-verify                          # priority: 17675
 - bk-tenant-validate                        # priority: 17674
+- bk-tenant-restriction                     # priority: 17673
 - bk-jwt                                    # priority: 17670
 - bk-ip-restriction                         # priority: 17662
 - ~~bk-ip-group-restriction                   # priority: 17661 (1.18 removed)~~
