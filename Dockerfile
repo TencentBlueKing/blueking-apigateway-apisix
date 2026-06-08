@@ -1,16 +1,16 @@
 FROM tencentos/tencentos4-minimal:4.4-v20250922
 
-ARG APISIX_VERSION=3.13.0
+ARG APISIX_VERSION=3.16.0
 LABEL apisix_version="${APISIX_VERSION}"
 
 # 1. yum install
 COPY ./src/build/yum.repos.d/ /etc/yum.repos.d/
-RUN sed -i 's/$releasever/8/g' /etc/yum.repos.d/apache-apisix.repo && sed -i 's/$releasever/8/g' /etc/yum.repos.d/openresty.repo
+RUN sed -i 's/$releasever/9/g' /etc/yum.repos.d/apache-apisix.repo && sed -i 's/$releasever/8/g' /etc/yum.repos.d/openresty.repo
 RUN yum clean packages
 # you can add more tools for debug
 # alreay on image: ifconfig nslookup dig ip ss route
 # install openresty & apisix
-RUN yum install -y apisix-${APISIX_VERSION} && \
+RUN yum install -y apisix-${APISIX_VERSION} libxcrypt && \
     yum install -y tar m4 findutils procps less iproute traceroute telnet lsof net-tools tcpdump mtr vim bind-utils libyaml-devel hostname gawk iputils python3 python3-pip sudo && \
     yum install -y wget unzip patch make
 

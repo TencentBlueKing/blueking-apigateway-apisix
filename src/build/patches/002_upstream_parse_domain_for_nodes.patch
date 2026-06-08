@@ -1,8 +1,8 @@
 diff --git a/apisix/utils/upstream.lua b/apisix/utils/upstream.lua
-index 52c14d04..0ea5648a 100644
+index c61c9f71..2549e052 100644
 --- a/apisix/utils/upstream.lua
 +++ b/apisix/utils/upstream.lua
-@@ -97,9 +97,36 @@ local function parse_domain_for_nodes(nodes)
+@@ -99,10 +99,36 @@ local function parse_domain_for_nodes(nodes)
                  core.log.error("dns resolver domain: ", host, " error: ", err)
              end
          else
@@ -29,7 +29,7 @@ index 52c14d04..0ea5648a 100644
 +
          end
      end
-+
+     span:finish(ngx.ctx)
 +    -- patch for: https://github.com/apache/apisix/issues/10093#issuecomment-1738381865
 +    if #new_nodes == 0 then
 +        local err = "no valid ip found"

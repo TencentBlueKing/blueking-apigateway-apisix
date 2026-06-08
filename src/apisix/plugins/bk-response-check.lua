@@ -55,9 +55,17 @@ local _M = {
 }
 
 
--- Initializes the plugin and its metrics.
-function _M.init()
-    prometheus_registry = exporter.get_prometheus()
+local function ensure_metrics()
+    local registry = exporter.get_prometheus()
+    if not registry then
+        return
+    end
+
+    if prometheus_registry == registry and metric_api_requests_total then
+        return
+    end
+
+    prometheus_registry = registry
 
     -- use the same plugin attr with prometheus plugin
     local attr = plugin.plugin_attr("prometheus")
@@ -107,6 +115,12 @@ function _M.init()
     )
 end
 
+
+-- Initializes the plugin and its metrics.
+function _M.init()
+    ensure_metrics()
+end
+
 ---@param conf any
 function _M.check_schema(conf)
     return core.schema.check(schema, conf)
@@ -116,6 +130,11 @@ end
 ---@param conf any
 ---@param ctx apisix.Context
 function _M.log(conf, ctx)
+    ensure_metrics()
+    if not metric_api_requests_total then
+        return
+    end
+
     local api_name = ctx.var.bk_gateway_name or ""
     local stage_name = ctx.var.bk_stage_name or ""
     local backend_name = ctx.var.bk_backend_name or ""

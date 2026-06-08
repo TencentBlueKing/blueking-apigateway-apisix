@@ -59,6 +59,6 @@ jobs:
       run: |
         echo "start backing up, $(date)"
         mkdir docker-images-backup
-        docker save apisix-test-busted-313 -o docker-images-backup/apisix-test-busted-images.tar
-        docker save apisix-test-nginx-313 -o docker-images-backup/apisix-test-nginx-images.tar
+        docker save apisix-test-busted-316 -o docker-images-backup/apisix-test-busted-images.tar
+        docker save apisix-test-nginx-316 -o docker-images-backup/apisix-test-nginx-images.tar
         echo "docker save done, time: $(date)"
