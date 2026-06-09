@@ -155,6 +155,24 @@ function _M.verify(ctx)
         return app, user
     end
 
+    -- NOTE: 历史原因， 之前实现逻辑不完备带来的问题
+    -- 这里还不能动，会影响现有逻辑
+    -- 原来不开启应用认证/用户认证，调用方传了认证头，也会有jwt
+    -- 如果按照这个改动， 性能提升了(约1.73%)，但是 jwt 中将会空,
+    -- 会导致被调用方现有的代码得到拿到空，与原先的逻辑不符，导致一些问题
+
+    -- No need to get auth-params from request when neither app nor user verification is required.
+    -- if not (ctx.var.bk_resource_auth:get_verified_app_required() or
+    --         ctx.var.bk_resource_auth:get_verified_user_required()) then
+    --     app = bk_app_define.new_anonymous_app(
+    --         "verify skipped, verified_app_required and verified_user_required are both false"
+    --     )
+    --     user = bk_user_define.new_anonymous_user(
+    --         "verify skipped, verified_app_required and verified_user_required are both false"
+    --     )
+    --     return app, user
+    -- end
+
     -- get auth-params from request, skip further process when failed to get a valid
     -- params, If the parameters are empty, further processing still continues.
     local auth_params, err = get_auth_params_from_request(ctx, bk_core.config.get_authorization_keys())
