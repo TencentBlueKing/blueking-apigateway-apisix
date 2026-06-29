@@ -111,11 +111,13 @@ describe(
             "access", function()
                 local fallback_data
                 local fallback_err
+                local not_expired_expires
 
                 before_each(
                     function()
                         fallback_data = {}
                         fallback_err = nil
+                        not_expired_expires = ngx.time() + 3600
 
                         stub(
                             cache_fallback, "get_with_fallback", function()
@@ -211,7 +213,7 @@ describe(
                 it(
                     "hit gateway_permission, not expired", function()
                         fallback_data = {
-                            ["bk-gateway:-:bk-app-code"] = 1782070327,
+                            ["bk-gateway:-:bk-app-code"] = not_expired_expires,
                         }
                         fallback_err = nil
 
@@ -239,7 +241,7 @@ describe(
                 it(
                     "hit resource_permission, not expired", function()
                         fallback_data = {
-                            ["bk-gateway:bk-resource:bk-app-code"] = 1782070327,
+                            ["bk-gateway:bk-resource:bk-app-code"] = not_expired_expires,
                         }
                         fallback_err = nil
 
@@ -252,7 +254,7 @@ describe(
                 it(
                     "hit both, gateway permission effect", function()
                         fallback_data = {
-                            ["bk-gateway:-:bk-app-code"] = 1782070327,
+                            ["bk-gateway:-:bk-app-code"] = not_expired_expires,
                             ["bk-gateway:bk-resource:bk-app-code"] = 1,
                         }
                         fallback_err = nil
@@ -266,7 +268,7 @@ describe(
                     "hit both, resource permission effect", function()
                         fallback_data = {
                             ["bk-gateway:-:bk-app-code"] = 1,
-                            ["bk-gateway:bk-resource:bk-app-code"] = 1782070327,
+                            ["bk-gateway:bk-resource:bk-app-code"] = not_expired_expires,
                         }
                         fallback_err = nil
 
@@ -278,8 +280,8 @@ describe(
                 it(
                     "hit both, both permission effect", function()
                         fallback_data = {
-                            ["bk-gateway:-:bk-app-code"] = 1782070327,
-                            ["bk-gateway:bk-resource:bk-app-code"] = 1782070327,
+                            ["bk-gateway:-:bk-app-code"] = not_expired_expires,
+                            ["bk-gateway:bk-resource:bk-app-code"] = not_expired_expires,
 
                         }
                         fallback_err = nil
