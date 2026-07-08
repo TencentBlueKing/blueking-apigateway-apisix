@@ -282,7 +282,57 @@ GET /hello?added=original&forced=old&unwanted=bye
 --- response_body_like
 args:(?=.*added=original)(?=.*forced=value)(?!.*unwanted=).*
 
-=== TEST 16: disable plugin
+=== TEST 16: set route with proxy rewrite
+--- config
+    location /t {
+        content_by_lua_block {
+            local t = require("lib.test_admin").test
+            local code, body = t('/apisix/admin/routes/1',
+                ngx.HTTP_PUT,
+                [[{
+                    "plugins": {
+                        "bk-query-string-rewrite": {
+                            "set": {
+                                "version": "v2",
+                                "bk_app_code": "demo"
+                            },
+                            "remove": ["debug"]
+                        },
+                        "bk-proxy-rewrite": {
+                            "uri": "/plugin_proxy_rewrite_args"
+                        }
+                    },
+                    "upstream": {
+                        "nodes": {
+                            "127.0.0.1:1980": 1
+                        },
+                        "type": "roundrobin"
+                    },
+                    "uri": "/hello"
+                }]]
+                )
+
+            if code >= 300 then
+                ngx.status = code
+            end
+            ngx.say(body)
+        }
+    }
+--- request
+GET /t
+--- response_body
+passed
+
+=== TEST 17: proxy rewrite uses rewritten query params
+--- request
+GET /hello?name=tom&debug=true
+--- response_body
+uri: /plugin_proxy_rewrite_args
+bk_app_code: demo
+name: tom
+version: v2
+
+=== TEST 18: disable plugin
 --- config
     location /t {
         content_by_lua_block {

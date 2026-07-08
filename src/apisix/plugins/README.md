@@ -71,11 +71,11 @@ proxy 预处理：17000 ~ 17500
 - bk-traffic-label                          # priority: 17460
 - bk-delete-sensitive                       # priority: 17450
 - bk-delete-cookie                          # priority: 17440
+- bk-query-string-rewrite                   # priority: 17435
 - bk-proxy-rewrite                          # priority: 17430 # 该插件供 operator 进行后端地址转换使用
 - bk-default-tenant                         # priority: 17425
 - bk-stage-header-rewrite                   # priority: 17421
 - bk-resource-header-rewrite                # priority: 17420
-- bk-query-string-rewrite                   # priority: 17410
 - bk-mock                                   # priority: 17150
 
 官方插件：

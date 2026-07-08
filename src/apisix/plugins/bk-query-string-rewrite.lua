@@ -70,7 +70,7 @@ local schema = {
 
 local _M = {
     version = 0.1,
-    priority = 17410,
+    priority = 17435,
     name = plugin_name,
     schema = schema,
 }
@@ -111,7 +111,6 @@ function _M.rewrite(conf, ctx)
             end
         end
     end
-
     if changed then
         core.request.set_uri_args(ctx, uri_args)
     end
