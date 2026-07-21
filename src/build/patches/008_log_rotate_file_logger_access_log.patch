@@ -1,0 +1,16 @@
+diff --git a/apisix/plugins/log-rotate.lua b/apisix/plugins/log-rotate.lua
+index f90226d8..c841e20c 100644
+--- a/apisix/plugins/log-rotate.lua
++++ b/apisix/plugins/log-rotate.lua
+@@ -188,8 +188,9 @@ local function compression_file(new_file, timeout)
+ 
+ local function init_default_logs(logs_info, log_type)
+     local_conf = core.config.local_conf()
+-    enable_access_log = core.table.try_read_attr(
+-        local_conf, "nginx_config", "http", "enable_access_log")
++    -- BlueKing uses file-logger to write logs/access.log with Nginx access logging disabled.
++    -- Keep rotating that file to prevent unbounded growth and preserve APISIX 3.13 behavior.
++    enable_access_log = true
+     local filepath, filename = get_log_path_info(log_type)
+     logs_info[log_type] = { type = log_type }
+     if filename ~= "off" then
