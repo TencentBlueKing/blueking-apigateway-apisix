@@ -1,8 +1,8 @@
 diff --git a/apisix/plugins/prometheus/exporter.lua b/apisix/plugins/prometheus/exporter.lua
-index ed219a49..fb277e67 100644
+index ce89ca0..f10fae5 100644
 --- a/apisix/plugins/prometheus/exporter.lua
 +++ b/apisix/plugins/prometheus/exporter.lua
-@@ -308,6 +308,12 @@
+@@ -291,6 +291,12 @@ end
  
  
  function _M.http_log(conf, ctx)
@@ -15,24 +15,28 @@ index ed219a49..fb277e67 100644
      local vars = ctx.var
  
      local route_id = ""
-@@ -335,62 +341,70 @@
+@@ -318,64 +324,72 @@ function _M.http_log(conf, ctx)
          matched_host = ctx.curr_req_matched._host or ""
      end
+ 
+-    local response_source = core.response.get_response_source(ctx)
++    if official and official.enable_status then
++        local response_source = core.response.get_response_source(ctx)
  
 -    metrics.status:inc(1,
 -        gen_arr(vars.status, route_id, matched_uri, matched_host,
 -                service_id, consumer_name, balancer_ip,
 -                vars.request_type, vars.request_llm_model, vars.llm_model,
+-                response_source,
 -                unpack(extra_labels("http_status", ctx))))
-+    if official and official.enable_status then
 +        metrics.status:inc(1,
 +            gen_arr(vars.status, route_id, matched_uri, matched_host,
 +                    service_id, consumer_name, balancer_ip,
 +                    vars.request_type, vars.request_llm_model, vars.llm_model,
++                    response_source,
 +                    unpack(extra_labels("http_status", ctx))))
 +    end
--
-+
+ 
 -    local latency, upstream_latency, apisix_latency = latency_details(ctx)
 -    local latency_extra_label_values = extra_labels("http_latency", ctx)
 +    if official and official.enable_latency then
@@ -43,94 +47,87 @@ index ed219a49..fb277e67 100644
 -        gen_arr("request", route_id, service_id, consumer_name, balancer_ip,
 -        vars.request_type, vars.request_llm_model, vars.llm_model,
 -        unpack(latency_extra_label_values)))
--
--    if upstream_latency then
--        metrics.latency:observe(upstream_latency,
--            gen_arr("upstream", route_id, service_id, consumer_name, balancer_ip,
 +        metrics.latency:observe(latency,
 +            gen_arr("request", route_id, service_id, consumer_name, balancer_ip,
-             vars.request_type, vars.request_llm_model, vars.llm_model,
-             unpack(latency_extra_label_values)))
--    end
- 
--    metrics.latency:observe(apisix_latency,
--        gen_arr("apisix", route_id, service_id, consumer_name, balancer_ip,
--        vars.request_type, vars.request_llm_model, vars.llm_model,
--        unpack(latency_extra_label_values)))
--
--    local bandwidth_extra_label_values = extra_labels("bandwidth", ctx)
--
--    metrics.bandwidth:inc(vars.request_length,
--        gen_arr("ingress", route_id, service_id, consumer_name, balancer_ip,
--        vars.request_type, vars.request_llm_model, vars.llm_model,
--        unpack(bandwidth_extra_label_values)))
--
--    metrics.bandwidth:inc(vars.bytes_sent,
--        gen_arr("egress", route_id, service_id, consumer_name, balancer_ip,
--        vars.request_type, vars.request_llm_model, vars.llm_model,
--        unpack(bandwidth_extra_label_values)))
--
--    local llm_time_to_first_token = vars.llm_time_to_first_token
--    if llm_time_to_first_token ~= "" then
--        metrics.llm_latency:observe(tonumber(llm_time_to_first_token),
--            gen_arr(route_id, service_id, consumer_name, balancer_ip,
++            vars.request_type, vars.request_llm_model, vars.llm_model,
++            unpack(latency_extra_label_values)))
++
 +        if upstream_latency then
 +            metrics.latency:observe(upstream_latency,
 +                gen_arr("upstream", route_id, service_id, consumer_name, balancer_ip,
 +                vars.request_type, vars.request_llm_model, vars.llm_model,
 +                unpack(latency_extra_label_values)))
 +        end
-+
+ 
+-    if upstream_latency then
+-        metrics.latency:observe(upstream_latency,
+-            gen_arr("upstream", route_id, service_id, consumer_name, balancer_ip,
 +        metrics.latency:observe(apisix_latency,
 +            gen_arr("apisix", route_id, service_id, consumer_name, balancer_ip,
              vars.request_type, vars.request_llm_model, vars.llm_model,
--            unpack(extra_labels("llm_latency", ctx))))
-+            unpack(latency_extra_label_values)))
+             unpack(latency_extra_label_values)))
      end
--    if vars.llm_prompt_tokens ~= "" then
--        metrics.llm_prompt_tokens:inc(tonumber(vars.llm_prompt_tokens),
--            gen_arr(route_id, service_id, consumer_name, balancer_ip,
-+
+ 
+-    metrics.latency:observe(apisix_latency,
+-        gen_arr("apisix", route_id, service_id, consumer_name, balancer_ip,
+-        vars.request_type, vars.request_llm_model, vars.llm_model,
+-        unpack(latency_extra_label_values)))
 +    if official and official.enable_bandwidth then
 +        local bandwidth_extra_label_values = extra_labels("bandwidth", ctx)
-+
+ 
+-    local bandwidth_extra_label_values = extra_labels("bandwidth", ctx)
 +        metrics.bandwidth:inc(vars.request_length,
 +            gen_arr("ingress", route_id, service_id, consumer_name, balancer_ip,
-             vars.request_type, vars.request_llm_model, vars.llm_model,
--            unpack(extra_labels("llm_prompt_tokens", ctx))))
--    end
--    if vars.llm_completion_tokens ~= "" then
--        metrics.llm_completion_tokens:inc(tonumber(vars.llm_completion_tokens),
--            gen_arr(route_id, service_id, consumer_name, balancer_ip,
++            vars.request_type, vars.request_llm_model, vars.llm_model,
 +            unpack(bandwidth_extra_label_values)))
-+
+ 
+-    metrics.bandwidth:inc(vars.request_length,
+-        gen_arr("ingress", route_id, service_id, consumer_name, balancer_ip,
+-        vars.request_type, vars.request_llm_model, vars.llm_model,
+-        unpack(bandwidth_extra_label_values)))
 +        metrics.bandwidth:inc(vars.bytes_sent,
 +            gen_arr("egress", route_id, service_id, consumer_name, balancer_ip,
-             vars.request_type, vars.request_llm_model, vars.llm_model,
--            unpack(extra_labels("llm_completion_tokens", ctx))))
++            vars.request_type, vars.request_llm_model, vars.llm_model,
 +            unpack(bandwidth_extra_label_values)))
 +    end
-+
+ 
+-    metrics.bandwidth:inc(vars.bytes_sent,
+-        gen_arr("egress", route_id, service_id, consumer_name, balancer_ip,
+-        vars.request_type, vars.request_llm_model, vars.llm_model,
+-        unpack(bandwidth_extra_label_values)))
 +    if official and official.enable_llm then
-+        local llm_time_to_first_token = vars.llm_time_to_first_token
-+        if llm_time_to_first_token ~= "" then
-+            metrics.llm_latency:observe(tonumber(llm_time_to_first_token),
-+                gen_arr(route_id, service_id, consumer_name, balancer_ip,
-+                vars.request_type, vars.request_llm_model, vars.llm_model,
-+                unpack(extra_labels("llm_latency", ctx))))
-+        end
-+        if vars.llm_prompt_tokens ~= "" then
++        if vars.request_type == "ai_stream" or vars.request_type == "ai_chat" then
++            local llm_time_to_first_token = vars.llm_time_to_first_token
++            if llm_time_to_first_token ~= "0" then
++                metrics.llm_latency:observe(tonumber(llm_time_to_first_token),
++                    gen_arr(route_id, service_id, consumer_name, balancer_ip,
++                        vars.request_type, vars.request_llm_model, vars.llm_model,
++                        unpack(extra_labels("llm_latency", ctx))))
++            end
 +            metrics.llm_prompt_tokens:inc(tonumber(vars.llm_prompt_tokens),
 +                gen_arr(route_id, service_id, consumer_name, balancer_ip,
-+                vars.request_type, vars.request_llm_model, vars.llm_model,
-+                unpack(extra_labels("llm_prompt_tokens", ctx))))
-+        end
-+        if vars.llm_completion_tokens ~= "" then
++                    vars.request_type, vars.request_llm_model, vars.llm_model,
++                    unpack(extra_labels("llm_prompt_tokens", ctx))))
+ 
+-    if vars.request_type == "ai_stream" or vars.request_type == "ai_chat" then
+-        local llm_time_to_first_token = vars.llm_time_to_first_token
+-        if llm_time_to_first_token ~= "0" then
+-            metrics.llm_latency:observe(tonumber(llm_time_to_first_token),
 +            metrics.llm_completion_tokens:inc(tonumber(vars.llm_completion_tokens),
-+                gen_arr(route_id, service_id, consumer_name, balancer_ip,
-+                vars.request_type, vars.request_llm_model, vars.llm_model,
-+                unpack(extra_labels("llm_completion_tokens", ctx))))
-+        end
+                 gen_arr(route_id, service_id, consumer_name, balancer_ip,
+                     vars.request_type, vars.request_llm_model, vars.llm_model,
+-                    unpack(extra_labels("llm_latency", ctx))))
++                    unpack(extra_labels("llm_completion_tokens", ctx))))
+         end
+-        metrics.llm_prompt_tokens:inc(tonumber(vars.llm_prompt_tokens),
+-            gen_arr(route_id, service_id, consumer_name, balancer_ip,
+-                vars.request_type, vars.request_llm_model, vars.llm_model,
+-                unpack(extra_labels("llm_prompt_tokens", ctx))))
+-
+-        metrics.llm_completion_tokens:inc(tonumber(vars.llm_completion_tokens),
+-            gen_arr(route_id, service_id, consumer_name, balancer_ip,
+-                vars.request_type, vars.request_llm_model, vars.llm_model,
+-                unpack(extra_labels("llm_completion_tokens", ctx))))
      end
  end
  

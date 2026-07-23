@@ -1,5 +1,7 @@
-ARG APISIX_VERSION="3.16.0"
+ARG APISIX_VERSION="3.17.0"
 FROM apache/apisix:$APISIX_VERSION-redhat
+
+USER root
 
 # reference: 
 # - https://github.com/apache/apisix/blob/release/3.11/.github/workflows/redhat-ci.yaml

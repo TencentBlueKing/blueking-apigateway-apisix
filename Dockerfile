@@ -1,6 +1,6 @@
 FROM tencentos/tencentos4-minimal:4.4-v20250922
 
-ARG APISIX_VERSION=3.16.0
+ARG APISIX_VERSION=3.17.0
 LABEL apisix_version="${APISIX_VERSION}"
 
 # 1. yum install
