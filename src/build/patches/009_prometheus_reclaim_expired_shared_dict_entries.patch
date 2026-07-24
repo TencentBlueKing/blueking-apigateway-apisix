@@ -1,0 +1,25 @@
+diff --git a/deps/share/lua/5.1/prometheus_keys.lua b/deps/share/lua/5.1/prometheus_keys.lua
+index 0c5f102..faeaa66 100644
+--- a/deps/share/lua/5.1/prometheus_keys.lua
++++ b/deps/share/lua/5.1/prometheus_keys.lua
+@@ -44,6 +44,20 @@ function KeyIndex:remove_expired_keys()
+       self.expire_keys[i] = nil
+     end
+   end
++
++  -- The loop above only drops worker-local references. The expired shared-dict
++  -- entries themselves (both the __ngx_prom__key_N index slots and the metric
++  -- value keys, which live in the same dict) are only *logically* dead: every
++  -- dict API treats them as missing, but their slab pages stay allocated. The
++  -- passive per-write expiry scan cannot reclaim them either, because it stops
++  -- at the first non-expired entry at the LRU tail, and a permanent entry (the
++  -- error metric, or any metric registered without an exptime) inevitably ends
++  -- up sitting there. Without this call the dict grows without bound under
++  -- label churn: index slots are never reused, so free_space steps down on
++  -- every new series and never recovers (apache/apisix#13658). Since expired
++  -- entries are indistinguishable from absent ones through every dict API,
++  -- reclaiming them here cannot change any observable behaviour.
++  self.dict:flush_expired()
+ end
+ 
+ -- Loads new keys that might have been added by other workers since last sync.
