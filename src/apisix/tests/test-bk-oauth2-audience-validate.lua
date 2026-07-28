@@ -107,6 +107,15 @@ describe(
                 )
 
                 it(
+                    "should parse mcp wildcard format", function()
+                        local result = plugin._parse_audience("mcp:*")
+
+                        assert.is_equal("mcp_server", result.type)
+                        assert.is_equal("*", result.name)
+                    end
+                )
+
+                it(
                     "should parse gateway_api format correctly", function()
                         local result = plugin._parse_audience("gateway:demo/api:test-api")
 
@@ -122,6 +131,16 @@ describe(
 
                         assert.is_equal("gateway_api", result.type)
                         assert.is_equal("demo", result.gateway)
+                        assert.is_equal("*", result.api)
+                    end
+                )
+
+                it(
+                    "should normalize gateway wildcard format", function()
+                        local result = plugin._parse_audience("gateway:*")
+
+                        assert.is_equal("gateway_api", result.type)
+                        assert.is_equal("*", result.gateway)
                         assert.is_equal("*", result.api)
                     end
                 )
@@ -188,6 +207,19 @@ describe(
                 )
 
                 it(
+                    "should allow access with wildcard mcp_server", function()
+                        ctx.var.is_bk_oauth2 = true
+                        ctx.var.bk_gateway_name = "bk-apigateway"
+                        ctx.var.uri = "/api/v2/mcp-servers/any-server/resources"
+                        ctx.var.audience = {"mcp:*"}
+
+                        local result = plugin.rewrite({}, ctx)
+
+                        assert.is_nil(result)
+                    end
+                )
+
+                it(
                     "should deny access when mcp_server does not match", function()
                         ctx.var.is_bk_oauth2 = true
                         ctx.var.bk_gateway_name = "bk-apigateway"
@@ -240,6 +272,32 @@ describe(
                         local result = plugin.rewrite({}, ctx)
 
                         assert.is_nil(result)
+                    end
+                )
+
+                it(
+                    "should allow access with wildcard gateway", function()
+                        ctx.var.is_bk_oauth2 = true
+                        ctx.var.bk_gateway_name = "any-gateway"
+                        ctx.var.bk_resource_name = "any-api"
+                        ctx.var.audience = {"gateway:*"}
+
+                        local result = plugin.rewrite({}, ctx)
+
+                        assert.is_nil(result)
+                    end
+                )
+
+                it(
+                    "should deny wildcard gateway with a specific api", function()
+                        ctx.var.is_bk_oauth2 = true
+                        ctx.var.bk_gateway_name = "any-gateway"
+                        ctx.var.bk_resource_name = "test-api"
+                        ctx.var.audience = {"gateway:*/api:test-api"}
+
+                        local status = plugin.rewrite({}, ctx)
+
+                        assert.is_equal(403, status)
                     end
                 )
 

@@ -22,8 +22,10 @@
 --
 -- Audience formats supported:
 --   - mcp:{mcp_server_name} - Access to specific MCP server
+--   - mcp:* - Access to any MCP server
 --   - gateway:{gateway_name}/api:{api_name} - Access to specific gateway API
 --   - gateway:{gateway_name}/api:* - Access to all APIs under a gateway (wildcard)
+--   - gateway:* - Access to all APIs under any gateway
 --
 -- This plugin only runs when ctx.var.is_bk_oauth2 == true (set by bk-oauth2-protected-resource).
 --
@@ -79,6 +81,15 @@ local function parse_audience(audience_str)
         }
     end
 
+    -- Normalize gateway:* to gateway:*/api:*
+    if audience_str == "gateway:*" then
+        return {
+            type = "gateway_api",
+            gateway = "*",
+            api = "*",
+        }
+    end
+
     -- Try gateway:{gateway}/api:{api} format
     local gateway, api = string_match(audience_str, "^gateway:([^/]+)/api:(.+)$")
     if gateway and api then
@@ -130,7 +141,7 @@ local function check_mcp_server_audience(parsed, ctx)
     end
 
     -- Check if the MCP server from path matches the audience
-    if path_mcp_server == parsed.name then
+    if parsed.name == "*" or path_mcp_server == parsed.name then
         return true, ""
     end
 
@@ -146,6 +157,16 @@ end
 local function check_gateway_api_audience(parsed, ctx)
     local current_gateway = ctx.var.bk_gateway_name
     local current_resource = ctx.var.bk_resource_name
+
+    -- Only gateway:* should produce a wildcard gateway, normalized with a wildcard API.
+    if parsed.gateway == "*" then
+        if parsed.api == "*" then
+            return true, ""
+        end
+
+
+        return false, "invalid parsed audience: wildcard gateway requires wildcard api"
+    end
 
     -- Check gateway matches
     if parsed.gateway ~= current_gateway then
