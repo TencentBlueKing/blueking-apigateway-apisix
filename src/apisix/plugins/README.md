@@ -52,7 +52,7 @@
 - bk-auth-validate                          # priority: 17680
 - bk-user-restriction                       # priority: 17679
 - bk-oauth2-audience-validate               # priority: 17678  # OAuth2 audience 验证：验证 MCP 服务器和网关 API 的 audience 声明
-- bk-oauth2-appcode-validate                # priority: 17677  # OAuth2 app code 验证：按全局配置允许 public 和 personal 客户端
+- bk-oauth2-appcode-validate                # priority: 17677  # OAuth2 app code 验证：按路由配置允许 public 和 personal 客户端
 - bk-tenant-validate-exempt                 # priority: 17676  # 如果资源配置了此插件, 则跳过 bk-tenant-validate 校验
 - bk-tenant-verify                          # priority: 17675
 - bk-tenant-validate                        # priority: 17674

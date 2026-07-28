@@ -16,18 +16,15 @@
 -- to the current version of the project delivered to anyone in the future.
 --
 local core = require("apisix.core")
-local apisix_plugin = require("apisix.plugin")
 local bk_core = require("apisix.plugins.bk-core.init")
 local plugin = require("apisix.plugins.bk-oauth2-appcode-validate")
 
 describe(
     "bk-oauth2-appcode-validate", function()
-        local plugin_attr
         local ctx
 
         before_each(
             function()
-                plugin_attr = {}
                 ctx = {
                     var = {
                         uri = "/api/test",
@@ -38,26 +35,17 @@ describe(
                 }
 
                 stub(
-                    apisix_plugin, "plugin_attr", function(name)
-                        assert.is_equal("bk-oauth2-appcode-validate", name)
-                        return plugin_attr
-                    end
-                )
-                stub(
                     bk_core.config, "get_bk_apigateway_api_tmpl", function()
                         return "https://{api_name}.example.com"
                     end
                 )
                 stub(core.log, "info")
                 stub(core.log, "error")
-
-                plugin.init()
             end
         )
 
         after_each(
             function()
-                apisix_plugin.plugin_attr:revert()
                 bk_core.config.get_bk_apigateway_api_tmpl:revert()
                 core.log.info:revert()
                 core.log.error:revert()
@@ -65,21 +53,51 @@ describe(
             end
         )
 
+        local function check_conf(conf)
+            local ok, err = plugin.check_schema(conf)
+            assert.is_true(ok)
+            assert.is_nil(err)
+            return conf
+        end
+
         context(
             "schema", function()
                 it(
-                    "accepts empty route configuration", function()
-                        local ok, err = plugin.check_schema({})
-
-                        assert.is_true(ok)
-                        assert.is_nil(err)
+                    "defines support flags on the route schema", function()
+                        assert.is_nil(plugin.attr_schema)
+                        assert.is_nil(plugin.init)
+                        assert.is_same(
+                            {
+                                type = "boolean",
+                                default = false,
+                            },
+                            plugin.schema.properties.support_public
+                        )
+                        assert.is_same(
+                            {
+                                type = "boolean",
+                                default = false,
+                            },
+                            plugin.schema.properties.support_personal
+                        )
                     end
                 )
 
                 it(
-                    "accepts boolean plugin attributes", function()
-                        local ok, err = core.schema.check(
-                            plugin.attr_schema,
+                    "applies false defaults to empty route configuration", function()
+                        local conf = {}
+                        local ok, err = plugin.check_schema(conf)
+
+                        assert.is_true(ok)
+                        assert.is_nil(err)
+                        assert.is_false(conf.support_public)
+                        assert.is_false(conf.support_personal)
+                    end
+                )
+
+                it(
+                    "accepts boolean route configuration", function()
+                        local ok, err = plugin.check_schema(
                             {
                                 support_public = true,
                                 support_personal = false,
@@ -92,9 +110,8 @@ describe(
                 )
 
                 it(
-                    "rejects non-boolean plugin attributes", function()
-                        local ok = core.schema.check(
-                            plugin.attr_schema,
+                    "rejects non-boolean route configuration", function()
+                        local ok = plugin.check_schema(
                             {
                                 support_public = "true",
                             }
@@ -107,126 +124,12 @@ describe(
         )
 
         context(
-            "initialization", function()
-                it(
-                    "defaults to an empty allowlist", function()
-                        local state = plugin._get_validation_state()
-
-                        assert.is_false(state.support_public)
-                        assert.is_false(state.support_personal)
-                        assert.is_nil(state.allowed_app_codes.public)
-                        assert.is_nil(state.allowed_app_codes.personal)
-                    end
-                )
-
-                it(
-                    "allows public when configured", function()
-                        plugin_attr = {
-                            support_public = true,
-                        }
-
-                        plugin.init()
-                        local state = plugin._get_validation_state()
-
-                        assert.is_true(state.support_public)
-                        assert.is_false(state.support_personal)
-                        assert.is_true(state.allowed_app_codes.public)
-                        assert.is_nil(state.allowed_app_codes.personal)
-                    end
-                )
-
-                it(
-                    "allows personal when configured", function()
-                        plugin_attr = {
-                            support_personal = true,
-                        }
-
-                        plugin.init()
-                        local state = plugin._get_validation_state()
-
-                        assert.is_false(state.support_public)
-                        assert.is_true(state.support_personal)
-                        assert.is_nil(state.allowed_app_codes.public)
-                        assert.is_true(state.allowed_app_codes.personal)
-                    end
-                )
-
-                it(
-                    "allows both supported app codes", function()
-                        plugin_attr = {
-                            support_public = true,
-                            support_personal = true,
-                        }
-
-                        plugin.init()
-                        local state = plugin._get_validation_state()
-
-                        assert.is_true(state.allowed_app_codes.public)
-                        assert.is_true(state.allowed_app_codes.personal)
-                    end
-                )
-
-                it(
-                    "logs the effective initialization state", function()
-                        plugin_attr = {
-                            support_public = true,
-                        }
-
-                        plugin.init()
-
-                        assert.stub(core.log.info).was_called_with(
-                            "bk-oauth2-appcode-validate: initialized",
-                            ", support_public=", true,
-                            ", support_personal=", false,
-                            ", allowed_app_codes=", '{"public":true}'
-                        )
-                    end
-                )
-
-                it(
-                    "fails closed for invalid plugin attributes", function()
-                        plugin_attr = {
-                            support_public = "true",
-                        }
-
-                        plugin.init()
-                        local state = plugin._get_validation_state()
-
-                        assert.is_false(state.support_public)
-                        assert.is_false(state.support_personal)
-                        assert.is_nil(state.allowed_app_codes.public)
-                        assert.is_nil(state.allowed_app_codes.personal)
-                        assert.stub(core.log.error).was_called()
-                    end
-                )
-
-                it(
-                    "does not retain stale allowlist entries after reinitialization", function()
-                        plugin_attr = {
-                            support_public = true,
-                        }
-                        plugin.init()
-
-                        plugin_attr = {
-                            support_personal = true,
-                        }
-                        plugin.init()
-                        local state = plugin._get_validation_state()
-
-                        assert.is_nil(state.allowed_app_codes.public)
-                        assert.is_true(state.allowed_app_codes.personal)
-                    end
-                )
-            end
-        )
-
-        context(
             "rewrite", function()
                 it(
                     "skips when is_bk_oauth2 is false", function()
                         ctx.var.is_bk_oauth2 = false
 
-                        local result = plugin.rewrite({}, ctx)
+                        local result = plugin.rewrite(check_conf({}), ctx)
 
                         assert.is_nil(result)
                     end
@@ -236,7 +139,7 @@ describe(
                     "skips when is_bk_oauth2 is absent", function()
                         ctx.var.is_bk_oauth2 = nil
 
-                        local result = plugin.rewrite({}, ctx)
+                        local result = plugin.rewrite(check_conf({}), ctx)
 
                         assert.is_nil(result)
                     end
@@ -244,12 +147,11 @@ describe(
 
                 it(
                     "allows public when public support is enabled", function()
-                        plugin_attr = {
+                        local conf = check_conf({
                             support_public = true,
-                        }
-                        plugin.init()
+                        })
 
-                        local result = plugin.rewrite({}, ctx)
+                        local result = plugin.rewrite(conf, ctx)
 
                         assert.is_nil(result)
                         assert.stub(core.log.info).was_called_with(
@@ -263,13 +165,12 @@ describe(
 
                 it(
                     "allows personal when personal support is enabled", function()
-                        plugin_attr = {
+                        local conf = check_conf({
                             support_personal = true,
-                        }
-                        plugin.init()
+                        })
                         ctx.var.bk_app_code = "personal"
 
-                        local result = plugin.rewrite({}, ctx)
+                        local result = plugin.rewrite(conf, ctx)
 
                         assert.is_nil(result)
                     end
@@ -277,7 +178,7 @@ describe(
 
                 it(
                     "rejects a disabled supported app code", function()
-                        local status = plugin.rewrite({}, ctx)
+                        local status = plugin.rewrite(check_conf({}), ctx)
 
                         assert.is_equal(401, status)
                         assert.is_equal(
@@ -289,14 +190,13 @@ describe(
 
                 it(
                     "rejects an ordinary app code even when both flags are enabled", function()
-                        plugin_attr = {
+                        local conf = check_conf({
                             support_public = true,
                             support_personal = true,
-                        }
-                        plugin.init()
+                        })
                         ctx.var.bk_app_code = "ordinary-app"
 
-                        local status = plugin.rewrite({}, ctx)
+                        local status = plugin.rewrite(conf, ctx)
 
                         assert.is_equal(401, status)
                     end
@@ -306,7 +206,7 @@ describe(
                     "rejects a missing app code", function()
                         ctx.var.bk_app_code = nil
 
-                        local status = plugin.rewrite({}, ctx)
+                        local status = plugin.rewrite(check_conf({}), ctx)
 
                         assert.is_equal(401, status)
                     end
@@ -316,7 +216,7 @@ describe(
                     "rejects an empty app code", function()
                         ctx.var.bk_app_code = ""
 
-                        local status = plugin.rewrite({}, ctx)
+                        local status = plugin.rewrite(check_conf({}), ctx)
 
                         assert.is_equal(401, status)
                     end
@@ -324,13 +224,12 @@ describe(
 
                 it(
                     "returns rich invalid_token details", function()
-                        plugin_attr = {
+                        local conf = check_conf({
                             support_personal = true,
-                        }
-                        plugin.init()
+                        })
                         ctx.var.bk_app_code = "public"
 
-                        local status = plugin.rewrite({}, ctx)
+                        local status = plugin.rewrite(conf, ctx)
                         local message = ctx.var.bk_apigw_error.error.message
                         local www_auth = ngx.header["WWW-Authenticate"]
 

@@ -40,7 +40,10 @@ __DATA__
     location /t {
         content_by_lua_block {
             local plugin = require("apisix.plugins.bk-oauth2-appcode-validate")
-            local ok, err = plugin.check_schema({})
+            local ok, err = plugin.check_schema({
+                support_public = true,
+                support_personal = false
+            })
             if not ok then
                 ngx.say(err)
                 return
@@ -64,7 +67,10 @@ priority: 17677
                 }
             }
 
-            local result = plugin.rewrite({}, ctx)
+            local result = plugin.rewrite({
+                support_public = false,
+                support_personal = false
+            }, ctx)
             ngx.say(result == nil and "skipped" or "processed")
         }
     }
@@ -72,11 +78,6 @@ priority: 17677
 skipped
 
 === TEST 3: public-only configuration allows public
---- extra_yaml_config
-plugin_attr:
-  bk-oauth2-appcode-validate:
-    support_public: true
-    support_personal: false
 --- config
     location /t {
         content_by_lua_block {
@@ -90,7 +91,10 @@ plugin_attr:
                 }
             }
 
-            local result = plugin.rewrite({}, ctx)
+            local result = plugin.rewrite({
+                support_public = true,
+                support_personal = false
+            }, ctx)
             ngx.say(result == nil and "pass" or "fail")
         }
     }
@@ -99,10 +103,6 @@ pass
 
 === TEST 4: public-only configuration rejects personal
 --- extra_yaml_config
-plugin_attr:
-  bk-oauth2-appcode-validate:
-    support_public: true
-    support_personal: false
 bk_gateway:
   hosts:
     bk-apigateway-api:
@@ -120,7 +120,10 @@ bk_gateway:
                 }
             }
 
-            local status = plugin.rewrite({}, ctx)
+            local status = plugin.rewrite({
+                support_public = true,
+                support_personal = false
+            }, ctx)
             ngx.status = 200
             ngx.say("status: " .. tostring(status))
             ngx.say("code_name: " .. ctx.var.bk_apigw_error.error.code_name)
@@ -133,11 +136,6 @@ qr/status: 401\ncode_name: UNAUTHORIZED\nmessage: Unauthorized .*OAuth2 token ap
 WWW-Authenticate: Bearer .*error="invalid_token".*bk_app_code=personal.*support_public=true.*support_personal=false"
 
 === TEST 5: personal-only configuration allows personal
---- extra_yaml_config
-plugin_attr:
-  bk-oauth2-appcode-validate:
-    support_public: false
-    support_personal: true
 --- config
     location /t {
         content_by_lua_block {
@@ -151,7 +149,10 @@ plugin_attr:
                 }
             }
 
-            local result = plugin.rewrite({}, ctx)
+            local result = plugin.rewrite({
+                support_public = false,
+                support_personal = true
+            }, ctx)
             ngx.say(result == nil and "pass" or "fail")
         }
     }
@@ -160,10 +161,6 @@ pass
 
 === TEST 6: personal-only configuration rejects public
 --- extra_yaml_config
-plugin_attr:
-  bk-oauth2-appcode-validate:
-    support_public: false
-    support_personal: true
 bk_gateway:
   hosts:
     bk-apigateway-api:
@@ -181,7 +178,10 @@ bk_gateway:
                 }
             }
 
-            local status = plugin.rewrite({}, ctx)
+            local status = plugin.rewrite({
+                support_public = false,
+                support_personal = true
+            }, ctx)
             ngx.status = 200
             ngx.say("status: " .. tostring(status))
         }
@@ -192,11 +192,6 @@ status: 401
 WWW-Authenticate: Bearer .*error="invalid_token".*support_public=false.*support_personal=true"
 
 === TEST 7: both-enabled configuration allows both app codes
---- extra_yaml_config
-plugin_attr:
-  bk-oauth2-appcode-validate:
-    support_public: true
-    support_personal: true
 --- config
     location /t {
         content_by_lua_block {
@@ -210,9 +205,13 @@ plugin_attr:
                 }
             }
 
-            local public_result = plugin.rewrite({}, ctx)
+            local conf = {
+                support_public = true,
+                support_personal = true
+            }
+            local public_result = plugin.rewrite(conf, ctx)
             ctx.var.bk_app_code = "personal"
-            local personal_result = plugin.rewrite({}, ctx)
+            local personal_result = plugin.rewrite(conf, ctx)
 
             ngx.say(public_result == nil and "public: pass" or "public: fail")
             ngx.say(personal_result == nil and "personal: pass" or "personal: fail")
@@ -241,7 +240,10 @@ bk_gateway:
                 }
             }
 
-            local status = plugin.rewrite({}, ctx)
+            local status = plugin.rewrite({
+                support_public = false,
+                support_personal = false
+            }, ctx)
             ngx.status = 200
             ngx.say("status: " .. tostring(status))
         }
@@ -253,10 +255,6 @@ WWW-Authenticate: Bearer .*error="invalid_token".*support_public=false.*support_
 
 === TEST 9: ordinary app code stays unsupported when both flags are enabled
 --- extra_yaml_config
-plugin_attr:
-  bk-oauth2-appcode-validate:
-    support_public: true
-    support_personal: true
 bk_gateway:
   hosts:
     bk-apigateway-api:
@@ -274,7 +272,10 @@ bk_gateway:
                 }
             }
 
-            local status = plugin.rewrite({}, ctx)
+            local status = plugin.rewrite({
+                support_public = true,
+                support_personal = true
+            }, ctx)
             ngx.status = 200
             ngx.say("status: " .. tostring(status))
         }
