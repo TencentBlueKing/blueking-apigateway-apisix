@@ -115,6 +115,7 @@ bk_gateway:
                 var = {
                     uri = "/api/test",
                     bk_gateway_name = "demo",
+                    bk_resource_name = "test-resource",
                     is_bk_oauth2 = true,
                     bk_app_code = "personal"
                 }
@@ -128,10 +129,18 @@ bk_gateway:
             ngx.say("status: " .. tostring(status))
             ngx.say("code_name: " .. ctx.var.bk_apigw_error.error.code_name)
             ngx.say("message: " .. ctx.var.bk_apigw_error.error.message)
+            ngx.say(
+                "has_gateway: " ..
+                tostring(string.find(ctx.var.bk_apigw_error.error.message, 'gateway="demo"', 1, true) ~= nil)
+            )
+            ngx.say(
+                "has_resource: " ..
+                tostring(string.find(ctx.var.bk_apigw_error.error.message, 'resource="test-resource"', 1, true) ~= nil)
+            )
         }
     }
 --- response_body_like eval
-qr/status: 401\ncode_name: UNAUTHORIZED\nmessage: Unauthorized .*OAuth2 token app code is not allowed.*/
+qr/status: 401\ncode_name: UNAUTHORIZED\nmessage: Unauthorized .*OAuth2 token app code is not allowed.*\nhas_gateway: true\nhas_resource: true/
 --- response_headers_like
 WWW-Authenticate: Bearer .*error="invalid_token".*bk_app_code=personal.*support_public=true.*support_personal=false"
 

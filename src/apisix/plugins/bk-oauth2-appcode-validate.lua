@@ -59,18 +59,13 @@ function _M.check_schema(conf)
 end
 
 
-local function build_error_description(app_code, conf)
-    return "OAuth2 token app code is not allowed: bk_app_code=" .. app_code ..
-        ", support_public=" .. tostring(conf.support_public) ..
-        ", support_personal=" .. tostring(conf.support_personal)
-end
-
-
 function _M.rewrite(conf, ctx) -- luacheck: no unused
     if ctx.var.is_bk_oauth2 ~= true then
         core.log.info(
             plugin_name .. ": skipping",
-            ", is_bk_oauth2=", ctx.var.is_bk_oauth2
+            ", is_bk_oauth2=", ctx.var.is_bk_oauth2,
+            ", gateway=", ctx.var.bk_gateway_name,
+            ", resource=", ctx.var.bk_resource_name
         )
         return
     end
@@ -81,17 +76,31 @@ function _M.rewrite(conf, ctx) -- luacheck: no unused
         plugin_name .. ": checking",
         ", bk_app_code=", app_code,
         ", support_public=", conf.support_public,
-        ", support_personal=", conf.support_personal
+        ", support_personal=", conf.support_personal,
+        ", gateway=", ctx.var.bk_gateway_name,
+        ", resource=", ctx.var.bk_resource_name
     )
 
-    local is_allowed = app_code == "public" and conf.support_public
-        or app_code == "personal" and conf.support_personal
-    if is_allowed then
+    if app_code == "public" and conf.support_public then
         core.log.info(
             plugin_name .. ": validation passed",
             ", bk_app_code=", app_code,
             ", support_public=", conf.support_public,
-            ", support_personal=", conf.support_personal
+            ", support_personal=", conf.support_personal,
+            ", gateway=", ctx.var.bk_gateway_name,
+            ", resource=", ctx.var.bk_resource_name
+        )
+        return
+    end
+
+    if app_code == "personal" and conf.support_personal then
+        core.log.info(
+            plugin_name .. ": validation passed",
+            ", bk_app_code=", app_code,
+            ", support_public=", conf.support_public,
+            ", support_personal=", conf.support_personal,
+            ", gateway=", ctx.var.bk_gateway_name,
+            ", resource=", ctx.var.bk_resource_name
         )
         return
     end
@@ -100,21 +109,28 @@ function _M.rewrite(conf, ctx) -- luacheck: no unused
         plugin_name .. ": validation failed",
         ", bk_app_code=", app_code,
         ", support_public=", conf.support_public,
-        ", support_personal=", conf.support_personal
+        ", support_personal=", conf.support_personal,
+        ", gateway=", ctx.var.bk_gateway_name,
+        ", resource=", ctx.var.bk_resource_name
     )
 
-    local error_description = build_error_description(app_code, conf)
     local err = errorx.new_general_unauthorized():with_fields(
         {
             reason = "OAuth2 token app code is not allowed",
             bk_app_code = app_code,
             support_public = conf.support_public,
             support_personal = conf.support_personal,
+            gateway = ctx.var.bk_gateway_name or "",
+            resource = ctx.var.bk_resource_name or "",
         }
     )
 
     ngx.header["WWW-Authenticate"] = oauth2.build_www_authenticate_header(
-        ctx, "invalid_token", error_description
+        ctx,
+        "invalid_token",
+        "OAuth2 token app code is not allowed: bk_app_code=" .. app_code ..
+            ", support_public=" .. tostring(conf.support_public) ..
+            ", support_personal=" .. tostring(conf.support_personal)
     )
     return errorx.exit_with_apigw_err(ctx, err, _M)
 end

@@ -29,6 +29,7 @@ describe(
                     var = {
                         uri = "/api/test",
                         bk_gateway_name = "demo",
+                        bk_resource_name = "test-resource",
                         is_bk_oauth2 = true,
                         bk_app_code = "public",
                     },
@@ -132,6 +133,12 @@ describe(
                         local result = plugin.rewrite(check_conf({}), ctx)
 
                         assert.is_nil(result)
+                        assert.stub(core.log.info).was_called_with(
+                            "bk-oauth2-appcode-validate: skipping",
+                            ", is_bk_oauth2=", false,
+                            ", gateway=", "demo",
+                            ", resource=", "test-resource"
+                        )
                     end
                 )
 
@@ -155,10 +162,20 @@ describe(
 
                         assert.is_nil(result)
                         assert.stub(core.log.info).was_called_with(
+                            "bk-oauth2-appcode-validate: checking",
+                            ", bk_app_code=", "public",
+                            ", support_public=", true,
+                            ", support_personal=", false,
+                            ", gateway=", "demo",
+                            ", resource=", "test-resource"
+                        )
+                        assert.stub(core.log.info).was_called_with(
                             "bk-oauth2-appcode-validate: validation passed",
                             ", bk_app_code=", "public",
                             ", support_public=", true,
-                            ", support_personal=", false
+                            ", support_personal=", false,
+                            ", gateway=", "demo",
+                            ", resource=", "test-resource"
                         )
                     end
                 )
@@ -243,6 +260,8 @@ describe(
                         assert.is_truthy(string.find(message, 'bk_app_code="public"', 1, true))
                         assert.is_truthy(string.find(message, 'support_public="false"', 1, true))
                         assert.is_truthy(string.find(message, 'support_personal="true"', 1, true))
+                        assert.is_truthy(string.find(message, 'gateway="demo"', 1, true))
+                        assert.is_truthy(string.find(message, 'resource="test-resource"', 1, true))
                         assert.is_truthy(string.find(www_auth, 'error="invalid_token"', 1, true))
                         assert.is_truthy(string.find(www_auth, "bk_app_code=public", 1, true))
                         assert.is_truthy(string.find(www_auth, "support_public=false", 1, true))
@@ -251,7 +270,9 @@ describe(
                             "bk-oauth2-appcode-validate: validation failed",
                             ", bk_app_code=", "public",
                             ", support_public=", false,
-                            ", support_personal=", true
+                            ", support_personal=", true,
+                            ", gateway=", "demo",
+                            ", resource=", "test-resource"
                         )
                     end
                 )
