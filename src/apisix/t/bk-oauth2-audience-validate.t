@@ -203,7 +203,7 @@ pass
     location /t {
         content_by_lua_block {
             local plugin = require("apisix.plugins.bk-oauth2-audience-validate")
-            if plugin.priority == 17678 then
+            if plugin.priority == 17677 then
                 ngx.say("pass")
             else
                 ngx.say("fail: " .. tostring(plugin.priority))
