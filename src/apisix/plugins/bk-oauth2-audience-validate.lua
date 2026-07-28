@@ -51,7 +51,7 @@ local schema = {
 
 local _M = {
     version = 0.1,
-    priority = 17678,
+    priority = 17677,
     name = plugin_name,
     schema = schema,
 }

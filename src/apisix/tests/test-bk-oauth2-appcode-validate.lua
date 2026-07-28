@@ -17,6 +17,7 @@
 --
 local core = require("apisix.core")
 local bk_core = require("apisix.plugins.bk-core.init")
+local audience_plugin = require("apisix.plugins.bk-oauth2-audience-validate")
 local plugin = require("apisix.plugins.bk-oauth2-appcode-validate")
 
 describe(
@@ -81,6 +82,12 @@ describe(
                             },
                             plugin.schema.properties.support_personal
                         )
+                    end
+                )
+
+                it(
+                    "runs before audience validation so invalid_token takes precedence", function()
+                        assert.is_true(plugin.priority > audience_plugin.priority)
                     end
                 )
 
