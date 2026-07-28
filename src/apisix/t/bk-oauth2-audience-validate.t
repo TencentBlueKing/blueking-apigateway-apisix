@@ -392,3 +392,76 @@ status: 403
     }
 --- response_body
 status: 403
+
+=== TEST 17: test validation logic - MCP server wildcard match
+--- config
+    location /t {
+        content_by_lua_block {
+            local plugin = require("apisix.plugins.bk-oauth2-audience-validate")
+            local ctx = {
+                var = {
+                    is_bk_oauth2 = true,
+                    bk_gateway_name = "bk-apigateway",
+                    bk_resource_name = "mcp-resource",
+                    uri = "/api/v2/mcp-servers/any-server/resources",
+                    audience = {"mcp:*"}
+                }
+            }
+
+            local result = plugin.rewrite({}, ctx)
+            if result == nil then
+                ngx.say("pass")
+            else
+                ngx.say("fail")
+            end
+        }
+    }
+--- response_body
+pass
+
+=== TEST 18: test validation logic - gateway wildcard match
+--- config
+    location /t {
+        content_by_lua_block {
+            local plugin = require("apisix.plugins.bk-oauth2-audience-validate")
+            local ctx = {
+                var = {
+                    is_bk_oauth2 = true,
+                    bk_gateway_name = "any-gateway",
+                    bk_resource_name = "any-api",
+                    audience = {"gateway:*"}
+                }
+            }
+
+            local result = plugin.rewrite({}, ctx)
+            if result == nil then
+                ngx.say("pass")
+            else
+                ngx.say("fail")
+            end
+        }
+    }
+--- response_body
+pass
+
+=== TEST 19: FAIL - wildcard gateway with a specific API returns 403
+--- config
+    location /t {
+        content_by_lua_block {
+            local plugin = require("apisix.plugins.bk-oauth2-audience-validate")
+            local ctx = {
+                var = {
+                    is_bk_oauth2 = true,
+                    bk_gateway_name = "any-gateway",
+                    bk_resource_name = "test-api",
+                    audience = {"gateway:*/api:test-api"}
+                }
+            }
+
+            local status = plugin.rewrite({}, ctx)
+            ngx.status = 200
+            ngx.say("status: " .. tostring(status))
+        }
+    }
+--- response_body
+status: 403
