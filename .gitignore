@@ -40,5 +40,8 @@ build.yml
 
 # agent
 .claude
+.codex
 .cursor
 .specify
+docs/
+.worktrees/
