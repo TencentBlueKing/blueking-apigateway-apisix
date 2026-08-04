@@ -10,7 +10,7 @@ do
             echo "sentrylogs is running"
         else
             echo "sentrylogs is not running, restarting..."
-            SENTRY_DSN="${BK_APIGW_NGINX_ERROR_LOG_SENTRY_DSN}" NGINX_ERROR_PATH="/usr/local/apisix/logs/error.log" sentrylogs --daemonize
+            SENTRY_DSN="${BK_APIGW_NGINX_ERROR_LOG_SENTRY_DSN}" NGINX_ERROR_PATH="/usr/local/apisix/logs/error.log" sentrylogs >/dev/null 2>&1 &
         fi
     fi
     sleep 60
