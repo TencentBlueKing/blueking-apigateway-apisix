@@ -47,9 +47,13 @@ function _M.verify_app(self)
     end
 
     if not pl_types.is_empty(self.app_secret) then
-        -- check the length before call bkauth apis
+        -- check the length / characters before call bkauth apis
         if string.len(self.app_code) > 32 then
             return bk_app_define.new_anonymous_app("app code cannot be longer than 32 characters")
+        end
+        -- reject whitespace / <> which make resty-http path invalid (e.g. null tostring, placeholders)
+        if string.find(self.app_code, "[%s<>]", 1) then
+            return bk_app_define.new_anonymous_app("app code contains invalid characters")
         end
         if string.len(self.app_secret) > 128 then
             return bk_app_define.new_anonymous_app("app secret cannot be longer than 128 characters")
