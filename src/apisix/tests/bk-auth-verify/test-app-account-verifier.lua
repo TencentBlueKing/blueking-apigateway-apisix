@@ -99,6 +99,31 @@ describe(
                 )
 
                 it(
+                    "app_code contains invalid characters", function()
+                        local cases = {
+                            "userdata: NULL",
+                            "<bk_app_code>",
+                            "<应用code>",
+                        }
+                        for _, app_code in ipairs(cases) do
+                            local auth_params = auth_params_mod.new({
+                                bk_app_code = app_code,
+                                bk_app_secret = "world",
+                            })
+                            local verifier = app_account_verifier_mod.new(auth_params)
+
+                            local app = verifier:verify_app()
+                            assert.is_equal(app.app_code, "")
+                            assert.is_false(app.verified)
+                            assert.is_equal(
+                                app.valid_error_message,
+                                "app code contains invalid characters"
+                            )
+                        end
+                    end
+                )
+
+                it(
                     "app_secret length is greather 128", function()
                         local auth_params = auth_params_mod.new({
                             bk_app_code = "hello",
