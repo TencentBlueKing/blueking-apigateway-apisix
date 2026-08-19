@@ -133,3 +133,13 @@ index 407fe0b..dfa15ff 100644
              if not ok then
                  abort_on_disconnect(flush_err)
                  return
+@@ -686,6 +706,9 @@ function _M.parse_streaming_response(self, ctx, res, target_proto, converter, co
+             ctx.var.apisix_upstream_response_time = duration_ms
+             ctx.var.llm_request_done = true
+             res._upstream_bytes = bytes_read
++            if not finalize_response_filter() then
++                return
++            end
+             if output_sent then
+                 -- Client has already received partial SSE; stop feeding chunks.
+                 -- nginx will close the downstream connection at end of content
