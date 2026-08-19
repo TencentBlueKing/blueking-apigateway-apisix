@@ -382,6 +382,37 @@ describe(
                 )
 
                 it(
+                    "restores Chat content when nullable delta fields are JSON null",
+                    function()
+                        local processor = assert(sse.new(
+                            "openai-chat", {[token] = "13800138000"}, namespace
+                        ))
+                        local frame = "data: " .. core.json.encode({
+                            choices = {
+                                {
+                                    index = 0,
+                                    delta = {
+                                        content = token,
+                                        refusal = core.json.null,
+                                    },
+                                },
+                            },
+                        }) .. "\n\n"
+
+                        local output, restored_count = processor:feed(frame, false)
+                        local data = core.json.decode(sse_codec.decode(output)[1].data)
+
+                        assert.is_equal(
+                            "13800138000", data.choices[1].delta.content
+                        )
+                        assert.is_equal(1, restored_count)
+                        assert.is_equal(
+                            core.json.null, data.choices[1].delta.refusal
+                        )
+                    end
+                )
+
+                it(
                     "preserves keepalive comments byte-for-byte", function()
                         local processor = assert(sse.new("openai-chat", {}, namespace))
 

@@ -159,6 +159,21 @@ local function is_optional_string(value)
 end
 
 
+local function is_absent_chat_value(value)
+    return value == nil or value == core.json.null
+end
+
+
+local function is_optional_chat_index(value)
+    return is_absent_chat_value(value) or type(value) == "number"
+end
+
+
+local function is_optional_chat_string(value)
+    return is_absent_chat_value(value) or type(value) == "string"
+end
+
+
 local function is_valid_chat_value(value)
     if value.choices == nil then
         return true
@@ -168,42 +183,43 @@ local function is_valid_chat_value(value)
     end
 
     for _, choice in ipairs(value.choices) do
-        if type(choice) ~= "table" or not is_optional_index(choice.index) then
+        if type(choice) ~= "table" or not is_optional_chat_index(choice.index) then
             return false
         end
 
         local delta = choice.delta
-        if delta ~= nil then
+        if not is_absent_chat_value(delta) then
             if type(delta) ~= "table" then
                 return false
             end
             for _, field in ipairs(CHAT_TEXT_FIELDS) do
-                if not is_optional_string(delta[field]) then
+                if not is_optional_chat_string(delta[field]) then
                     return false
                 end
             end
 
             local function_call = delta.function_call
-            if function_call ~= nil then
+            if not is_absent_chat_value(function_call) then
                 if type(function_call) ~= "table"
-                        or not is_optional_string(function_call.arguments) then
+                        or not is_optional_chat_string(function_call.arguments) then
                     return false
                 end
             end
 
             local tool_calls = delta.tool_calls
-            if tool_calls ~= nil then
+            if not is_absent_chat_value(tool_calls) then
                 if type(tool_calls) ~= "table" then
                     return false
                 end
                 for _, tool_call in ipairs(tool_calls) do
                     if type(tool_call) ~= "table"
-                            or not is_optional_index(tool_call.index) then
+                            or not is_optional_chat_index(tool_call.index) then
                         return false
                     end
                     local func = tool_call["function"]
-                    if func ~= nil and (type(func) ~= "table"
-                            or not is_optional_string(func.arguments)) then
+                    if not is_absent_chat_value(func)
+                            and (type(func) ~= "table"
+                                 or not is_optional_chat_string(func.arguments)) then
                         return false
                     end
                 end
@@ -319,7 +335,7 @@ function Processor:process_chat_event(event, value)
         local delta = choice.delta
         if type(delta) == "table" then
             local choice_index = choice.index
-            if choice_index == nil then
+            if is_absent_chat_value(choice_index) then
                 choice_index = choice_pos - 1
             end
 
@@ -372,7 +388,7 @@ function Processor:process_chat_event(event, value)
             if type(delta.tool_calls) == "table" then
                 for tool_pos, tool_call in ipairs(delta.tool_calls) do
                     local tool_index = tool_call.index
-                    if tool_index == nil then
+                    if is_absent_chat_value(tool_index) then
                         tool_index = tool_pos - 1
                     end
                     local func = tool_call["function"]
