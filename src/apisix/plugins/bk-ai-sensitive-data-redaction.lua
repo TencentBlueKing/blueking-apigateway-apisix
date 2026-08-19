@@ -670,21 +670,15 @@ function _M.lua_body_filter(_, ctx, _, body, eof)
         return
     end
 
-    local decoded, decode_err = core.json.decode(body)
-    if not decoded then
+    local ok, restored, count = pcall(
+        restorer.restore_json_text,
+        body,
+        ctx._ai_redaction_mapping,
+        ctx._ai_redaction_namespace
+    )
+    if not ok or type(restored) ~= "string" or type(count) ~= "number" then
         core.log.error(
-            "failed to decode masked AI response: ", decode_err,
-            ", request_id: ", ctx._ai_redaction_request_id
-        )
-        clear_sensitive_state(ctx)
-        return
-    end
-
-    local restored, count = restorer.restore_json(decoded, ctx._ai_redaction_mapping)
-    local encoded, encode_err = core.json.encode(restored)
-    if not encoded then
-        core.log.error(
-            "failed to encode restored AI response: ", encode_err,
+            "failed to restore masked AI response",
             ", request_id: ", ctx._ai_redaction_request_id
         )
         clear_sensitive_state(ctx)
@@ -693,7 +687,7 @@ function _M.lua_body_filter(_, ctx, _, body, eof)
 
     ctx._ai_redaction_restored_count = count
     clear_sensitive_state(ctx)
-    return nil, encoded
+    return nil, restored
 end
 
 

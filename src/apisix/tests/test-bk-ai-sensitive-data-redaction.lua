@@ -1316,43 +1316,83 @@ describe(
                 )
 
                 it(
-                    "passes malformed upstream JSON through masked and clears state",
+                    "preserves response numeric lexemes while restoring string values",
                     function()
                         local request_id = "da584df5-7bd5-4590-98e0-8f92a89f9494"
                         local namespace =
                             "__BK_REDACT_da584df57bd5459098e08f92a89f9494_"
                         local known = namespace .. "1__"
-                        local masked_body = "{\"content\":\"" .. known .. "\""
-                        local _, decode_err = core.json.decode(masked_body)
                         local ctx = request_context({
                             var = {request_type = "ai_chat"},
                             _ai_redaction_request_id = request_id,
-                            _ai_redaction_session_id =
-                                "24395b38-bf3f-426c-a632-10df20ec69c8",
                             _ai_redaction_namespace = namespace,
                             _ai_redaction_mapping = {[known] = "13800138000"},
-                            _ai_redaction_sse_restorer = {},
-                            _ai_redaction_restored_count = 7,
                         })
+                        local masked_body =
+                            '{ "large":9007199254740993, "negative_zero":-0, ' ..
+                            '"exponent":1.2300e+40, "content":"' .. known .. '" }'
+                        local expected =
+                            '{ "large":9007199254740993, "negative_zero":-0, ' ..
+                            '"exponent":1.2300e+40, "content":"13800138000" }'
 
                         local code, restored_body = plugin.lua_body_filter(
                             config(), ctx, {}, masked_body, true
                         )
 
                         assert.is_nil(code)
-                        assert.is_nil(restored_body)
+                        assert.is_equal(expected, restored_body)
+                        assert.is_equal(1, ctx._ai_redaction_restored_count)
+                        assert.is_nil(ctx._ai_redaction_namespace)
+                        assert.is_nil(ctx._ai_redaction_mapping)
+                    end
+                )
+
+                it(
+                    "passes invalid upstream JSON through masked and clears state",
+                    function()
+                        local request_id = "da584df5-7bd5-4590-98e0-8f92a89f9494"
+                        local namespace =
+                            "__BK_REDACT_da584df57bd5459098e08f92a89f9494_"
+                        local known = namespace .. "1__"
+                        local cases = {
+                            '{"content":"' .. known .. '"',
+                            '{"content":"' .. known .. '"} trailing',
+                            string.rep("[", 129) .. '"' .. known .. '"' ..
+                                string.rep("]", 129),
+                        }
+
+                        for _, masked_body in ipairs(cases) do
+                            local ctx = request_context({
+                                var = {request_type = "ai_chat"},
+                                _ai_redaction_request_id = request_id,
+                                _ai_redaction_session_id =
+                                    "24395b38-bf3f-426c-a632-10df20ec69c8",
+                                _ai_redaction_namespace = namespace,
+                                _ai_redaction_mapping = {[known] = "13800138000"},
+                                _ai_redaction_sse_restorer = {},
+                                _ai_redaction_restored_count = 7,
+                            })
+
+                            local code, restored_body = plugin.lua_body_filter(
+                                config(), ctx, {}, masked_body, true
+                            )
+
+                            assert.is_nil(code)
+                            assert.is_nil(restored_body)
+                            assert.is_equal(request_id, ctx._ai_redaction_request_id)
+                            assert.is_equal(7, ctx._ai_redaction_restored_count)
+                            assert.is_nil(ctx._ai_redaction_session_id)
+                            assert.is_nil(ctx._ai_redaction_namespace)
+                            assert.is_nil(ctx._ai_redaction_mapping)
+                            assert.is_nil(ctx._ai_redaction_sse_restorer)
+                        end
+
+                        assert.stub(core.log.error).was_called(3)
                         assert.stub(core.log.error).was_called_with(
-                            "failed to decode masked AI response: ",
-                            decode_err,
+                            "failed to restore masked AI response",
                             ", request_id: ",
                             request_id
                         )
-                        assert.is_equal(request_id, ctx._ai_redaction_request_id)
-                        assert.is_equal(7, ctx._ai_redaction_restored_count)
-                        assert.is_nil(ctx._ai_redaction_session_id)
-                        assert.is_nil(ctx._ai_redaction_namespace)
-                        assert.is_nil(ctx._ai_redaction_mapping)
-                        assert.is_nil(ctx._ai_redaction_sse_restorer)
                     end
                 )
             end

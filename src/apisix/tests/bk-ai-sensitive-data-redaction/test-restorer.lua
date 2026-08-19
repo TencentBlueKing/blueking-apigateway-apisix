@@ -201,76 +201,158 @@ describe(
         )
 
         context(
-            "restore_json", function()
+            "restore_json_text", function()
                 it(
-                    "restores repeated placeholders in nested response strings", function()
+                    "preserves numeric lexemes and unchanged JSON bytes", function()
+                        local raw = '{ "large":9007199254740993, "negative_zero":-0, ' ..
+                                    '"exponent":1.2300e+40, "content":"' .. token .. '" }'
+                        local expected =
+                            '{ "large":9007199254740993, "negative_zero":-0, ' ..
+                            '"exponent":1.2300e+40, "content":"restored" }'
+
+                        local restored, count = restorer.restore_json_text(
+                            raw, {[token] = "restored"}, namespace
+                        )
+
+                        assert.is_equal(expected, restored)
+                        assert.is_equal(1, count)
+                    end
+                )
+
+                it(
+                    "preserves numeric lexemes in embedded function arguments", function()
+                        local arguments =
+                            '{ "large":9007199254740993, "negative_zero":-0, ' ..
+                            '"exponent":1.2300e+40, "phone":"' .. token .. '" }'
+                        local restored_arguments =
+                            '{ "large":9007199254740993, "negative_zero":-0, ' ..
+                            '"exponent":1.2300e+40, "phone":"restored" }'
+                        local raw = '{"arguments":' ..
+                                    assert(core.json.encode(arguments)) .. ',"order":1}'
+                        local expected = '{"arguments":' ..
+                                         assert(core.json.encode(restored_arguments)) ..
+                                         ',"order":1}'
+
+                        local restored, count = restorer.restore_json_text(
+                            raw, {[token] = "restored"}, namespace
+                        )
+
+                        assert.is_equal(expected, restored)
+                        assert.is_equal(1, count)
+                        local decoded = assert(core.json.decode(restored))
+                        assert.is_table(core.json.decode(decoded.arguments))
+                    end
+                )
+
+                it(
+                    "restores string values but not object keys or unknown tokens", function()
                         local unknown = namespace .. "9__"
-                        local response = {
-                            choices = {
-                                {
-                                    message = {
-                                        content = "phone=" .. token .. ", again=" .. token,
-                                        tool_calls = {
-                                            {
-                                                type = "function",
-                                                ["function"] = {
-                                                    name = "save_contact",
-                                                    arguments = core.json.encode({
-                                                        name = "a\"b",
-                                                        phone = token,
-                                                    }),
-                                                },
-                                            },
-                                        },
-                                    },
-                                },
-                            },
-                            untouched = unknown,
+                        local malformed = namespace .. "01__"
+                        local raw = '{"' .. token .. '":"' .. token ..
+                                    '","unknown":"' .. unknown .. '","malformed":"' ..
+                                    malformed .. '"}'
+                        local expected = '{"' .. token ..
+                                         '":"restored","unknown":"' .. unknown ..
+                                         '","malformed":"' .. malformed .. '"}'
+
+                        local restored, count = restorer.restore_json_text(
+                            raw, {[token] = "restored"}, namespace
+                        )
+
+                        assert.is_equal(expected, restored)
+                        assert.is_equal(1, count)
+                    end
+                )
+
+                it(
+                    "rejects malformed trailing and over-depth JSON without content errors",
+                    function()
+                        local cases = {
+                            '{"content":"' .. token .. '"',
+                            '{"content":"' .. token .. '"} trailing',
+                            string.rep("[", 129) .. '"' .. token .. '"' ..
+                                string.rep("]", 129),
                         }
 
-                        local restored, count = restorer.restore_json(
-                            response, {[token] = "13800138000"}
-                        )
+                        for _, raw in ipairs(cases) do
+                            local restored, err = restorer.restore_json_text(
+                                raw, {[token] = "sensitive-original"}, namespace
+                            )
 
-                        assert.is_equal(3, count)
-                        assert.is_equal(
-                            "phone=13800138000, again=13800138000",
-                            restored.choices[1].message.content
-                        )
-                        local arguments = core.json.decode(
-                            restored.choices[1].message.tool_calls[1]["function"].arguments
-                        )
-                        assert.is_equal("a\"b", arguments.name)
-                        assert.is_equal("13800138000", arguments.phone)
-                        assert.is_equal(unknown, restored.untouched)
+                            assert.is_nil(restored)
+                            assert.is_string(err)
+                            assert.is_falsy(err:find(token, 1, true))
+                            assert.is_falsy(err:find("sensitive-original", 1, true))
+                        end
                     end
                 )
 
                 it(
-                    "preserves quotes and newlines in nested JSON originals", function()
-                        local original = "first line\n\"quoted\""
-                        local value = core.json.encode({value = token})
-
-                        local restored, count = restorer.restore_json(value, {[token] = original})
-
-                        assert.is_equal(1, count)
-                        assert.is_equal(original, core.json.decode(restored).value)
-                    end
-                )
-
-                it(
-                    "does not rescan replacement output", function()
+                    "restores adjacent complex originals without rescanning output", function()
                         local next_token = namespace .. "2__"
-                        local restored, count = restorer.restore_json(
-                            token,
+                        local original =
+                            "quote \" backslash \\ newline\nUnicode 中文 token " .. next_token
+                        local raw = '{"value":' ..
+                                    assert(core.json.encode(token .. token .. next_token)) .. '}'
+                        local expected = '{"value":' ..
+                                         assert(core.json.encode(
+                                             original .. original .. "second"
+                                         )) .. '}'
+
+                        local restored, count = restorer.restore_json_text(
+                            raw,
                             {
-                                [token] = next_token,
-                                [next_token] = "must-not-be-used",
-                            }
+                                [token] = original,
+                                [next_token] = "second",
+                            },
+                            namespace
                         )
 
-                        assert.is_equal(1, count)
-                        assert.is_equal(next_token, restored)
+                        assert.is_equal(expected, restored)
+                        assert.is_equal(3, count)
+                    end
+                )
+
+                it(
+                    "restores the default 1000-entry mapping within a bounded time", function()
+                        local replacements = {}
+                        local masked_parts = {}
+                        local restored_parts = {}
+                        for index = 1, 1000 do
+                            local current_token = namespace .. index .. "__"
+                            local original = "value-" .. index
+                            replacements[index] = {
+                                placeholder = current_token,
+                                original = original,
+                            }
+                            masked_parts[index] = current_token
+                            restored_parts[index] = original
+                        end
+                        local masked_text = table.concat(masked_parts, ",")
+                        local raw = assert(core.json.encode({content = masked_text}))
+                        local started_at = os.clock()
+
+                        local validated = assert(restorer.validate_mapping(
+                            namespace,
+                            {content = masked_text},
+                            replacements,
+                            1000,
+                            1024 * 1024
+                        ))
+                        local restored, count = restorer.restore_json_text(
+                            raw, validated, namespace
+                        )
+                        local elapsed = os.clock() - started_at
+
+                        assert.is_true(
+                            elapsed < 0.2,
+                            "1000-entry restoration took " .. elapsed .. " seconds"
+                        )
+                        assert.is_equal(1000, count)
+                        assert.is_equal(
+                            table.concat(restored_parts, ","),
+                            assert(core.json.decode(restored)).content
+                        )
                     end
                 )
             end
