@@ -1030,3 +1030,251 @@ generic-filter-error-direct
     }
 --- response_body
 ordinary-build-error-wrapped
+
+
+
+=== TEST 15: early provider build failure keeps finalized-filter payload logging empty
+--- config
+    location /t {
+        content_by_lua_block {
+            local core = require("apisix.core")
+            local ai_proxy = require("apisix.plugins.ai-proxy")
+            local base = require("apisix.plugins.ai-proxy.base")
+            local exporter = require("apisix.plugins.prometheus.exporter")
+            local logged = {}
+            local original_log_info = core.log.info
+            local original_log_error = core.log.error
+            local original_inc = exporter.inc_llm_active_connections
+            local original_dec = exporter.dec_llm_active_connections
+            local callback_calls = 0
+            local ctx = {
+                ai_client_protocol = "bedrock-converse",
+                ai_final_request_body_filter = function(body)
+                    callback_calls = callback_calls + 1
+                    return body
+                end,
+                picked_ai_instance = {
+                    name = "early-build-failure",
+                    provider = "bedrock",
+                    provider_conf = {region = "us-east-1"},
+                    auth = {},
+                    override = {
+                        request_body = {
+                            ["bedrock-converse"] = {
+                                metadata = {secret = "body-bearing-override-secret"},
+                            },
+                        },
+                    },
+                },
+                var = {
+                    uri = "/model/missing/converse",
+                    request_type = "ai_chat",
+                },
+            }
+
+            local function capture(...)
+                for index = 1, select("#", ...) do
+                    local value = select(index, ...)
+                    if type(value) == "string" then
+                        logged[#logged + 1] = value
+                    else
+                        local ok, encoded = pcall(core.json.encode, value)
+                        logged[#logged + 1] = ok and encoded or tostring(value)
+                    end
+                end
+            end
+
+            core.log.info = capture
+            core.log.error = capture
+            exporter.inc_llm_active_connections = function() end
+            exporter.dec_llm_active_connections = function() end
+            ngx.ctx.api_ctx = ctx
+            local ok, err = xpcall(function()
+                local code, body = base.before_proxy({}, ctx)
+                assert(code == 400)
+                assert(type(body) == "table")
+                assert(body.error_msg:find("could not resolve upstream path", 1, true))
+                assert(callback_calls == 0)
+
+                ai_proxy.log({logging = {summaries = false, payloads = true}}, ctx)
+            end, debug.traceback)
+            core.log.info = original_log_info
+            core.log.error = original_log_error
+            exporter.inc_llm_active_connections = original_inc
+            exporter.dec_llm_active_connections = original_dec
+            assert(ok, err)
+
+            local payload = assert(core.json.encode(ctx.llm_request))
+            local output = table.concat(logged)
+            for _, secret in ipairs({
+                "early-client-secret",
+                "body-bearing-override-secret",
+            }) do
+                assert(not payload:find(secret, 1, true), payload)
+                assert(not output:find(secret, 1, true), output)
+            end
+            ngx.say("early-build-payload-safe")
+        }
+    }
+--- request
+POST /t
+{"messages":[{"role":"user","content":[{"text":"early-client-secret"}]}]}
+--- more_headers
+Content-Type: application/json
+--- response_body
+early-build-payload-safe
+--- no_error_log
+early-client-secret
+body-bearing-override-secret
+
+
+
+=== TEST 16: every finalized-filter retry clears the prior logging view before build
+--- config
+    location /t {
+        content_by_lua_block {
+            local core = require("apisix.core")
+            local ai_proxy = require("apisix.plugins.ai-proxy")
+            local base = require("apisix.plugins.ai-proxy.base")
+            local exporter = require("apisix.plugins.prometheus.exporter")
+            local module_name = "apisix.plugins.ai-providers.task10-attempt-probe"
+            local original_provider = package.loaded[module_name]
+            local original_inc = exporter.inc_llm_active_connections
+            local original_dec = exporter.dec_llm_active_connections
+            local snapshots = {}
+            local callback_calls = 0
+            local attempts = 0
+            local ctx
+
+            package.loaded[module_name] = {
+                capabilities = {
+                    ["openai-chat"] = {
+                        path = "/v1/chat/completions",
+                        host = "localhost",
+                    },
+                },
+                build_request = function(_, build_ctx)
+                    attempts = attempts + 1
+                    snapshots[attempts] = core.table.deepcopy(
+                        build_ctx.var.llm_request_body
+                    )
+                    assert(build_ctx.ai_final_request_body_filter("{}") == "{}")
+                    if attempts == 1 then
+                        return nil, "retry first build", 500
+                    end
+                    return nil, "stop second build", 400
+                end,
+            }
+            exporter.inc_llm_active_connections = function() end
+            exporter.dec_llm_active_connections = function() end
+
+            ctx = {
+                ai_client_protocol = "openai-chat",
+                ai_final_request_body_filter = function(body)
+                    callback_calls = callback_calls + 1
+                    ctx.var.llm_request_body = {
+                        messages = {{
+                            role = "user",
+                            content = "masked-attempt-" .. callback_calls,
+                        }},
+                    }
+                    return body
+                end,
+                picked_ai_instance = {
+                    name = "attempt-probe",
+                    provider = "task10-attempt-probe",
+                    auth = {},
+                },
+                var = {
+                    uri = "/v1/chat/completions",
+                    request_type = "ai_chat",
+                    llm_request_body = {
+                        messages = {{role = "user", content = "stale-masked-view"}},
+                    },
+                },
+            }
+            ngx.ctx.api_ctx = ctx
+
+            local ok, err = xpcall(function()
+                local code = base.before_proxy({}, ctx, function(_, _, attempt_code)
+                    if attempt_code == 500 then
+                        return
+                    end
+                    return attempt_code
+                end)
+                assert(code == 400)
+                assert(attempts == 2)
+                assert(callback_calls == 2)
+                assert(next(snapshots[1]) == nil)
+                assert(next(snapshots[2]) == nil)
+
+                ai_proxy.log({logging = {summaries = false, payloads = true}}, ctx)
+                local payload = assert(core.json.encode(ctx.llm_request))
+                assert(payload:find("masked%-attempt%-2"))
+                assert(not payload:find("retry-client-secret", 1, true))
+                assert(not payload:find("stale-masked-view", 1, true))
+            end, debug.traceback)
+            package.loaded[module_name] = original_provider
+            exporter.inc_llm_active_connections = original_inc
+            exporter.dec_llm_active_connections = original_dec
+            assert(ok, err)
+            ngx.say("every-attempt-view-reset")
+        }
+    }
+--- request
+POST /t
+{"messages":[{"role":"user","content":"retry-client-secret"}]}
+--- more_headers
+Content-Type: application/json
+--- response_body
+every-attempt-view-reset
+
+
+
+=== TEST 17: routes without a finalized filter retain the original logging view
+--- config
+    location /t {
+        content_by_lua_block {
+            local core = require("apisix.core")
+            local ai_proxy = require("apisix.plugins.ai-proxy")
+            local base = require("apisix.plugins.ai-proxy.base")
+            local exporter = require("apisix.plugins.prometheus.exporter")
+            local original_inc = exporter.inc_llm_active_connections
+            local original_dec = exporter.dec_llm_active_connections
+            exporter.inc_llm_active_connections = function() end
+            exporter.dec_llm_active_connections = function() end
+            local ctx = {
+                ai_client_protocol = "bedrock-converse",
+                picked_ai_instance = {
+                    name = "legacy-build-failure",
+                    provider = "bedrock",
+                    provider_conf = {region = "us-east-1"},
+                    auth = {},
+                },
+                var = {
+                    uri = "/model/missing/converse",
+                    request_type = "ai_chat",
+                },
+            }
+            ngx.ctx.api_ctx = ctx
+
+            local code, body = base.before_proxy({}, ctx)
+            assert(code == 400, assert(core.json.encode({code = code, body = body})))
+            assert(type(body) == "table")
+            assert(body.error_msg:find("could not resolve upstream path", 1, true))
+
+            ai_proxy.log({logging = {summaries = false, payloads = true}}, ctx)
+            exporter.inc_llm_active_connections = original_inc
+            exporter.dec_llm_active_connections = original_dec
+            local payload = assert(core.json.encode(ctx.llm_request))
+            assert(payload:find("legacy-client-secret", 1, true))
+            ngx.say("legacy-original-payload-retained")
+        }
+    }
+--- request
+POST /t
+{"messages":[{"role":"user","content":[{"text":"legacy-client-secret"}]}]}
+--- more_headers
+Content-Type: application/json
+--- response_body
+legacy-original-payload-retained
