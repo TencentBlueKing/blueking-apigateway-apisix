@@ -1359,6 +1359,8 @@ describe(
                             '{"content":"' .. known .. '"} trailing',
                             string.rep("[", 129) .. '"' .. known .. '"' ..
                                 string.rep("]", 129),
+                            '{"content":"\\uD800"}',
+                            '{"' .. string.char(0x80) .. '":"value"}',
                         }
 
                         for _, masked_body in ipairs(cases) do
@@ -1387,7 +1389,7 @@ describe(
                             assert.is_nil(ctx._ai_redaction_sse_restorer)
                         end
 
-                        assert.stub(core.log.error).was_called(3)
+                        assert.stub(core.log.error).was_called(5)
                         assert.stub(core.log.error).was_called_with(
                             "failed to restore masked AI response",
                             ", request_id: ",

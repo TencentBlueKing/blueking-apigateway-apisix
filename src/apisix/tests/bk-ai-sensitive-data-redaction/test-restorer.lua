@@ -197,6 +197,29 @@ describe(
                         assert.is_equal("mapping byte limit exceeded", err)
                     end
                 )
+
+                it(
+                    "finds a valid token overlapping a malformed namespace occurrence",
+                    function()
+                        local reviewer_value = namespace .. namespace:sub(2) .. "1__"
+
+                        local mapping, err = restorer.validate_mapping(
+                            namespace,
+                            {content = reviewer_value},
+                            {
+                                {
+                                    placeholder = token,
+                                    original = "13800138000",
+                                },
+                            },
+                            10,
+                            1024
+                        )
+
+                        assert.is_nil(err)
+                        assert.is_equal("13800138000", mapping[token])
+                    end
+                )
             end
         )
 
@@ -254,6 +277,98 @@ describe(
                         local expected = '{"' .. token ..
                                          '":"restored","unknown":"' .. unknown ..
                                          '","malformed":"' .. malformed .. '"}'
+
+                        local restored, count = restorer.restore_json_text(
+                            raw, {[token] = "restored"}, namespace
+                        )
+
+                        assert.is_equal(expected, restored)
+                        assert.is_equal(1, count)
+                    end
+                )
+
+                it(
+                    "accepts a supplementary Unicode pair in keys and values", function()
+                        local raw = '{"\\uD83D\\uDE00":"\\uD83D\\uDE00",' ..
+                                    '"content":"' .. token .. '"}'
+                        local expected = '{"\\uD83D\\uDE00":"\\uD83D\\uDE00",' ..
+                                         '"content":"restored"}'
+
+                        local restored, count = restorer.restore_json_text(
+                            raw, {[token] = "restored"}, namespace
+                        )
+
+                        assert.is_equal(expected, restored)
+                        assert.is_equal(1, count)
+                    end
+                )
+
+                it(
+                    "rejects invalid surrogate escapes in keys and values", function()
+                        local cases = {
+                            '{"\\uD800":"value"}',
+                            '{"key":"\\uD800"}',
+                            '{"key":"\\uDC00"}',
+                            '{"key":"\\uD800\\u0041"}',
+                        }
+
+                        for _, raw in ipairs(cases) do
+                            local restored, err = restorer.restore_json_text(
+                                raw, {}, namespace
+                            )
+
+                            assert.is_nil(restored)
+                            assert.is_equal("invalid JSON", err)
+                        end
+                    end
+                )
+
+                it(
+                    "rejects invalid raw UTF-8 in keys and values", function()
+                        local invalid = string.char(0x80)
+                        local cases = {
+                            '{"' .. invalid .. '":"value"}',
+                            '{"key":"' .. invalid .. '"}',
+                        }
+
+                        for _, raw in ipairs(cases) do
+                            local restored, err = restorer.restore_json_text(
+                                raw, {}, namespace
+                            )
+
+                            assert.is_nil(restored)
+                            assert.is_equal("invalid JSON", err)
+                            assert.is_falsy(err:find(invalid, 1, true))
+                        end
+                    end
+                )
+
+                it(
+                    "restores escaped tokens and preserves escaped unknown values", function()
+                        local unknown = namespace .. "9__"
+                        local escaped_token = "\\u005f" .. token:sub(2)
+                        local escaped_unknown = "\\u005f" .. unknown:sub(2)
+                        local raw = '{"known":"' .. escaped_token ..
+                                    '","unknown":"' .. escaped_unknown .. '"}'
+                        local expected = '{"known":"restored","unknown":"' ..
+                                         escaped_unknown .. '"}'
+
+                        local restored, count = restorer.restore_json_text(
+                            raw, {[token] = "restored"}, namespace
+                        )
+
+                        assert.is_equal(expected, restored)
+                        assert.is_equal(1, count)
+                    end
+                )
+
+                it(
+                    "restores a token overlapping a malformed namespace occurrence",
+                    function()
+                        local reviewer_value = namespace .. namespace:sub(2) .. "1__"
+                        local raw = '{"value":"' .. reviewer_value .. '"}'
+                        local expected = '{"value":"' .. namespace:sub(1, -2) ..
+                                         'restored"}'
 
                         local restored, count = restorer.restore_json_text(
                             raw, {[token] = "restored"}, namespace
@@ -432,6 +547,26 @@ describe(
                         assert.is_equal("", first)
                         assert.is_equal(prefix, final_out)
                         assert.is_equal(0, count)
+                    end
+                )
+
+                it(
+                    "restores overlapping tokens in text and JSON fragment modes", function()
+                        local reviewer_value = namespace .. namespace:sub(2) .. "1__"
+                        local expected_prefix = namespace:sub(1, -2)
+                        local stream = restorer.new_stream({[token] = "a\"b"}, namespace)
+
+                        local text, text_count = stream:feed(
+                            "text", reviewer_value, "text", true
+                        )
+                        local fragment, fragment_count = stream:feed(
+                            "fragment", reviewer_value, "json_fragment", true
+                        )
+
+                        assert.is_equal(expected_prefix .. "a\"b", text)
+                        assert.is_equal(1, text_count)
+                        assert.is_equal(expected_prefix .. "a\\\"b", fragment)
+                        assert.is_equal(1, fragment_count)
                     end
                 )
             end

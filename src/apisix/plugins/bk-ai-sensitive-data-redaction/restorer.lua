@@ -80,7 +80,7 @@ local function find_token_candidate(value, namespace, search_from)
             end
         end
 
-        search_from = digit_pos
+        search_from = start_pos + 1
     end
 end
 
@@ -223,6 +223,92 @@ local function append_whitespace(scanner, pos)
 end
 
 
+local function hex_value(byte)
+    if byte >= 48 and byte <= 57 then
+        return byte - 48
+    end
+    if byte >= 65 and byte <= 70 then
+        return byte - 55
+    end
+    if byte >= 97 and byte <= 102 then
+        return byte - 87
+    end
+end
+
+
+local function decode_hex_quad(raw, u_pos)
+    local value = 0
+    for offset = 1, 4 do
+        local digit = hex_value(string_byte(raw, u_pos + offset) or 0)
+        if not digit then
+            return
+        end
+        value = value * 16 + digit
+    end
+
+    return value
+end
+
+
+local function valid_continuation(byte)
+    return byte and byte >= 128 and byte <= 191
+end
+
+
+local function utf8_sequence_length(raw, pos)
+    local first = string_byte(raw, pos)
+    local second = string_byte(raw, pos + 1)
+    if first >= 194 and first <= 223 then
+        if valid_continuation(second) then
+            return 2
+        end
+        return
+    end
+
+    local third = string_byte(raw, pos + 2)
+    if first == 224 then
+        if second and second >= 160 and second <= 191
+                and valid_continuation(third) then
+            return 3
+        end
+        return
+    end
+    if (first >= 225 and first <= 236) or (first >= 238 and first <= 239) then
+        if valid_continuation(second) and valid_continuation(third) then
+            return 3
+        end
+        return
+    end
+    if first == 237 then
+        if second and second >= 128 and second <= 159
+                and valid_continuation(third) then
+            return 3
+        end
+        return
+    end
+
+    local fourth = string_byte(raw, pos + 3)
+    if first == 240 then
+        if second and second >= 144 and second <= 191
+                and valid_continuation(third) and valid_continuation(fourth) then
+            return 4
+        end
+        return
+    end
+    if first >= 241 and first <= 243 then
+        if valid_continuation(second) and valid_continuation(third)
+                and valid_continuation(fourth) then
+            return 4
+        end
+        return
+    end
+    if first == 244 and second and second >= 128 and second <= 143
+            and valid_continuation(third) and valid_continuation(fourth) then
+        return 4
+    end
+end
+
+
 local function find_string_end(raw, start_pos)
     local pos = start_pos + 1
     while pos <= #raw do
@@ -240,23 +326,41 @@ local function find_string_end(raw, start_pos)
                 return nil
             end
             if escaped == 117 then
-                for offset = 1, 4 do
-                    local hex = string_byte(raw, pos + offset)
-                    if not hex or not (
-                        (hex >= 48 and hex <= 57)
-                        or (hex >= 65 and hex <= 70)
-                        or (hex >= 97 and hex <= 102)
-                    ) then
+                local code_unit = decode_hex_quad(raw, pos)
+                if not code_unit then
+                    return nil
+                end
+                if code_unit >= 0xD800 and code_unit <= 0xDBFF then
+                    if string_byte(raw, pos + 5) ~= 92
+                            or string_byte(raw, pos + 6) ~= 117 then
                         return nil
                     end
+                    local low_surrogate = decode_hex_quad(raw, pos + 6)
+                    if not low_surrogate
+                            or low_surrogate < 0xDC00 or low_surrogate > 0xDFFF then
+                        return nil
+                    end
+                    pos = pos + 10
+
+                elseif code_unit >= 0xDC00 and code_unit <= 0xDFFF then
+                    return nil
+
+                else
+                    pos = pos + 4
                 end
-                pos = pos + 4
 
             elseif escaped ~= 34 and escaped ~= 47 and escaped ~= 92
                     and escaped ~= 98 and escaped ~= 102 and escaped ~= 110
                     and escaped ~= 114 and escaped ~= 116 then
                 return nil
             end
+
+        elseif byte >= 128 then
+            local sequence_length = utf8_sequence_length(raw, pos)
+            if not sequence_length then
+                return nil
+            end
+            pos = pos + sequence_length - 1
         end
         pos = pos + 1
     end
@@ -274,9 +378,7 @@ local function parse_string(scanner, pos, is_key, depth)
     end
 
     local raw_string = string_sub(scanner.raw, pos, end_pos)
-    if is_key or not contains_known_token(
-        raw_string, scanner.mapping, scanner.namespace
-    ) then
+    if is_key then
         append(scanner, raw_string)
         return end_pos + 1, 0
     end
@@ -284,6 +386,10 @@ local function parse_string(scanner, pos, is_key, depth)
     local decoded = core.json.decode(raw_string)
     if type(decoded) ~= "string" then
         return nil, INVALID_JSON_ERROR
+    end
+    if not contains_known_token(decoded, scanner.mapping, scanner.namespace) then
+        append(scanner, raw_string)
+        return end_pos + 1, 0
     end
 
     local first_non_space = decoded:match("^%s*(.)")
@@ -586,7 +692,7 @@ local function find_pending_length(restorer, candidate)
             break
         end
         namespace_start = start_pos
-        search_from = start_pos + #restorer.namespace
+        search_from = start_pos + 1
     end
     if namespace_start then
         local suffix = string_sub(candidate, namespace_start)
