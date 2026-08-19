@@ -41,24 +41,18 @@ add_block_preprocessor(sub {
                     ngx.req.read_body()
                     local payload = assert(core.json.decode(ngx.req.get_body_data()))
                     assert(type(payload.body) == "string")
+                    local raw = payload.body
                     local body = assert(core.json.decode(payload.body))
                     local content
-                    local install
                     if type(body.input) == "string" then
                         content = body.input
-                        install = function(value)
-                            body.input = value
-                        end
                     else
                         content = body.messages[1].content
-                        install = function(value)
-                            body.messages[1].content = value
-                        end
                     end
 
                     local original = assert(content:match("1%d%d%d%d%d%d%d%d%d%d"))
                     local token = payload.placeholder_namespace .. "1__"
-                    install(assert(content:gsub(original, token, 1)))
+                    raw = raw:gsub(original, token, 1)
 
                     local state = ngx.shared["plugin-limit-conn"]
                     state:incr("ai-redaction-call-count", 1, 0)
@@ -68,7 +62,7 @@ add_block_preprocessor(sub {
 
                     ngx.header.content_type = "application/json"
                     ngx.print(assert(core.json.encode({
-                        body = assert(core.json.encode(body)),
+                        body = raw,
                         replacements = {
                             {
                                 placeholder = token,
@@ -410,13 +404,14 @@ passed
                 ngx.req.read_body()
                 local payload = assert(core.json.decode(ngx.req.get_body_data()))
                 assert(type(payload.body) == "string")
+                local raw = payload.body
                 local body = assert(core.json.decode(payload.body))
                 assert(body.messages[1].content == "phone: 13800138000")
                 local token = payload.placeholder_namespace .. "1__"
-                body.messages[1].content = "phone: " .. token
+                raw = raw:gsub("13800138000", token, 1)
                 ngx.header.content_type = "application/json"
                 ngx.print(assert(core.json.encode({
-                    body = assert(core.json.encode(body)),
+                    body = raw,
                     replacements = {
                         {
                             placeholder = token,

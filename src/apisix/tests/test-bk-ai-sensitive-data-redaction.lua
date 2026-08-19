@@ -19,6 +19,8 @@
 local core = require("apisix.core")
 local http = require("resty.http")
 local plugin = require("apisix.plugins.bk-ai-sensitive-data-redaction")
+local proxy_base = require("apisix.plugins.ai-proxy.base")
+local restorer = require("apisix.plugins.bk-ai-sensitive-data-redaction.restorer")
 local sse_restorer = require("apisix.plugins.bk-ai-sensitive-data-redaction.sse")
 
 
@@ -73,11 +75,9 @@ describe(
         end
 
         local function success_value(payload)
-            local masked_body = assert(core.json.decode(payload.body))
             local token = payload.placeholder_namespace .. "1__"
-            masked_body.messages[1].content = "phone: " .. token
             return {
-                body = assert(core.json.encode(masked_body)),
+                body = payload.body:gsub("13800138000", token, 1),
                 replacements = {
                     {
                         placeholder = token,
@@ -387,20 +387,23 @@ describe(
                             "__BK_REDACT_da584df57bd5459098e08f92a89f9494_"
                         local token = namespace .. "1__"
                         behavior.response_builder = function()
-                            return '{"body":"{\\"model\\":\\"gpt-4o\\",' ..
-                                   '\\"stream\\":false,\\"messages\\":[{' ..
-                                   '\\"role\\":\\"user\\",\\"content\\":' ..
-                                   '\\"\\u005f' .. token:sub(2) .. '\\"}]}",' ..
-                                   '"replacements":[{"placeholder":' ..
-                                   assert(core.json.encode(token)) .. ',' ..
-                                   '"original":"secret"}]}'
+                            local masked = raw_request_body:gsub(
+                                "13800138000", token, 1
+                            ):gsub(token, "\\u005f" .. token:sub(2), 1)
+                            return assert(core.json.encode({
+                                body = masked,
+                                replacements = {{
+                                    placeholder = token,
+                                    original = "13800138000",
+                                }},
+                            }))
                         end
 
                         local masked, err = register_filter(ctx)(raw_request_body)
 
                         assert.is_nil(err)
                         assert.is_string(masked)
-                        assert.is_equal("secret", ctx._ai_redaction_mapping[token])
+                        assert.is_equal("13800138000", ctx._ai_redaction_mapping[token])
                     end
                 )
 
@@ -424,8 +427,7 @@ describe(
                                 body = payload.body:gsub("13800138000", token, 1),
                                 replacements = {{
                                     placeholder = token,
-                                    original = observed.request_count == 1 and
-                                               "first-secret" or "second-secret",
+                                    original = "13800138000",
                                 }},
                             }))
                         end
@@ -436,7 +438,7 @@ describe(
                         assert.is_string(filter(raw_request_body))
 
                         assert.is_nil(ctx._ai_redaction_mapping[first])
-                        assert.is_equal("second-secret", ctx._ai_redaction_mapping[second])
+                        assert.is_equal("13800138000", ctx._ai_redaction_mapping[second])
                         assert.is_nil(ctx._ai_redaction_sse_restorer)
                         assert.is_nil(ctx._ai_redaction_stream_passthrough)
 
@@ -450,6 +452,37 @@ describe(
                         }, err)
                         assert.is_equal(502, status)
                         assert.is_nil(ctx._ai_redaction_mapping)
+                    end
+                )
+
+                it(
+                    "clears the original logging body and attempt state at callback entry",
+                    function()
+                        local ctx = request_context({
+                            var = {
+                                llm_request_body = {
+                                    messages = {{
+                                        role = "user",
+                                        content = "client-log-secret",
+                                    }},
+                                },
+                            },
+                            _ai_redaction_mapping = {stale = "override-log-secret"},
+                            _ai_redaction_sse_restorer = {stale = true},
+                            _ai_redaction_stream_passthrough = true,
+                        })
+
+                        local masked, err, status = register_filter(ctx)({})
+
+                        assert.is_nil(masked)
+                        assert.is_same({
+                            message = "final AI request body must be a JSON object string",
+                        }, err)
+                        assert.is_equal(400, status)
+                        assert.is_same({}, ctx.var.llm_request_body)
+                        assert.is_nil(ctx._ai_redaction_mapping)
+                        assert.is_nil(ctx._ai_redaction_sse_restorer)
+                        assert.is_nil(ctx._ai_redaction_stream_passthrough)
                     end
                 )
 
@@ -539,6 +572,37 @@ describe(
                         }, err)
                         assert.is_equal(502, status)
                         assert.is_equal(0, observed.body_reader_count)
+                    end
+                )
+
+                it(
+                    "rejects an oversized masked body before mapping or integrity work",
+                    function()
+                        local ctx = request_context({
+                            ai_target_protocol = "openai-chat",
+                        })
+                        behavior.response_builder = function(payload)
+                            local value = success_value(payload)
+                            local body = assert(core.json.decode(value.body))
+                            body.padding = string.rep("x", 256)
+                            value.body = assert(core.json.encode(body))
+                            return assert(core.json.encode(value))
+                        end
+                        local mapping_validation_called = false
+                        stub(restorer, "validate_mapping", function()
+                            mapping_validation_called = true
+                            return {}
+                        end)
+
+                        local masked, err, status = register_filter(ctx, config({
+                            max_request_body_bytes = 200,
+                        }))(raw_request_body)
+                        restorer.validate_mapping:revert()
+
+                        assert.is_nil(masked)
+                        assert.is_same({message = "masked body size limit exceeded"}, err)
+                        assert.is_equal(502, status)
+                        assert.is_false(mapping_validation_called)
                     end
                 )
             end
@@ -1375,9 +1439,9 @@ describe(
 
                         local masked_body, err, code = run_filter(ctx)
 
-                        assert.is_string(masked_body)
                         assert.is_nil(err)
                         assert.is_nil(code)
+                        assert.is_string(masked_body)
                         assert.is_equal(1, observed.request_count)
                         local masked = assert(core.json.decode(masked_body))
                         assert.is_equal("phone: " .. token, masked.messages[1].content)
@@ -1389,11 +1453,130 @@ describe(
                         assert.is_equal(request_id, ctx._ai_redaction_request_id)
                         assert.is_equal(namespace, ctx._ai_redaction_namespace)
                         assert.is_same({[token] = "13800138000"}, ctx._ai_redaction_mapping)
+                        assert.is_same(masked, ctx.var.llm_request_body)
+                        proxy_base.set_logging(ctx, false, true)
+                        local payload_log = assert(core.json.encode(ctx.llm_request))
+                        assert.is_nil(payload_log:find("13800138000", 1, true))
+                        assert.is_truthy(payload_log:find(token, 1, true))
                         assert.is_nil(ctx.ai_request_body_changed)
                         assert.is_nil(ctx._ai_redaction_sse_restorer)
                         assert_no_request_mutation()
                     end
                 )
+            end
+        )
+
+        context(
+            "request redaction integrity", function()
+                local namespace = "__BK_REDACT_da584df57bd5459098e08f92a89f9494_"
+                local token = namespace .. "1__"
+
+                local function verify(original, masked, mapping)
+                    assert.is_function(restorer.verify_redaction)
+                    return restorer.verify_redaction(
+                        original, masked, mapping or {}, namespace
+                    )
+                end
+
+                it(
+                    "accepts semantic string escapes and insignificant JSON whitespace",
+                    function()
+                        local original =
+                            '{"messages":[{"role":"user","content":' ..
+                            '"line\\nsecret"}],"tool":{"name":"lookup"},' ..
+                            '"number":1.2300e+40}'
+                        local masked =
+                            '{ "messages" : [ { "role" : "u\\u0073er", ' ..
+                            '"content" : "line\\u000a' .. token .. '" } ], ' ..
+                            '"tool" : { "name" : "lookup" }, ' ..
+                            '"number" : 1.2300e+40 }'
+
+                        local ok, err = verify(original, masked, {
+                            [token] = "secret",
+                        })
+
+                        assert.is_true(ok)
+                        assert.is_nil(err)
+                    end
+                )
+
+                it(
+                    "allows an empty mapping when only whitespace and escapes differ",
+                    function()
+                        local ok, err = verify(
+                            '{"message":"slash /","values":[true,null,-0]}',
+                            '{ "message" : "slash \\/", "values" : [ true, null, -0 ] }'
+                        )
+
+                        assert.is_true(ok)
+                        assert.is_nil(err)
+                    end
+                )
+
+                for _, case in ipairs({
+                    {
+                        name = "prompt content changes",
+                        original = '{"prompt":"secret","role":"user"}',
+                        masked = '{"prompt":"other","role":"user"}',
+                        mapping = {},
+                    },
+                    {
+                        name = "role changes",
+                        original = '{"prompt":"secret","role":"user"}',
+                        masked = '{"prompt":"secret","role":"assistant"}',
+                        mapping = {},
+                    },
+                    {
+                        name = "tool content changes",
+                        original = '{"tool":{"name":"lookup","strict":true}}',
+                        masked = '{"tool":{"name":"delete","strict":true}}',
+                        mapping = {},
+                    },
+                    {
+                        name = "numeric lexemes change",
+                        original = '{"number":1.2300e+40}',
+                        masked = '{"number":1.23e40}',
+                        mapping = {},
+                    },
+                    {
+                        name = "non-string values change",
+                        original = '{"enabled":true,"value":null}',
+                        masked = '{"enabled":false,"value":null}',
+                        mapping = {},
+                    },
+                    {
+                        name = "object key order changes",
+                        original = '{"first":1,"second":2}',
+                        masked = '{"second":2,"first":1}',
+                        mapping = {},
+                    },
+                    {
+                        name = "array shape changes",
+                        original = '{"values":[1,2]}',
+                        masked = '{"values":[1,2,3]}',
+                        mapping = {},
+                    },
+                    {
+                        name = "mapping originals disagree with the finalized body",
+                        original = '{"prompt":"secret"}',
+                        masked = '{"prompt":"' .. token .. '"}',
+                        mapping = {[token] = "different-secret"},
+                    },
+                }) do
+                    it(
+                        "rejects when " .. case.name, function()
+                            local ok, err = verify(
+                                case.original, case.masked, case.mapping
+                            )
+
+                            assert.is_nil(ok)
+                            assert.is_equal(
+                                "redaction service changed non-sensitive request content",
+                                err
+                            )
+                        end
+                    )
+                end
             end
         )
 

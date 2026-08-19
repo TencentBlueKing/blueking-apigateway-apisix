@@ -1,11 +1,14 @@
 diff --git a/apisix/plugins/ai-providers/base.lua b/apisix/plugins/ai-providers/base.lua
-index 407fe0b..5f984fc 100644
+index dfa15ff36..066d6a7d2 100644
 --- a/apisix/plugins/ai-providers/base.lua
 +++ b/apisix/plugins/ai-providers/base.lua
-@@ -97,6 +97,12 @@ end
+@@ -97,4 +97,13 @@ end
  -- @return string|nil err Error message
++-- @return number|nil status HTTP status for build failures
++-- @return boolean|nil non_retryable Whether ai-proxy must bypass provider fallback
  function _M.build_request(self, ctx, conf, request_body, opts)
      local body_changed = false
++    local baseline_body_changed = ctx.ai_request_body_changed
 +    local final_body_filter = ctx.ai_final_request_body_filter
 +    if final_body_filter then
 +        -- A provider build mutates its request table during conversion and overrides.
@@ -13,11 +16,27 @@ index 407fe0b..5f984fc 100644
 +        request_body = core.table.deepcopy(request_body)
 +    end
 
-     -- Protocol conversion (when a converter bridges client→target protocol)
-     local converter = ctx.ai_converter
-@@ -263,6 +269,43 @@ function _M.build_request(self, ctx, conf, request_body, opts)
-         params.body = request_body
-     end
+@@ -123,4 +132,8 @@ function _M.build_request(self, ctx, conf, request_body, opts)
+
+-    core.log.info("request extra_opts to LLM server: ",
+-                  core.json.delay_encode(log_sanitize.redact_extra_opts(opts), true))
++    if final_body_filter then
++        core.log.info("request extra_opts to LLM server: final body filter active")
++    else
++        core.log.info("request extra_opts to LLM server: ",
++                      core.json.delay_encode(log_sanitize.redact_extra_opts(opts), true))
++    end
+
+@@ -248,7 +261,3 @@ function _M.build_request(self, ctx, conf, request_body, opts)
+
+-    if body_changed then
+-        ctx.ai_request_body_changed = true
+-    end
+-
+-    if not ctx.ai_request_body_changed then
++    if not baseline_body_changed and not body_changed then
+         if ctx.ai_raw_request_body == nil then
+@@ -265,2 +274,35 @@ function _M.build_request(self, ctx, conf, request_body, opts)
 
 +    if final_body_filter then
 +        local raw_body = params.body
@@ -44,40 +63,60 @@ index 407fe0b..5f984fc 100644
 +        if not ok or (type(filtered_body) ~= "string" and not valid_failure)
 +                or (type(filtered_body) == "string"
 +                    and (error_body ~= nil or status ~= nil)) then
-+            -- ai-proxy-multi treats a missing picker as an abort signal and returns
-+            -- the status directly instead of selecting another LLM instance.
-+            ctx.server_picker = nil
-+            return nil, {message = "failed to filter final AI request body"}, 500
++            return nil, {message = "failed to filter final AI request body"}, 500, true
 +        end
 +        if valid_failure then
-+            ctx.server_picker = nil
-+            return nil, error_body, status
++            return nil, error_body, status, true
 +        end
 +        params.body = filtered_body
 +    end
 +
      -- AWS SigV4 signing (must be last — signs the finalized body)
-     if self.aws_sigv4 and auth.aws then
-         local auth_aws = require("apisix.plugins.ai-transport.auth-aws")
+diff --git a/apisix/plugins/ai-proxy-multi.lua b/apisix/plugins/ai-proxy-multi.lua
+index 0d23ad096..0df272b44 100644
+--- a/apisix/plugins/ai-proxy-multi.lua
++++ b/apisix/plugins/ai-proxy-multi.lua
+@@ -650,2 +650,5 @@ function _M.log(conf, ctx)
+     end
++    if ctx.server_picker then
++        ctx.server_picker.after_balance(ctx, false)
++    end
+     if conf.logging then
+diff --git a/apisix/plugins/ai-proxy/base.lua b/apisix/plugins/ai-proxy/base.lua
+index d2b6e67a9..81f3a3705 100644
+--- a/apisix/plugins/ai-proxy/base.lua
++++ b/apisix/plugins/ai-proxy/base.lua
+@@ -208,5 +208,8 @@ function _M.before_proxy(conf, ctx, on_error)
+             -- Step 3: Build HTTP request params
+-            local params, build_err, code = ai_provider:build_request(
++            local params, build_err, code, non_retryable = ai_provider:build_request(
+                 ctx, conf, request_body, extra_opts)
+             if not params then
++                if non_retryable then
++                    return code or 500, build_err, true
++                end
+                 local body = {error_msg = build_err}
+@@ -345,3 +348,3 @@ function _M.before_proxy(conf, ctx, on_error)
+         ctx.llm_active_connections_tracked = true
+-        local ok, code_or_err, body = pcall(do_request)
++        local ok, code_or_err, body, non_retryable = pcall(do_request)
+         if not ok then
+@@ -350,3 +353,3 @@ function _M.before_proxy(conf, ctx, on_error)
+         end
+-        if code_or_err and on_error then
++        if code_or_err and on_error and not non_retryable then
+             local abort_code = on_error(ctx, conf, code_or_err)
 diff --git a/apisix/plugins/ai-transport/http.lua b/apisix/plugins/ai-transport/http.lua
-index eb7efc3..7c3d876 100644
+index eb7efc34b..7c3d876a8 100644
 --- a/apisix/plugins/ai-transport/http.lua
 +++ b/apisix/plugins/ai-transport/http.lua
-@@ -103,7 +103,7 @@ local function rapidjson_encode(body)
- end
-
+@@ -105,3 +105,3 @@ end
 
 -local function encode_body(body)
 +function _M.encode_body(body)
      local ok, encoded = pcall(rapidjson_encode, body)
-     if ok and encoded then
-         return encoded
-@@ -159,7 +159,7 @@ function _M.request(params, timeout)
-         req_json = params.body
-     else
+@@ -161,3 +161,3 @@ function _M.request(params, timeout)
          local err
 -        req_json, err = encode_body(params.body)
 +        req_json, err = _M.encode_body(params.body)
          if not req_json then
-             httpc:close()
-             return nil, "encode body: " .. (err or "unknown"), {

@@ -52,9 +52,11 @@ add_block_preprocessor(sub {
                         assert(body.max_completion_tokens == 111)
                         assert(body.metadata.source == "override-secret")
                         local message_token = namespace .. "1__"
-                        body.messages[1].content = message_token
-                        body.metadata.source = message_token
-                        raw = assert(core.json.encode(body))
+                        local replacement_count
+                        raw, replacement_count = raw:gsub(
+                            "override%-secret", message_token
+                        )
+                        assert(replacement_count == 2)
                         replacements = {
                             {placeholder = message_token, original = "override-secret"},
                         }
@@ -65,15 +67,13 @@ add_block_preprocessor(sub {
                     elseif content == "first-secret" then
                         assert(body.model == "first-model")
                         local token = namespace .. "1__"
-                        body.messages[1].content = token
-                        raw = assert(core.json.encode(body))
+                        raw = raw:gsub("first%-secret", token, 1)
                         replacements = {{placeholder = token, original = content}}
 
                     elseif content == "second-secret" then
                         assert(body.model == "second-model")
                         local token = namespace .. "2__"
-                        body.messages[1].content = token
-                        raw = assert(core.json.encode(body))
+                        raw = raw:gsub("second%-secret", token, 1)
                         replacements = {{placeholder = token, original = content}}
 
                     else
@@ -404,7 +404,7 @@ filtered-body-signed
                     server_picker = picker,
                     var = {},
                 }
-                local params, err, status = provider:build_request(
+                local params, err, status, non_retryable = provider:build_request(
                     ctx,
                     {ssl_verify = false},
                     {messages = {{role = "user", content = "secret"}}},
@@ -414,7 +414,8 @@ filtered-body-signed
                 assert(type(err) == "table")
                 assert(err.message == "failed to filter final AI request body")
                 assert(status == 500)
-                assert(ctx.server_picker == nil)
+                assert(non_retryable == true)
+                assert(ctx.server_picker == picker)
             end
 
             build(function()
@@ -433,7 +434,155 @@ secret must not be copied to an error
 
 
 
-=== TEST 5: routes without a callback retain table transport behavior
+=== TEST 5: provider-local mutations do not force later retries to re-encode raw JSON
+--- config
+    location /t {
+        content_by_lua_block {
+            local core = require("apisix.core")
+            local base = require("apisix.plugins.ai-providers.base")
+            local provider = base.new({capabilities = {}})
+            local raw = '{"model":"client-model","large":9007199254740993,' ..
+                        '"messages":[{"role":"user","content":"client-secret"}]}'
+            local request_body = assert(core.json.decode(raw))
+            local seen = {}
+            local ctx = {
+                ai_target_protocol = "openai-chat",
+                ai_raw_request_body = raw,
+                var = {},
+                ai_final_request_body_filter = function(body)
+                    seen[#seen + 1] = body
+                    return body
+                end,
+            }
+
+            assert(provider:build_request(
+                ctx, {ssl_verify = false}, request_body, {
+                    auth = {},
+                    conf = {},
+                    target_path = "/v1/chat/completions",
+                    model_options = {model = "first-provider-model"},
+                }
+            ))
+            assert(assert(core.json.decode(seen[1])).model == "first-provider-model")
+            assert(ctx.ai_request_body_changed == nil)
+
+            local second = assert(provider:build_request(
+                ctx, {ssl_verify = false}, request_body,
+                {auth = {}, conf = {}, target_path = "/v1/chat/completions"}
+            ))
+            assert(seen[2] == raw)
+            assert(second.body == raw)
+            assert(second.body:find("9007199254740993", 1, true))
+            ngx.say("retry-kept-raw-lexeme")
+        }
+    }
+--- response_body
+retry-kept-raw-lexeme
+
+
+
+=== TEST 6: finalized-body routes omit body-bearing extra options from logs
+--- config
+    location /t {
+        content_by_lua_block {
+            local core = require("apisix.core")
+            local base = require("apisix.plugins.ai-providers.base")
+            local provider = base.new({
+                capabilities = {
+                    ["openai-chat"] = {
+                        rewrite_request_body = function(body, override)
+                            for key, value in pairs(override) do
+                                body[key] = value
+                            end
+                        end,
+                    },
+                },
+            })
+            local logged = {}
+            local original_log_info = core.log.info
+            core.log.info = function(...)
+                for index = 1, select("#", ...) do
+                    logged[#logged + 1] = tostring(select(index, ...))
+                end
+            end
+
+            local ok, err = xpcall(function()
+                assert(provider:build_request(
+                    {
+                        ai_target_protocol = "openai-chat",
+                        var = {},
+                        ai_final_request_body_filter = function(body)
+                            return body
+                        end,
+                    },
+                    {ssl_verify = false},
+                    {messages = {{role = "user", content = "client-log-secret"}}},
+                    {
+                        auth = {},
+                        conf = {},
+                        target_path = "/v1/chat/completions",
+                        model_options = {model = "model-option-log-secret"},
+                        override_llm_options = {metadata = "llm-option-log-secret"},
+                        request_body_override_map = {
+                            ["openai-chat"] = {
+                                prompt = "request-override-log-secret",
+                            },
+                        },
+                        request_body_force_override = true,
+                    }
+                ))
+            end, debug.traceback)
+            core.log.info = original_log_info
+            assert(ok, err)
+
+            local output = table.concat(logged)
+            for _, secret in ipairs({
+                "client-log-secret",
+                "model-option-log-secret",
+                "llm-option-log-secret",
+                "request-override-log-secret",
+            }) do
+                assert(not output:find(secret, 1, true), output)
+            end
+            ngx.say("final-extra-opts-content-free")
+        }
+    }
+--- response_body
+final-extra-opts-content-free
+
+
+
+=== TEST 7: ai-proxy-multi log releases least-conn attempt state after filter failure
+--- config
+    location /t {
+        content_by_lua_block {
+            local core = require("apisix.core")
+            local least_conn = require("apisix.balancer.least_conn")
+            local ai_proxy_multi = require("apisix.plugins.ai-proxy-multi")
+            local picker = least_conn.new({first = 1}, {first = 1})
+            local ctx = {
+                server_picker = picker,
+                balancer_tried_servers = core.tablepool.fetch(
+                    "balancer_tried_servers", 0, 2
+                ),
+                var = {},
+            }
+            local server = assert(picker.get(ctx))
+            ctx.balancer_server = server
+
+            ai_proxy_multi.log({}, ctx)
+
+            assert(ctx.server_picker == picker)
+            assert(ctx.balancer_tried_servers == nil)
+            ngx.say("least-conn-filter-failure-cleaned")
+        }
+    }
+--- response_body
+least-conn-filter-failure-cleaned
+
+
+
+=== TEST 8: routes without a callback retain table transport behavior
 --- config
     location /t {
         content_by_lua_block {
@@ -464,7 +613,7 @@ legacy-route-unchanged
 
 
 
-=== TEST 6: configure finalized-body integration routes
+=== TEST 9: configure finalized-body integration routes
 --- config
     location /t {
         content_by_lua_block {
@@ -623,6 +772,42 @@ legacy-route-unchanged
                         },
                     },
                 },
+                {
+                    id = 24,
+                    value = {
+                        uri = "/callback-exception",
+                        plugins = {
+                            ["serverless-pre-function"] = {
+                                phase = "access",
+                                functions = {
+                                    "return function(conf, ctx) " ..
+                                    "ctx.ai_final_request_body_filter = function() " ..
+                                    "error('callback exploded') end end",
+                                },
+                            },
+                            ["ai-proxy"] = {
+                                provider = "openai",
+                                auth = {header = {Authorization = "Bearer test"}},
+                                override = {endpoint = "http://127.0.0.1:6730"},
+                                ssl_verify = false,
+                            },
+                        },
+                    },
+                },
+                {
+                    id = 25,
+                    value = {
+                        uri = "/ordinary-build-error/v1/messages",
+                        plugins = {
+                            ["ai-proxy"] = {
+                                provider = "openai",
+                                auth = {header = {Authorization = "Bearer test"}},
+                                override = {endpoint = "http://127.0.0.1:6730"},
+                                ssl_verify = false,
+                            },
+                        },
+                    },
+                },
             }
 
             for _, route in ipairs(routes) do
@@ -641,7 +826,7 @@ routes-configured
 
 
 
-=== TEST 7: redactor and LLM observe finalized overrides and identical numeric lexemes
+=== TEST 10: redactor and LLM observe finalized overrides and identical numeric lexemes
 --- config
     location /t {
         content_by_lua_block {
@@ -701,7 +886,7 @@ final-and-numeric-observed
 
 
 
-=== TEST 8: retryable LLM failure re-filters second attempt and restores newest mapping
+=== TEST 11: retryable LLM failure re-filters second attempt and restores newest mapping
 --- config
     location /t {
         content_by_lua_block {
@@ -738,7 +923,7 @@ multi-fallback-restored
 
 
 
-=== TEST 9: redactor 502 is returned without an LLM call or fallback
+=== TEST 12: redactor 502 propagates directly without fallback
 --- config
     location /t {
         content_by_lua_block {
@@ -757,11 +942,84 @@ multi-fallback-restored
                 }
             ))
             assert(response.status == 502, response.body)
+            local error_body = assert(core.json.decode(response.body))
+            assert(error_body.message == "redaction service returned status 500")
+            assert(error_body.error_msg == nil)
+            local fields = 0
+            for _ in pairs(error_body) do
+                fields = fields + 1
+            end
+            assert(fields == 1)
             local state = ngx.shared["plugin-limit-conn"]
             assert(state:get("failed-redactor-calls") == 1)
             assert((state:get("forbidden-llm-calls") or 0) == 0)
-            ngx.say("redactor-failure-not-retried")
+            ngx.say("redactor-failure-direct")
         }
     }
 --- response_body
-redactor-failure-not-retried
+redactor-failure-direct
+
+
+
+=== TEST 13: callback exceptions propagate the generic body without nesting
+--- config
+    location /t {
+        content_by_lua_block {
+            local core = require("apisix.core")
+            local response = assert(require("resty.http").new():request_uri(
+                "http://127.0.0.1:" .. ngx.var.server_port ..
+                "/callback-exception", {
+                    method = "POST",
+                    keepalive = false,
+                    headers = {["Content-Type"] = "application/json"},
+                    body = '{"model":"test","messages":' ..
+                           '[{"role":"user","content":"secret"}]}',
+                }
+            ))
+            assert(response.status == 500, response.body)
+            local error_body = assert(core.json.decode(response.body))
+            assert(error_body.message == "failed to filter final AI request body")
+            assert(error_body.error_msg == nil)
+            local fields = 0
+            for _ in pairs(error_body) do
+                fields = fields + 1
+            end
+            assert(fields == 1)
+            ngx.say("generic-filter-error-direct")
+        }
+    }
+--- response_body
+generic-filter-error-direct
+
+
+
+=== TEST 14: ordinary provider build errors retain the error_msg wrapper
+--- config
+    location /t {
+        content_by_lua_block {
+            local core = require("apisix.core")
+            local response = assert(require("resty.http").new():request_uri(
+                "http://127.0.0.1:" .. ngx.var.server_port ..
+                "/ordinary-build-error/v1/messages", {
+                    method = "POST",
+                    keepalive = false,
+                    headers = {["Content-Type"] = "application/json"},
+                    body = '{"model":"ordinary-model"}',
+                }
+            ))
+            assert(response.status == 400, response.body)
+            local error_body = assert(core.json.decode(response.body))
+            assert(
+                error_body.error_msg == "missing messages"
+            )
+            assert(error_body.message == nil)
+            local fields = 0
+            for _ in pairs(error_body) do
+                fields = fields + 1
+            end
+            assert(fields == 1)
+            ngx.say("ordinary-build-error-wrapped")
+        }
+    }
+--- response_body
+ordinary-build-error-wrapped

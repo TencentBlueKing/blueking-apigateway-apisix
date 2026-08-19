@@ -429,57 +429,67 @@ local function parse_string(scanner, pos, is_key, depth)
 end
 
 
-local function parse_number(scanner, pos)
-    local start_pos = pos
-    if string_byte(scanner.raw, pos) == 45 then
+local function find_number_end(raw, pos)
+    if string_byte(raw, pos) == 45 then
         pos = pos + 1
     end
 
-    local byte = string_byte(scanner.raw, pos)
+    local byte = string_byte(raw, pos)
     if byte == 48 then
         pos = pos + 1
 
     elseif byte and byte >= 49 and byte <= 57 then
         repeat
             pos = pos + 1
-            byte = string_byte(scanner.raw, pos)
+            byte = string_byte(raw, pos)
         until not byte or byte < 48 or byte > 57
 
     else
         return nil, INVALID_JSON_ERROR
     end
 
-    if string_byte(scanner.raw, pos) == 46 then
+    if string_byte(raw, pos) == 46 then
         pos = pos + 1
-        byte = string_byte(scanner.raw, pos)
+        byte = string_byte(raw, pos)
         if not byte or byte < 48 or byte > 57 then
             return nil, INVALID_JSON_ERROR
         end
         repeat
             pos = pos + 1
-            byte = string_byte(scanner.raw, pos)
+            byte = string_byte(raw, pos)
         until not byte or byte < 48 or byte > 57
     end
 
-    byte = string_byte(scanner.raw, pos)
+    byte = string_byte(raw, pos)
     if byte == 69 or byte == 101 then
         pos = pos + 1
-        byte = string_byte(scanner.raw, pos)
+        byte = string_byte(raw, pos)
         if byte == 43 or byte == 45 then
             pos = pos + 1
         end
-        byte = string_byte(scanner.raw, pos)
+        byte = string_byte(raw, pos)
         if not byte or byte < 48 or byte > 57 then
             return nil, INVALID_JSON_ERROR
         end
         repeat
             pos = pos + 1
-            byte = string_byte(scanner.raw, pos)
+            byte = string_byte(raw, pos)
         until not byte or byte < 48 or byte > 57
     end
 
-    append(scanner, string_sub(scanner.raw, start_pos, pos - 1))
-    return pos, 0
+    return pos
+end
+
+
+local function parse_number(scanner, pos)
+    local start_pos = pos
+    local next_pos, err = find_number_end(scanner.raw, pos)
+    if not next_pos then
+        return nil, err
+    end
+
+    append(scanner, string_sub(scanner.raw, start_pos, next_pos - 1))
+    return next_pos, 0
 end
 
 
@@ -630,6 +640,57 @@ scan_json_text = function(raw_json, mapping, namespace, initial_depth, present)
 end
 
 
+local function semantic_signature(raw_json, namespace)
+    local scanned, _, scan_err = scan_json_text(raw_json, {}, namespace, 0)
+    if not scanned then
+        return nil, scan_err
+    end
+
+    local tokens = {}
+    local pos = 1
+    while pos <= #raw_json do
+        local byte = string_byte(raw_json, pos)
+        if byte == 32 or byte == 9 or byte == 10 or byte == 13 then
+            pos = pos + 1
+
+        elseif byte == 34 then
+            local end_pos = find_string_end(raw_json, pos)
+            local decoded = core.json.decode(string_sub(raw_json, pos, end_pos))
+            local encoded = core.json.encode(decoded)
+            tokens[#tokens + 1] = "s" .. #encoded .. ":" .. encoded
+            pos = end_pos + 1
+
+        elseif byte == 45 or (byte >= 48 and byte <= 57) then
+            local end_pos = find_number_end(raw_json, pos)
+            local number = string_sub(raw_json, pos, end_pos - 1)
+            tokens[#tokens + 1] = "n" .. #number .. ":" .. number
+            pos = end_pos
+
+        elseif byte == 123 or byte == 125 or byte == 91 or byte == 93
+                or byte == 44 or byte == 58 then
+            tokens[#tokens + 1] = "p" .. string_sub(raw_json, pos, pos)
+            pos = pos + 1
+
+        else
+            local matched
+            for _, literal in ipairs(JSON_LITERALS) do
+                if string_sub(raw_json, pos, pos + #literal - 1) == literal then
+                    tokens[#tokens + 1] = "l" .. literal
+                    pos = pos + #literal
+                    matched = true
+                    break
+                end
+            end
+            if not matched then
+                return nil, INVALID_JSON_ERROR
+            end
+        end
+    end
+
+    return table_concat(tokens, "\0")
+end
+
+
 function _M.restore_json_text(raw_json, mapping, namespace)
     if type(raw_json) ~= "string" or type(mapping) ~= "table"
             or type(namespace) ~= "string" or namespace == "" then
@@ -642,6 +703,36 @@ function _M.restore_json_text(raw_json, mapping, namespace)
     end
 
     return restored, count
+end
+
+
+function _M.verify_redaction(original_json, masked_json, mapping, namespace)
+    if type(original_json) ~= "string" or type(masked_json) ~= "string"
+            or type(mapping) ~= "table" or type(namespace) ~= "string"
+            or namespace == "" then
+        return nil, INVALID_JSON_ERROR
+    end
+
+    local restored, _, restore_err = scan_json_text(
+        masked_json, mapping, namespace, 0
+    )
+    if not restored then
+        return nil, restore_err
+    end
+
+    local original_signature, original_err = semantic_signature(original_json, namespace)
+    if not original_signature then
+        return nil, original_err
+    end
+    local restored_signature, restored_err = semantic_signature(restored, namespace)
+    if not restored_signature then
+        return nil, restored_err
+    end
+    if original_signature ~= restored_signature then
+        return nil, "redaction service changed non-sensitive request content"
+    end
+
+    return true
 end
 
 

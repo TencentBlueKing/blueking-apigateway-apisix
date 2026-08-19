@@ -537,6 +537,9 @@ function _M.access(conf, ctx)
     ctx._ai_redaction_session_id = session_id
     ctx._ai_redaction_namespace = namespace
     ctx.ai_final_request_body_filter = function(final_raw_body)
+        clear_attempt_state(ctx)
+        ctx.var.llm_request_body = {}
+
         if type(final_raw_body) ~= "string" then
             return nil, {
                 message = "final AI request body must be a JSON object string",
@@ -557,7 +560,6 @@ function _M.access(conf, ctx)
             }, 400
         end
 
-        clear_attempt_state(ctx)
         local result, redact_err = call_redaction_service(
             conf, request_id, session_id, namespace, final_raw_body
         )
@@ -568,6 +570,10 @@ function _M.access(conf, ctx)
         if type(result.body) ~= "string" then
             return nil, {message = "redaction service body must be a raw JSON string"}, 502
         end
+        if #result.body > conf.max_request_body_bytes then
+            return nil, {message = "masked body size limit exceeded"}, 502
+        end
+
         local masked = core.json.decode(result.body)
         if not masked then
             return nil, {message = "redaction service body must be valid JSON"}, 502
@@ -598,11 +604,15 @@ function _M.access(conf, ctx)
             return nil, {message = mapping_err}, 502
         end
 
-        if #result.body > conf.max_request_body_bytes then
-            return nil, {message = "masked body size limit exceeded"}, 502
+        local integrity_ok, integrity_err = restorer.verify_redaction(
+            final_raw_body, result.body, mapping, namespace
+        )
+        if not integrity_ok then
+            return nil, {message = integrity_err}, 502
         end
 
         ctx._ai_redaction_mapping = mapping
+        ctx.var.llm_request_body = masked
         return result.body
     end
 end
