@@ -673,6 +673,86 @@ describe(
                 )
 
                 it(
+                    "restores a placeholder when a complete frame ends at EOF",
+                    function()
+                        local processor = assert(sse.new(
+                            "openai-chat", {[token] = "13800138000"}, namespace
+                        ))
+                        local frame = "data: " .. core.json.encode({
+                            choices = {
+                                {
+                                    index = 0,
+                                    delta = {content = "answer=" .. token},
+                                },
+                            },
+                        }) .. "\n\n"
+
+                        local first = processor:feed(
+                            frame:sub(1, #frame - 1), false
+                        )
+                        local final, restored_count, unresolved_count =
+                            processor:feed(frame:sub(#frame), true)
+
+                        assert.is_equal("", first)
+                        assert.is_truthy(final:find("answer=13800138000", 1, true))
+                        assert.is_equal(1, restored_count)
+                        assert.is_equal(0, unresolved_count)
+                    end
+                )
+
+                it(
+                    "keeps an incomplete placeholder prefix masked at EOF", function()
+                        local processor = assert(sse.new(
+                            "openai-chat", {[token] = "13800138000"}, namespace
+                        ))
+                        local prefix = namespace:sub(1, #namespace - 1)
+                        local frame = "data: " .. core.json.encode({
+                            choices = {
+                                {
+                                    index = 0,
+                                    delta = {content = prefix},
+                                },
+                            },
+                        }) .. "\n\n"
+
+                        local output, restored_count, unresolved_count =
+                            processor:feed(frame, true)
+
+                        assert.is_falsy(output:find("13800138000", 1, true))
+                        assert.is_truthy(output:find(prefix, 1, true))
+                        assert.is_equal(0, restored_count)
+                        assert.is_equal(1, unresolved_count)
+                    end
+                )
+
+                it(
+                    "passes malformed data through masked and restores the next frame",
+                    function()
+                        local processor = assert(sse.new(
+                            "openai-chat", {[token] = "13800138000"}, namespace
+                        ))
+                        local malformed = "data: {\"masked\":\"" .. token .. "\"\n\n"
+                        local valid = "data: " .. core.json.encode({
+                            choices = {
+                                {
+                                    index = 0,
+                                    delta = {content = token},
+                                },
+                            },
+                        }) .. "\n\n"
+
+                        local output, restored_count, unresolved_count =
+                            processor:feed(malformed .. valid, false)
+
+                        assert.is_equal(malformed, output:sub(1, #malformed))
+                        assert.is_truthy(output:find(token, 1, true))
+                        assert.is_truthy(output:find("13800138000", 1, true))
+                        assert.is_equal(1, restored_count)
+                        assert.is_equal(0, unresolved_count)
+                    end
+                )
+
+                it(
                     "bounds incomplete frame buffering at one MiB", function()
                         local limit = 1024 * 1024
                         local at_limit = string.rep("x", limit)

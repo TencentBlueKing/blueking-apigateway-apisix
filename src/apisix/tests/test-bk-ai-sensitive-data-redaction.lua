@@ -1045,6 +1045,78 @@ describe(
         )
 
         context(
+            "stream response restoration", function()
+                it(
+                    "restores split SSE placeholders and clears state only at EOF",
+                    function()
+                        local request_id = "da584df5-7bd5-4590-98e0-8f92a89f9494"
+                        local namespace =
+                            "__BK_REDACT_da584df57bd5459098e08f92a89f9494_"
+                        local known = namespace .. "1__"
+                        local split_at = math.floor(#known / 2)
+                        local ctx = request_context({
+                            var = {request_type = "ai_stream"},
+                            _ai_redaction_request_id = request_id,
+                            _ai_redaction_session_id =
+                                "24395b38-bf3f-426c-a632-10df20ec69c8",
+                            _ai_redaction_namespace = namespace,
+                            _ai_redaction_mapping = {[known] = "13800138000"},
+                        })
+                        local event1 = "data: " .. assert(core.json.encode({
+                            choices = {
+                                {
+                                    index = 0,
+                                    delta = {content = "phone: " .. known:sub(1, split_at)},
+                                },
+                            },
+                        })) .. "\n\n"
+                        local event2 = "data: " .. assert(core.json.encode({
+                            choices = {
+                                {
+                                    index = 0,
+                                    delta = {content = known:sub(split_at + 1)},
+                                },
+                            },
+                        })) .. "\n\ndata: [DONE]\n\n"
+
+                        local code1, output1 = plugin.lua_body_filter(
+                            config(), ctx, {}, event1, false
+                        )
+                        local processor = ctx._ai_redaction_sse_restorer
+                        local code2, output2 = plugin.lua_body_filter(
+                            config(), ctx, {}, event2, false
+                        )
+
+                        assert.is_nil(code1)
+                        assert.is_nil(code2)
+                        assert.is_not_nil(processor)
+                        assert.is_equal(processor, ctx._ai_redaction_sse_restorer)
+                        assert.is_falsy(output1:find(known, 1, true))
+                        assert.is_truthy(output2:find("13800138000", 1, true))
+                        assert.is_truthy(output2:find("data: [DONE]", 1, true))
+                        assert.is_same({[known] = "13800138000"}, ctx._ai_redaction_mapping)
+                        assert.is_equal(1, ctx._ai_redaction_restored_count)
+                        assert.is_equal(0, ctx._ai_redaction_unresolved_count)
+
+                        local code3, output3 = plugin.lua_body_filter(
+                            config(), ctx, {}, "", true
+                        )
+
+                        assert.is_nil(code3)
+                        assert.is_equal("", output3)
+                        assert.is_equal(request_id, ctx._ai_redaction_request_id)
+                        assert.is_nil(ctx._ai_redaction_session_id)
+                        assert.is_nil(ctx._ai_redaction_namespace)
+                        assert.is_nil(ctx._ai_redaction_mapping)
+                        assert.is_nil(ctx._ai_redaction_sse_restorer)
+                        assert.is_equal(1, ctx._ai_redaction_restored_count)
+                        assert.is_equal(0, ctx._ai_redaction_unresolved_count)
+                    end
+                )
+            end
+        )
+
+        context(
             "non-stream response restoration", function()
                 before_each(
                     function()

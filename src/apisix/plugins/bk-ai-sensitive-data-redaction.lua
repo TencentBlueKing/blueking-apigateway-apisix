@@ -20,6 +20,7 @@ local core = require("apisix.core")
 local http = require("resty.http")
 local protocols = require("apisix.plugins.ai-protocols")
 local restorer = require("apisix.plugins.bk-ai-sensitive-data-redaction.restorer")
+local sse_restorer = require("apisix.plugins.bk-ai-sensitive-data-redaction.sse")
 local secret = require("apisix.secret")
 local url = require("socket.url")
 local uuid = require("resty.jit-uuid")
@@ -27,7 +28,6 @@ local getmetatable = getmetatable
 local math_min = math.min
 local pairs = pairs
 local pcall = pcall
-local require = require
 local setmetatable = setmetatable
 local string_byte = string.byte
 local string_lower = string.lower
@@ -35,9 +35,6 @@ local table_concat = table.concat
 local tonumber = tonumber
 local tostring = tostring
 local type = type
-
--- Load the streaming response helper now; response restoration is wired in a later task.
-require("apisix.plugins.bk-ai-sensitive-data-redaction.sse")
 
 local UUID_PATTERN =
     [[^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-]] ..
@@ -579,7 +576,37 @@ function _M.access(conf, ctx)
 end
 
 
-function _M.lua_body_filter(_, ctx, _, body)
+function _M.lua_body_filter(_, ctx, _, body, eof)
+    if ctx.var.request_type == "ai_stream" then
+        if not ctx._ai_redaction_sse_restorer then
+            local processor, err = sse_restorer.new(
+                ctx.ai_client_protocol,
+                ctx._ai_redaction_mapping,
+                ctx._ai_redaction_namespace
+            )
+            if not processor then
+                core.log.error(
+                    "failed to create SSE restorer: ", err,
+                    ", request_id: ", ctx._ai_redaction_request_id
+                )
+                return
+            end
+            ctx._ai_redaction_sse_restorer = processor
+        end
+
+        local output, restored_count, unresolved_count =
+            ctx._ai_redaction_sse_restorer:feed(body or "", eof == true)
+        ctx._ai_redaction_restored_count =
+            (ctx._ai_redaction_restored_count or 0) + restored_count
+        ctx._ai_redaction_unresolved_count =
+            (ctx._ai_redaction_unresolved_count or 0) + unresolved_count
+
+        if eof then
+            clear_sensitive_state(ctx)
+        end
+        return nil, output
+    end
+
     if ctx.var.request_type ~= "ai_chat" then
         return
     end
