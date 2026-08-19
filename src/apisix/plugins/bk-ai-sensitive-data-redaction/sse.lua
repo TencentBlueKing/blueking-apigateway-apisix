@@ -356,7 +356,11 @@ end
 
 
 function Processor:restore_field(key, meta, value, mode)
-    local output, count, stream_err = self.stream:feed(key, value, mode, false)
+    local remaining = self.max_output_bytes and
+                      self.max_output_bytes - self.output_bytes or nil
+    local output, count, stream_err = self.stream:feed(
+        key, value, mode, false, remaining
+    )
     if stream_err then
         error(stream_err, 0)
     end
@@ -379,7 +383,17 @@ function Processor:restore_field(key, meta, value, mode)
         remove_key(self, key)
     end
 
+    self.output_bytes = self.output_bytes + #output
     return output, count
+end
+
+
+function Processor:record_replacement(path, original, restored)
+    self.frame_replacements[#self.frame_replacements + 1] = {
+        path = path,
+        original = original,
+        restored = restored,
+    }
 end
 
 
@@ -487,6 +501,11 @@ function Processor:process_chat_event(event, value)
                         "text"
                     )
                     if restored ~= delta[field] then
+                        self:record_replacement(
+                            "/choices/" .. choice_pos .. "/delta/" .. field,
+                            delta[field],
+                            restored
+                        )
                         delta[field] = restored
                         changed = true
                     end
@@ -511,6 +530,12 @@ function Processor:process_chat_event(event, value)
                     "json_fragment"
                 )
                 if restored ~= delta.function_call.arguments then
+                    self:record_replacement(
+                        "/choices/" .. choice_pos ..
+                        "/delta/function_call/arguments",
+                        delta.function_call.arguments,
+                        restored
+                    )
                     delta.function_call.arguments = restored
                     changed = true
                 end
@@ -541,6 +566,13 @@ function Processor:process_chat_event(event, value)
                             "json_fragment"
                         )
                         if restored ~= func.arguments then
+                            self:record_replacement(
+                                "/choices/" .. choice_pos ..
+                                "/delta/tool_calls/" .. tool_pos ..
+                                "/function/arguments",
+                                func.arguments,
+                                restored
+                            )
                             func.arguments = restored
                             changed = true
                         end
@@ -612,12 +644,15 @@ function Processor:process_response_event(event, value)
     local count
     if field_config.done then
         local stream_err
+        local remaining = self.max_output_bytes and
+                          self.max_output_bytes - self.output_bytes or nil
         restored, count, stream_err = self.stream:feed(
-            key, value[field_config.field], field_config.mode, true
+            key, value[field_config.field], field_config.mode, true, remaining
         )
         if stream_err then
             error(stream_err, 0)
         end
+        self.output_bytes = self.output_bytes + #restored
     else
         restored, count = self:restore_field(
             key, meta, value[field_config.field], field_config.mode
@@ -628,6 +663,9 @@ function Processor:process_response_event(event, value)
         return false, count, prefix, unresolved_count
     end
 
+    self:record_replacement(
+        "/" .. field_config.field, value[field_config.field], restored
+    )
     value[field_config.field] = restored
     return true, count, prefix, unresolved_count
 end
@@ -666,6 +704,11 @@ function Processor:process_anthropic_event(event, value)
         return false, count
     end
 
+    self:record_replacement(
+        "/delta/" .. field_config.field,
+        delta[field_config.field],
+        restored
+    )
     delta[field_config.field] = restored
     return true, count
 end
@@ -702,6 +745,7 @@ function Processor:process_frame(frame)
     local restored_count
     local prefix = ""
     local unresolved_count = 0
+    self.frame_replacements = {}
     if self.protocol_name == "openai-chat" then
         changed, restored_count = self:process_chat_event(event, value)
 
@@ -716,7 +760,13 @@ function Processor:process_frame(frame)
         return prefix .. frame, restored_count, unresolved_count
     end
 
-    event.data = core.json.encode(value)
+    local restored_data, restore_err = restorer.replace_json_strings(
+        event.data, self.frame_replacements, self.max_output_bytes
+    )
+    if not restored_data then
+        error(restore_err, 0)
+    end
+    event.data = restored_data
     return prefix .. sse_codec.encode(event), restored_count, unresolved_count
 end
 
@@ -802,6 +852,7 @@ end
 
 function Processor:feed(chunk, eof)
     local snapshot = snapshot_processor(self)
+    self.output_bytes = 0
     local ok, output, restored_count, unresolved_count = pcall(
         feed_unsafe, self, chunk, eof
     )
@@ -821,7 +872,7 @@ function Processor:feed(chunk, eof)
 end
 
 
-function _M.new(protocol_name, mapping, namespace)
+function _M.new(protocol_name, mapping, namespace, max_output_bytes)
     if protocol_name == "bedrock-converse" then
         return nil, "raw AWS EventStream restoration is not supported"
     end
@@ -835,11 +886,14 @@ function _M.new(protocol_name, mapping, namespace)
         {
             protocol_name = protocol_name,
             remainder = "",
-            stream = restorer.new_stream(mapping, namespace),
+            stream = restorer.new_stream(mapping, namespace, max_output_bytes),
             keys = {},
             key_order = {},
             key_metadata_bytes = {},
             metadata_bytes = 0,
+            max_output_bytes = max_output_bytes,
+            output_bytes = 0,
+            frame_replacements = {},
         },
         Processor
     )

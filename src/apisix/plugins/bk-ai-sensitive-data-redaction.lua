@@ -25,6 +25,7 @@ local secret = require("apisix.secret")
 local url = require("socket.url")
 local uuid = require("resty.jit-uuid")
 local getmetatable = getmetatable
+local ipairs = ipairs
 local math_min = math.min
 local pcall = pcall
 local string_byte = string.byte
@@ -67,6 +68,7 @@ local FORBIDDEN_AUTH_HEADERS = {
 -- The hard ceiling keeps a misconfigured limit from permitting an unbounded worker buffer.
 local MAX_RESPONSE_WIRE_BYTES = 64 * 1024 * 1024
 local MAX_RESPONSE_READ_BYTES = 8192
+local MAX_RESPONSE_CHUNK_PARTS = 8192
 local RESPONSE_ENVELOPE_BYTES = 29
 local JSON_ESCAPE_MULTIPLIER = 6
 local MAPPING_ENTRY_STRUCTURE_BYTES = 33
@@ -298,10 +300,22 @@ end
 
 
 local function response_wire_limit(conf)
+    -- The same hard/config-derived ceiling bounds response restoration so a
+    -- small masked payload cannot expand into an unbounded worker allocation.
+    conf = conf or {}
     local derived = RESPONSE_ENVELOPE_BYTES
-                    + JSON_ESCAPE_MULTIPLIER * conf.max_request_body_bytes
-                    + JSON_ESCAPE_MULTIPLIER * conf.max_mapping_bytes
-                    + MAPPING_ENTRY_STRUCTURE_BYTES * conf.max_mapping_entries
+                    + JSON_ESCAPE_MULTIPLIER * (
+                        conf.max_request_body_bytes
+                        or schema.properties.max_request_body_bytes.default
+                    )
+                    + JSON_ESCAPE_MULTIPLIER * (
+                        conf.max_mapping_bytes
+                        or schema.properties.max_mapping_bytes.default
+                    )
+                    + MAPPING_ENTRY_STRUCTURE_BYTES * (
+                        conf.max_mapping_entries
+                        or schema.properties.max_mapping_entries.default
+                    )
     return math_min(derived, MAX_RESPONSE_WIRE_BYTES)
 end
 
@@ -320,6 +334,7 @@ local function read_bounded_response(res, max_bytes)
     end
 
     local chunks = {}
+    local chunk_parts = {}
     local total = 0
     while true do
         local remaining = max_bytes - total
@@ -341,9 +356,16 @@ local function read_bounded_response(res, max_bytes)
         if total > max_bytes then
             return nil, "redaction service response size limit exceeded"
         end
-        chunks[#chunks + 1] = chunk
+        chunk_parts[#chunk_parts + 1] = chunk
+        if #chunk_parts >= MAX_RESPONSE_CHUNK_PARTS then
+            chunks[#chunks + 1] = table_concat(chunk_parts)
+            chunk_parts = {}
+        end
     end
 
+    if #chunk_parts > 0 then
+        chunks[#chunks + 1] = table_concat(chunk_parts)
+    end
     return table_concat(chunks)
 end
 
@@ -451,8 +473,24 @@ end
 
 
 local function validate_control_fields(ctx, original, masked)
-    local masked_protocol = protocols.detect(masked, ctx)
-    if masked_protocol ~= ctx.ai_target_protocol then
+    local target_protocol = ctx.ai_target_protocol
+    local protocol = protocols.get(target_protocol)
+    local matches_target = protocol and protocol.matches(masked, ctx)
+    if target_protocol == "vertex-predict" then
+        matches_target = type(masked.instances) == "table"
+                         and getmetatable(masked.instances) == core.json.array_mt
+                         and #masked.instances > 0
+        if matches_target then
+            for _, instance in ipairs(masked.instances) do
+                if type(instance) ~= "table"
+                        or type(instance.content) ~= "string" then
+                    matches_target = false
+                    break
+                end
+            end
+        end
+    end
+    if not matches_target then
         return "redaction service changed the AI protocol"
     end
 
@@ -600,27 +638,31 @@ function _M.access(conf, ctx)
             result.body,
             result.replacements,
             conf.max_mapping_entries,
-            conf.max_mapping_bytes
+            conf.max_mapping_bytes,
+            response_wire_limit(conf)
         )
         if not mapping then
             return nil, {message = mapping_err}, 502
         end
 
         local integrity_ok, integrity_err = restorer.verify_redaction(
-            final_raw_body, result.body, mapping, namespace
+            final_raw_body,
+            result.body,
+            mapping,
+            namespace,
+            response_wire_limit(conf)
         )
         if not integrity_ok then
             return nil, {message = integrity_err}, 502
         end
 
         ctx._ai_redaction_mapping = mapping
-        ctx.var.llm_request_body = masked
         return result.body
     end
 end
 
 
-function _M.lua_body_filter(_, ctx, _, body, eof)
+function _M.lua_body_filter(conf, ctx, _, body, eof)
     if ctx.var.request_type == "ai_stream" then
         local chunk = body or ""
         ensure_stream_counts(ctx)
@@ -633,7 +675,8 @@ function _M.lua_body_filter(_, ctx, _, body, eof)
                 sse_restorer.new,
                 ctx.ai_client_protocol,
                 ctx._ai_redaction_mapping,
-                ctx._ai_redaction_namespace
+                ctx._ai_redaction_namespace,
+                response_wire_limit(conf)
             )
             if not ok or type(processor) ~= "table"
                     or type(processor.feed) ~= "function" then
@@ -698,7 +741,8 @@ function _M.lua_body_filter(_, ctx, _, body, eof)
         restorer.restore_json_text,
         body,
         ctx._ai_redaction_mapping,
-        ctx._ai_redaction_namespace
+        ctx._ai_redaction_namespace,
+        response_wire_limit(conf)
     )
     if not ok or type(restored) ~= "string" or type(count) ~= "number" then
         core.log.error(

@@ -34,6 +34,7 @@ local MAX_STREAM_KEYS = 1024
 local MAX_STREAM_PENDING_BYTES = 64 * 1024
 local INVALID_JSON_ERROR = "invalid JSON"
 local JSON_DEPTH_ERROR = "JSON nesting depth limit exceeded"
+local OUTPUT_SIZE_ERROR = "restored output size limit exceeded"
 local JSON_LITERALS = {"true", "false", "null"}
 local scan_json_text
 
@@ -88,7 +89,9 @@ local function find_token_candidate(value, namespace, search_from)
 end
 
 
-function _M.validate_mapping(namespace, body, replacements, max_entries, max_bytes)
+function _M.validate_mapping(
+    namespace, body, replacements, max_entries, max_bytes, max_output_bytes
+)
     if type(replacements) ~= "table" or not is_dense_array(replacements) then
         return nil, "replacements must be an array"
     end
@@ -134,7 +137,9 @@ function _M.validate_mapping(namespace, body, replacements, max_entries, max_byt
     end
 
     local present = {}
-    local scanned, _, scan_err = scan_json_text(raw_body, mapping, namespace, 0, present)
+    local scanned, _, scan_err = scan_json_text(
+        raw_body, mapping, namespace, 0, present, max_output_bytes
+    )
     if not scanned then
         return nil, "failed to scan masked body: " .. scan_err
     end
@@ -166,8 +171,9 @@ local function contains_known_token(value, mapping, namespace)
 end
 
 
-local function restore_string(value, mapping, namespace, present)
+local function restore_string(value, mapping, namespace, present, max_output_bytes)
     local out = {}
+    local output_bytes = 0
     local pos = 1
     local search_from = 1
     local count = 0
@@ -184,7 +190,12 @@ local function restore_string(value, mapping, namespace, present)
             if present then
                 present[candidate] = true
             end
-            out[#out + 1] = string_sub(value, pos, start_pos - 1)
+            local prefix = string_sub(value, pos, start_pos - 1)
+            output_bytes = output_bytes + #prefix + #original
+            if max_output_bytes and output_bytes > max_output_bytes then
+                return nil, nil, OUTPUT_SIZE_ERROR
+            end
+            out[#out + 1] = prefix
             out[#out + 1] = original
             pos = end_pos + 1
             count = count + 1
@@ -196,12 +207,23 @@ local function restore_string(value, mapping, namespace, present)
         return value, 0
     end
 
-    out[#out + 1] = string_sub(value, pos)
+    local suffix = string_sub(value, pos)
+    output_bytes = output_bytes + #suffix
+    if max_output_bytes and output_bytes > max_output_bytes then
+        return nil, nil, OUTPUT_SIZE_ERROR
+    end
+    out[#out + 1] = suffix
     return table_concat(out), count
 end
 
 
 local function append(scanner, value)
+    local output_bytes = scanner.output_bytes + #value
+    if scanner.max_output_bytes and output_bytes > scanner.max_output_bytes then
+        scanner.output_error = OUTPUT_SIZE_ERROR
+        return
+    end
+    scanner.output_bytes = output_bytes
     scanner.output[#scanner.output + 1] = value
 end
 
@@ -370,7 +392,37 @@ local function find_string_end(raw, start_pos)
 end
 
 
-local function parse_string(scanner, pos, is_key, depth)
+local function json_string_size(value)
+    local size = 2
+    for pos = 1, #value do
+        local byte = string_byte(value, pos)
+        if byte == 34 or byte == 92 then
+            size = size + 2
+        elseif byte < 32 then
+            size = size + 6
+        else
+            size = size + 1
+        end
+    end
+    return size
+end
+
+
+local function encode_restored_string(scanner, value)
+    if scanner.max_output_bytes
+            and scanner.output_bytes + json_string_size(value) >
+                scanner.max_output_bytes then
+        return nil, OUTPUT_SIZE_ERROR
+    end
+    local encoded = core.json.encode(value)
+    if not encoded then
+        return nil, INVALID_JSON_ERROR
+    end
+    return encoded
+end
+
+
+local function parse_string(scanner, pos, is_key, depth, path)
     local end_pos = find_string_end(scanner.raw, pos)
     if not end_pos then
         return nil, INVALID_JSON_ERROR
@@ -386,6 +438,24 @@ local function parse_string(scanner, pos, is_key, depth)
     if type(decoded) ~= "string" then
         return nil, INVALID_JSON_ERROR
     end
+
+    local replacement = scanner.replacements and scanner.replacements[path]
+    if replacement then
+        if replacement.original ~= decoded or replacement.used then
+            return nil, INVALID_JSON_ERROR
+        end
+        local encoded, encode_err = encode_restored_string(
+            scanner, replacement.restored
+        )
+        if not encoded then
+            return nil, encode_err
+        end
+        replacement.used = true
+        scanner.replacement_count = scanner.replacement_count + 1
+        append(scanner, encoded)
+        return end_pos + 1, 0
+    end
+
     if not contains_known_token(decoded, scanner.mapping, scanner.namespace) then
         append(scanner, raw_string)
         return end_pos + 1, 0
@@ -394,7 +464,12 @@ local function parse_string(scanner, pos, is_key, depth)
     local first_non_space = decoded:match("^%s*(.)")
     if first_non_space == "{" or first_non_space == "[" then
         local embedded, embedded_count, embedded_err = scan_json_text(
-            decoded, scanner.mapping, scanner.namespace, depth + 1, scanner.present
+            decoded,
+            scanner.mapping,
+            scanner.namespace,
+            depth + 1,
+            scanner.present,
+            scanner.max_output_bytes
         )
         if embedded then
             if embedded_count == 0 then
@@ -402,9 +477,9 @@ local function parse_string(scanner, pos, is_key, depth)
                 return end_pos + 1, 0
             end
 
-            local encoded = core.json.encode(embedded)
+            local encoded, encode_err = encode_restored_string(scanner, embedded)
             if not encoded then
-                return nil, INVALID_JSON_ERROR
+                return nil, encode_err
             end
             append(scanner, encoded)
             return end_pos + 1, embedded_count
@@ -414,17 +489,24 @@ local function parse_string(scanner, pos, is_key, depth)
         end
     end
 
-    local restored, count = restore_string(
-        decoded, scanner.mapping, scanner.namespace, scanner.present
+    local restored, count, restore_err = restore_string(
+        decoded,
+        scanner.mapping,
+        scanner.namespace,
+        scanner.present,
+        scanner.max_output_bytes
     )
+    if not restored then
+        return nil, restore_err
+    end
     if count == 0 then
         append(scanner, raw_string)
         return end_pos + 1, 0
     end
 
-    local encoded = core.json.encode(restored)
+    local encoded, encode_err = encode_restored_string(scanner, restored)
     if not encoded then
-        return nil, INVALID_JSON_ERROR
+        return nil, encode_err
     end
     append(scanner, encoded)
     return end_pos + 1, count
@@ -497,7 +579,7 @@ end
 
 local parse_value
 
-local function parse_array(scanner, pos, depth)
+local function parse_array(scanner, pos, depth, path)
     if depth >= MAX_JSON_DEPTH then
         return nil, JSON_DEPTH_ERROR
     end
@@ -510,8 +592,11 @@ local function parse_array(scanner, pos, depth)
     end
 
     local count = 0
+    local index = 1
     while true do
-        local next_pos, count_or_err = parse_value(scanner, pos, depth + 1)
+        local next_pos, count_or_err = parse_value(
+            scanner, pos, depth + 1, path .. "/" .. index
+        )
         if not next_pos then
             return nil, count_or_err
         end
@@ -529,11 +614,12 @@ local function parse_array(scanner, pos, depth)
         end
         append(scanner, ",")
         pos = append_whitespace(scanner, pos + 1)
+        index = index + 1
     end
 end
 
 
-local function parse_object(scanner, pos, depth)
+local function parse_object(scanner, pos, depth, path)
     if depth >= MAX_JSON_DEPTH then
         return nil, JSON_DEPTH_ERROR
     end
@@ -550,7 +636,17 @@ local function parse_object(scanner, pos, depth)
         if string_byte(scanner.raw, pos) ~= 34 then
             return nil, INVALID_JSON_ERROR
         end
-        local next_pos, count_or_err = parse_string(scanner, pos, true, depth)
+        local key_end = find_string_end(scanner.raw, pos)
+        if not key_end then
+            return nil, INVALID_JSON_ERROR
+        end
+        local key = core.json.decode(string_sub(scanner.raw, pos, key_end))
+        if type(key) ~= "string" then
+            return nil, INVALID_JSON_ERROR
+        end
+        local next_pos, count_or_err = parse_string(
+            scanner, pos, true, depth, path
+        )
         if not next_pos then
             return nil, count_or_err
         end
@@ -562,7 +658,10 @@ local function parse_object(scanner, pos, depth)
         append(scanner, ":")
         pos = append_whitespace(scanner, pos + 1)
 
-        next_pos, count_or_err = parse_value(scanner, pos, depth + 1)
+        local escaped_key = key:gsub("~", "~0"):gsub("/", "~1")
+        next_pos, count_or_err = parse_value(
+            scanner, pos, depth + 1, path .. "/" .. escaped_key
+        )
         if not next_pos then
             return nil, count_or_err
         end
@@ -584,17 +683,19 @@ local function parse_object(scanner, pos, depth)
 end
 
 
-parse_value = function(scanner, pos, depth)
+parse_value = function(scanner, pos, depth, path)
     pos = append_whitespace(scanner, pos)
     local byte = string_byte(scanner.raw, pos)
     if byte == 123 then
-        return parse_object(scanner, pos, depth)
+        return parse_object(scanner, pos, depth, path)
     end
     if byte == 91 then
-        return parse_array(scanner, pos, depth)
+        return parse_array(scanner, pos, depth, path)
     end
     if byte == 34 then
-        local next_pos, count_or_err = parse_string(scanner, pos, false, depth)
+        local next_pos, count_or_err = parse_string(
+            scanner, pos, false, depth, path
+        )
         if not next_pos then
             return nil, count_or_err
         end
@@ -619,7 +720,10 @@ parse_value = function(scanner, pos, depth)
 end
 
 
-scan_json_text = function(raw_json, mapping, namespace, initial_depth, present)
+scan_json_text = function(
+    raw_json, mapping, namespace, initial_depth, present, max_output_bytes,
+    replacements
+)
     local scanner = {
         raw = raw_json,
         length = #raw_json,
@@ -627,8 +731,13 @@ scan_json_text = function(raw_json, mapping, namespace, initial_depth, present)
         namespace = namespace,
         present = present,
         output = {},
+        output_bytes = 0,
+        max_output_bytes = max_output_bytes,
+        output_error = nil,
+        replacements = replacements,
+        replacement_count = 0,
     }
-    local pos, count_or_err = parse_value(scanner, 1, initial_depth or 0)
+    local pos, count_or_err = parse_value(scanner, 1, initial_depth or 0, "")
     if not pos then
         return nil, nil, count_or_err
     end
@@ -637,8 +746,12 @@ scan_json_text = function(raw_json, mapping, namespace, initial_depth, present)
     if pos <= scanner.length then
         return nil, nil, INVALID_JSON_ERROR
     end
+    if scanner.output_error then
+        return nil, nil, scanner.output_error
+    end
 
-    return table_concat(scanner.output), count_or_err
+    return table_concat(scanner.output), count_or_err, nil,
+           scanner.replacement_count
 end
 
 
@@ -693,13 +806,15 @@ local function semantic_signature(raw_json, namespace)
 end
 
 
-function _M.restore_json_text(raw_json, mapping, namespace)
+function _M.restore_json_text(raw_json, mapping, namespace, max_output_bytes)
     if type(raw_json) ~= "string" or type(mapping) ~= "table"
             or type(namespace) ~= "string" or namespace == "" then
         return nil, INVALID_JSON_ERROR
     end
 
-    local restored, count, err = scan_json_text(raw_json, mapping, namespace, 0)
+    local restored, count, err = scan_json_text(
+        raw_json, mapping, namespace, 0, nil, max_output_bytes
+    )
     if not restored then
         return nil, err
     end
@@ -708,7 +823,40 @@ function _M.restore_json_text(raw_json, mapping, namespace)
 end
 
 
-function _M.verify_redaction(original_json, masked_json, mapping, namespace)
+function _M.replace_json_strings(raw_json, replacements, max_output_bytes)
+    if type(raw_json) ~= "string" or type(replacements) ~= "table" then
+        return nil, INVALID_JSON_ERROR
+    end
+
+    local by_path = {}
+    local replacement_total = 0
+    for _, replacement in ipairs(replacements) do
+        if type(replacement) ~= "table" or type(replacement.path) ~= "string"
+                or type(replacement.original) ~= "string"
+                or type(replacement.restored) ~= "string"
+                or by_path[replacement.path] then
+            return nil, INVALID_JSON_ERROR
+        end
+        by_path[replacement.path] = replacement
+        replacement_total = replacement_total + 1
+    end
+
+    local restored, _, err, replacement_count = scan_json_text(
+        raw_json, {}, "_", 0, nil, max_output_bytes, by_path
+    )
+    if not restored then
+        return nil, err
+    end
+    if replacement_count ~= replacement_total then
+        return nil, INVALID_JSON_ERROR
+    end
+    return restored
+end
+
+
+function _M.verify_redaction(
+    original_json, masked_json, mapping, namespace, max_output_bytes
+)
     if type(original_json) ~= "string" or type(masked_json) ~= "string"
             or type(mapping) ~= "table" or type(namespace) ~= "string"
             or namespace == "" then
@@ -716,7 +864,7 @@ function _M.verify_redaction(original_json, masked_json, mapping, namespace)
     end
 
     local restored, _, restore_err = scan_json_text(
-        masked_json, mapping, namespace, 0
+        masked_json, mapping, namespace, 0, nil, max_output_bytes
     )
     if not restored then
         return nil, restore_err
@@ -806,7 +954,9 @@ local function find_pending_length(restorer, candidate)
 end
 
 
-local function restore_incremental(restorer, candidate, mode, final)
+local function restore_incremental(
+    restorer, candidate, mode, final, max_output_bytes
+)
     local pending = ""
     if not final and #candidate > 0 then
         local pending_length = find_pending_length(restorer, candidate)
@@ -821,16 +971,30 @@ local function restore_incremental(restorer, candidate, mode, final)
         mapping = restorer.json_fragment_mapping
     end
 
-    local output, count = restore_string(candidate, mapping, restorer.namespace)
+    local limit = restorer.max_output_bytes
+    if max_output_bytes and (not limit or max_output_bytes < limit) then
+        limit = max_output_bytes
+    end
+    local output, count, restore_err = restore_string(
+        candidate, mapping, restorer.namespace, nil, limit
+    )
+    if not output then
+        return nil, nil, nil, restore_err
+    end
     return output, pending, count
 end
 
 
-function StreamRestorer:feed(key, text, mode, final)
+function StreamRestorer:feed(key, text, mode, final, max_output_bytes)
     local state = self.states[key]
     local previous = state and state.pending or ""
     local candidate = previous .. (text or "")
-    local output, pending, count = restore_incremental(self, candidate, mode, final)
+    local output, pending, count, restore_err = restore_incremental(
+        self, candidate, mode, final, max_output_bytes
+    )
+    if not output then
+        return nil, nil, restore_err
+    end
 
     if final or pending == "" then
         if state then
@@ -862,7 +1026,7 @@ function StreamRestorer:feed(key, text, mode, final)
 end
 
 
-function _M.new_stream(mapping, namespace)
+function _M.new_stream(mapping, namespace, max_output_bytes)
     local token_pattern = "^" .. namespace:gsub("([^%w])", "%%%1") .. "[1-9][0-9]*__$"
     local stream_mapping = {}
     local json_fragment_mapping = {}
@@ -898,6 +1062,7 @@ function _M.new_stream(mapping, namespace)
             states = {},
             active_count = 0,
             pending_bytes = 0,
+            max_output_bytes = max_output_bytes,
         },
         StreamRestorer
     )

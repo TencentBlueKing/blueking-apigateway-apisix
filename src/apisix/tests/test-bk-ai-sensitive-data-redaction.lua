@@ -222,6 +222,9 @@ describe(
 
                                         local remaining = #response_body - response_offset + 1
                                         local read_size = math.min(max_bytes or remaining, remaining)
+                                        if behavior.one_byte_chunks then
+                                            read_size = 1
+                                        end
                                         local chunk = response_body:sub(
                                             response_offset,
                                             response_offset + read_size - 1
@@ -299,6 +302,67 @@ describe(
                         assert_no_request_mutation()
                     end
                 )
+
+                for _, case in ipairs({
+                    {
+                        name = "Anthropic Messages to OpenAI Chat",
+                        converter = "anthropic-messages-to-openai-chat",
+                        uri = "/v1/messages",
+                        client_protocol = "anthropic-messages",
+                        target_protocol = "openai-chat",
+                        body = {
+                            model = "gpt-4o",
+                            stream = false,
+                            max_tokens = 128,
+                            messages = {{
+                                role = "user",
+                                content = "phone: 13800138000",
+                            }},
+                        },
+                    },
+                    {
+                        name = "OpenAI Embeddings to Vertex Predict",
+                        converter = "openai-embeddings-to-vertex-predict",
+                        uri = "/v1/embeddings",
+                        client_protocol = "openai-embeddings",
+                        target_protocol = "vertex-predict",
+                        body = {
+                            model = "text-embedding-004",
+                            input = "phone: 13800138000",
+                        },
+                    },
+                }) do
+                    it(
+                        "accepts the real " .. case.name .. " converter output",
+                        function()
+                            request_body = case.body
+                            raw_request_body = assert(core.json.encode(request_body))
+                            local ctx = request_context({
+                                var = {uri = case.uri},
+                                ai_client_protocol = case.client_protocol,
+                                ai_target_protocol = case.target_protocol,
+                            })
+                            local converter = require(
+                                "apisix.plugins.ai-protocols.converters." ..
+                                case.converter
+                            )
+                            local converted = assert(converter.convert_request(
+                                request_body, ctx
+                            ))
+
+                            local filter = register_filter(ctx)
+                            local masked_body, err, code = filter(
+                                assert(core.json.encode(converted))
+                            )
+
+                            assert.is_nil(err)
+                            assert.is_nil(code)
+                            assert.is_string(masked_body)
+                            assert.is_nil(masked_body:find("13800138000", 1, true))
+                            assert.is_equal(1, observed.request_count)
+                        end
+                    )
+                end
 
                 it(
                     "clears rewritten payload logs before a lower-priority rejection",
@@ -1336,6 +1400,45 @@ describe(
                 )
 
                 it(
+                    "coalesces adversarial one-byte response chunks", function()
+                        local module_name =
+                            "apisix.plugins.bk-ai-sensitive-data-redaction"
+                        local original_module = package.loaded[module_name]
+                        local original_concat = table.concat
+                        local concat_entry_counts = {}
+                        table.concat = function(values, ...)
+                            concat_entry_counts[#concat_entry_counts + 1] = #values
+                            return original_concat(values, ...)
+                        end
+                        package.loaded[module_name] = nil
+                        local fresh_plugin = require(module_name)
+                        package.loaded[module_name] = original_module
+                        table.concat = original_concat
+
+                        behavior.one_byte_chunks = true
+                        behavior.response_builder = function(payload)
+                            local value = success_value(payload)
+                            value.padding = string.rep("x", 20000)
+                            return assert(core.json.encode(value))
+                        end
+                        local ctx = request_context()
+                        local access_code, access_err = fresh_plugin.access(config(), ctx)
+                        assert.is_nil(access_code)
+                        assert.is_nil(access_err)
+
+                        local masked_body, err, code =
+                            ctx.ai_final_request_body_filter(raw_request_body)
+
+                        assert.is_nil(err)
+                        assert.is_nil(code)
+                        assert.is_string(masked_body)
+                        assert.is_true(observed.body_reader_count > 20000)
+                        assert.is_true(#concat_entry_counts > 0)
+                        assert.is_true(math.max(unpack(concat_entry_counts)) <= 8192)
+                    end
+                )
+
+                it(
                     "rejects a decoded masked body above the request-body limit", function()
                         local ctx = request_context()
                         behavior.response_builder = function(payload)
@@ -1496,7 +1599,7 @@ describe(
         context(
             "successful mutation", function()
                 it(
-                    "installs only the validated masked body and request-local mapping", function()
+                    "keeps request payload logging empty after successful filtering", function()
                         local request_id = "da584df5-7bd5-4590-98e0-8f92a89f9494"
                         local ctx = request_context({
                             var = {apisix_request_id = request_id},
@@ -1521,11 +1624,11 @@ describe(
                         assert.is_equal(request_id, ctx._ai_redaction_request_id)
                         assert.is_equal(namespace, ctx._ai_redaction_namespace)
                         assert.is_same({[token] = "13800138000"}, ctx._ai_redaction_mapping)
-                        assert.is_same(masked, ctx.var.llm_request_body)
+                        assert.is_same({}, ctx.var.llm_request_body)
                         proxy_base.set_logging(ctx, false, true)
                         local payload_log = assert(core.json.encode(ctx.llm_request))
                         assert.is_nil(payload_log:find("13800138000", 1, true))
-                        assert.is_truthy(payload_log:find(token, 1, true))
+                        assert.is_nil(payload_log:find(token, 1, true))
                         assert.is_nil(ctx.ai_request_body_changed)
                         assert.is_nil(ctx._ai_redaction_sse_restorer)
                         assert_no_request_mutation()
@@ -1702,6 +1805,52 @@ describe(
                         assert.is_same({}, processor.key_order)
                         assert.is_equal(0, processor.metadata_bytes)
                         assert.is_nil(next(processor.key_metadata_bytes))
+                    end
+                )
+
+                it(
+                    "fails closed before repeated placeholders expand past the stream limit",
+                    function()
+                        local original = string.rep("s", 200)
+                        local processor = assert(sse_restorer.new(
+                            "openai-chat", {[token] = original}, namespace, 256
+                        ))
+                        local input =
+                            'data: {"choices":[{"index":0,"delta":{"content":"' ..
+                            token .. token .. '"}}]}\n\n'
+
+                        local ok, err = pcall(
+                            processor.feed, processor, input, false
+                        )
+                        local masked_fallback = processor:fail_closed(input)
+
+                        assert.is_false(ok)
+                        assert.is_truthy(err:find(
+                            "restored output size limit exceeded", 1, true
+                        ))
+                        assert.is_equal(input, masked_fallback)
+                        assert.is_nil(masked_fallback:find(original, 1, true))
+                    end
+                )
+
+                it(
+                    "preserves numeric lexemes in restored streaming events", function()
+                        local processor = assert(sse_restorer.new(
+                            "openai-chat", {[token] = "13800138000"}, namespace
+                        ))
+                        local input =
+                            'data: {"large":9007199254740993,"negative_zero":-0,' ..
+                            '"exponent":1.2300e+40,"choices":[{"index":0,' ..
+                            '"delta":{"content":"' .. token .. '"}}]}\n\n'
+                        local expected =
+                            'data: {"large":9007199254740993,"negative_zero":-0,' ..
+                            '"exponent":1.2300e+40,"choices":[{"index":0,' ..
+                            '"delta":{"content":"13800138000"}}]}\n\n'
+
+                        local output, restored_count = processor:feed(input, false)
+
+                        assert.is_equal(expected, output)
+                        assert.is_equal(1, restored_count)
                     end
                 )
 
@@ -2482,6 +2631,68 @@ describe(
                         assert.is_equal(1, ctx._ai_redaction_restored_count)
                         assert.is_nil(ctx._ai_redaction_namespace)
                         assert.is_nil(ctx._ai_redaction_mapping)
+                    end
+                )
+
+                it(
+                    "rejects repeated-placeholder expansion before concatenation",
+                    function()
+                        local namespace =
+                            "__BK_REDACT_da584df57bd5459098e08f92a89f9494_"
+                        local known = namespace .. "1__"
+                        local masked_body = '{"content":"' .. known .. known .. '"}'
+
+                        local restored, err = restorer.restore_json_text(
+                            masked_body,
+                            {[known] = string.rep("s", 100)},
+                            namespace,
+                            128
+                        )
+
+                        assert.is_nil(restored)
+                        assert.is_equal("restored output size limit exceeded", err)
+                    end
+                )
+
+                it(
+                    "passes the masked response through when expansion exceeds the route bound",
+                    function()
+                        local request_id = "da584df5-7bd5-4590-98e0-8f92a89f9494"
+                        local namespace =
+                            "__BK_REDACT_da584df57bd5459098e08f92a89f9494_"
+                        local known = namespace .. "1__"
+                        local masked_body =
+                            '{"content":"' .. string.rep(known, 70) .. '"}'
+                        local ctx = request_context({
+                            var = {request_type = "ai_chat"},
+                            _ai_redaction_request_id = request_id,
+                            _ai_redaction_namespace = namespace,
+                            _ai_redaction_mapping = {
+                                [known] = string.rep("s", 4000),
+                            },
+                        })
+
+                        local code, restored_body = plugin.lua_body_filter(
+                            config({
+                                max_request_body_bytes = 4096,
+                                max_mapping_bytes = 4096,
+                                max_mapping_entries = 1,
+                            }),
+                            ctx,
+                            {},
+                            masked_body,
+                            true
+                        )
+
+                        assert.is_nil(code)
+                        assert.is_nil(restored_body)
+                        assert.is_nil(masked_body:find(string.rep("s", 4000), 1, true))
+                        assert.is_nil(ctx._ai_redaction_mapping)
+                        assert.stub(core.log.error).was_called_with(
+                            "failed to restore masked AI response",
+                            ", request_id: ",
+                            request_id
+                        )
                     end
                 )
 
