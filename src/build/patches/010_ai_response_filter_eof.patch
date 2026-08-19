@@ -1,0 +1,115 @@
+diff --git a/apisix/plugin.lua b/apisix/plugin.lua
+index 2e664e6..c831847 100644
+--- a/apisix/plugin.lua
++++ b/apisix/plugin.lua
+@@ -1469,9 +1469,10 @@ end
+ 
+ -- @param wait boolean When true, use synchronous flush (ngx.flush(true)) so callers
+ --   can detect client disconnection. Defaults to false (async flush).
++-- @param eof boolean|nil True only when no later response bytes will arrive.
+ -- @return boolean, string|nil Always returns (ok, err). On success returns true.
+ --   On flush failure or print failure returns false, err.
+-function _M.lua_response_filter(api_ctx, headers, body, no_flush, wait)
++function _M.lua_response_filter(api_ctx, headers, body, no_flush, wait, eof)
+     local plugins = api_ctx.plugins
+     if plugins and #plugins > 0 then
+         for i = 1, #plugins, 2 do
+@@ -1483,7 +1484,7 @@ function _M.lua_response_filter(api_ctx, headers, body, no_flush, wait)
+                 end
+ 
+                 run_meta_pre_function(conf, api_ctx, plugins[i]["name"])
+-                local code, new_body = phase_func(conf, api_ctx, headers, body)
++                local code, new_body = phase_func(conf, api_ctx, headers, body, eof)
+                 if code then
+                     if code ~= ngx_ok then
+                         ngx.status = code
+diff --git a/apisix/plugins/ai-providers/base.lua b/apisix/plugins/ai-providers/base.lua
+index 407fe0b..0836e77 100644
+--- a/apisix/plugins/ai-providers/base.lua
++++ b/apisix/plugins/ai-providers/base.lua
+@@ -364,7 +364,7 @@ function _M.parse_response(self, ctx, res, client_proto, converter, conf)
+     if decode_err then
+         core.log.warn("failed to decode response from ai service, err: ", decode_err,
+             ", it will cause token usage not available")
+-        plugin.lua_response_filter(ctx, headers, raw_res_body)
++        plugin.lua_response_filter(ctx, headers, raw_res_body, nil, nil, true)
+         return nil
+     end
+ 
+@@ -402,7 +402,7 @@ function _M.parse_response(self, ctx, res, client_proto, converter, conf)
+         ctx.var.llm_response_text = response_text
+     end
+ 
+-    plugin.lua_response_filter(ctx, headers, raw_res_body)
++    plugin.lua_response_filter(ctx, headers, raw_res_body, nil, nil, true)
+     return res_body
+ end
+ 
+@@ -435,6 +435,7 @@ function _M.parse_streaming_response(self, ctx, res, target_proto, converter, co
+     -- all events may be skipped and no output produced, leaving the response
+     -- uncommitted and causing nginx to fall through to the balancer phase.
+     local output_sent = false
++    local response_filter_finalized = false
+ 
+     -- Runaway-upstream safeguards. Both are opt-in; unset means no cap.
+     local max_duration_ms = conf and conf.max_stream_duration_ms
+@@ -503,6 +504,21 @@ function _M.parse_streaming_response(self, ctx, res, target_proto, converter, co
+         ctx.var.llm_request_done = true
+     end
+ 
++    local function finalize_response_filter()
++        if response_filter_finalized then
++            return true
++        end
++
++        response_filter_finalized = true
++        local ok, filter_err = plugin.lua_response_filter(
++            ctx, res.headers, "", true, false, true)
++        if not ok then
++            abort_on_disconnect(filter_err)
++            return false
++        end
++        return true
++    end
++
+     -- Use a local flag instead of reading ctx.var on every chunk.
+     local first_token_set = false
+ 
+@@ -518,6 +534,9 @@ function _M.parse_streaming_response(self, ctx, res, target_proto, converter, co
+                 (ngx_now() - ctx.llm_request_start_time) * 1000)
+             core.log.warn("failed to read response chunk: ", err)
+             res._upstream_bytes = bytes_read
++            if not finalize_response_filter() then
++                return
++            end
+             if flush_thread then
+                 ngx.thread.kill(flush_thread)
+                 flush_thread = nil
+@@ -550,6 +569,9 @@ function _M.parse_streaming_response(self, ctx, res, target_proto, converter, co
+                 ngx.thread.kill(flush_thread)
+                 flush_thread = nil
+             end
++            if not finalize_response_filter() then
++                return
++            end
+             if not flush_err then
+                 ngx.flush(true)
+             end
+@@ -636,7 +658,7 @@ function _M.parse_streaming_response(self, ctx, res, target_proto, converter, co
+         if converter then
+             for _, c in ipairs(converted_chunks) do
+                 local ok, flush_err = plugin.lua_response_filter(
+-                    ctx, res.headers, c, no_flush, true)
++                    ctx, res.headers, c, no_flush, true, false)
+                 if not ok then
+                     abort_on_disconnect(flush_err)
+                     return
+@@ -645,7 +667,7 @@ function _M.parse_streaming_response(self, ctx, res, target_proto, converter, co
+             end
+         else
+             local ok, flush_err = plugin.lua_response_filter(
+-                ctx, res.headers, chunk, no_flush, true)
++                ctx, res.headers, chunk, no_flush, true, false)
+             if not ok then
+                 abort_on_disconnect(flush_err)
+                 return
