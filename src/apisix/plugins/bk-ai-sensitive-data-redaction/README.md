@@ -4,10 +4,12 @@
 
 ### Overview and ordering
 
-`bk-ai-sensitive-data-redaction` masks sensitive values in the final AI JSON
-request, sends only the masked request to the LLM, and restores exact known
-placeholders in the client response. The redaction service is the only external
-component that receives the original request values as part of this flow.
+`bk-ai-sensitive-data-redaction` sends the final AI JSON request to a redaction
+service, installs the service-returned body as the LLM request after contract
+validation, and restores exact known placeholders in the client response. The
+redaction service receives the original request values. The plugin relies on
+that trusted service to identify and replace every sensitive value; it cannot
+prove that the returned body is completely redacted.
 
 The plugin name is `bk-ai-sensitive-data-redaction` and its priority is `1039`.
 APISIX executes higher priorities first, so it runs after `ai-proxy-multi`
@@ -114,8 +116,10 @@ the same canonical UUID shape or the request is rejected with HTTP 400. It is
 forwarded only for third-party/Agent conversation correlation. It is never an
 APISIX storage key and never selects a mapping. Reusing one session ID across
 multiple turns does not persist or reuse replacements: every HTTP request has
-an independent mapping and stream state keyed by its unique `request_id`, and
-conversation history sent on a later turn is redacted again.
+an independent mapping and stream state stored only in its current request
+context, while its placeholders are namespaced by the unique `request_id`.
+There is no request-ID-keyed mapping lookup table. Conversation history sent on
+a later turn is redacted again.
 
 After request validation, APISIX makes one `POST` to the configured endpoint
 with `Content-Type: application/json` (or makes one such attempt if connection
@@ -177,6 +181,12 @@ Before changing the LLM request, the plugin verifies all of these conditions:
 - the compact encoded masked body is no greater than
   `max_request_body_bytes`.
 
+These checks establish response shape and mapping consistency, not redaction
+completeness. In particular, an unchanged `body` with an empty `replacements`
+array satisfies the contract. The redaction service is therefore inside the
+security trust boundary: if it misses a sensitive value, that value can be sent
+to the LLM.
+
 The original and masked encoded AI bodies are each limited by
 `max_request_body_bytes`; an oversized original is HTTP 413, while an oversized
 masked body is a third-party contract failure (HTTP 502). The full outbound
@@ -217,21 +227,26 @@ The processor preserves incomplete SSE frames and placeholder prefixes across
 transport chunks. Text fields receive raw originals; JSON-fragment fields
 receive JSON-escaped originals. Comment/keepalive frames, malformed events,
 unknown event shapes, and fields outside the list above pass through unchanged
-and therefore remain masked. An unterminated SSE remainder is bounded at 1 MiB;
-if it grows past that size before EOF, it is emitted unchanged and the remainder
-buffer is reset rather than rejecting the response.
+without additional restoration. An unterminated SSE remainder is bounded at
+1 MiB; if it grows past that size before EOF, it is emitted unchanged and the
+remainder buffer is reset rather than rejecting the response.
 
 Raw client-visible Bedrock `bedrock-converse` AWS EventStream and arbitrary
 passthrough streaming protocols are rejected with HTTP 400 before the redaction
-service or LLM is called. A Bedrock upstream is supported when `ai-proxy`
-converts it to one of the supported OpenAI or Anthropic client-visible SSE
-protocols, because this plugin sees and restores the converted SSE.
+service or LLM is called. The current checkout has no converter from Bedrock
+AWS EventStream to one of the supported client-visible SSE protocols, so
+streaming Bedrock is not currently supported. If such a converter is added in
+the future and runs before this response hook, the architecture can restore its
+converted OpenAI or Anthropic SSE output; that is a future conditional, not a
+current capability.
 
-At a protocol terminal event or transport EOF, pending state is flushed and
-the sensitive request mapping is cleared. If the client disconnects first, the
-AI streaming loop may stop before its EOF callback; no remaining buffered
-response can be delivered, and the request-local state is reclaimed with the
-request rather than persisted.
+A protocol terminal event finalizes and flushes pending processor state, but it
+does not clear the request mapping. The mapping and other sensitive state are
+cleared only when the response hook receives `eof=true`, when failure cleanup
+runs, or when the request is disposed. If the client disconnects first, the AI
+streaming loop may stop before its EOF callback; no remaining buffered response
+can be delivered, and the request-local state is reclaimed with the request
+rather than persisted.
 
 ### Failure, security, and observability
 
@@ -247,12 +262,17 @@ plugin failures:
   malformed or oversized response, changed protocol/model/stream, invalid
   mapping, or oversized masked body.
 
-Response-side restoration never substitutes an unmasked fallback. If complete
-JSON cannot be decoded or encoded, or the SSE restorer fails, the response
-continues with the still-masked data. After an SSE restorer failure, remaining
-chunks stay in masked passthrough mode. Unknown, altered, or incomplete
-placeholders are never restored; a pending incomplete placeholder is emitted
-still masked at a terminal event or EOF and counted as unresolved.
+Response-side restoration does not intentionally fetch or insert an unmasked
+fallback. If complete JSON cannot be decoded or encoded, or the SSE restorer
+fails, the plugin passes through the upstream bytes and any buffered placeholder
+data; after an SSE restorer failure, remaining chunks stay in passthrough mode.
+This preserves placeholders when the upstream honored the contract, but it
+cannot guarantee that passthrough bytes contain no sensitive data if the
+redaction service or upstream violated the contract. Earlier stream content
+that was successfully restored may already have been emitted before a later
+failure. Unknown, altered, or incomplete placeholders are never restored; a
+pending incomplete placeholder is emitted unchanged at a terminal event or EOF
+and counted as unresolved.
 
 All mappings, namespaces, session IDs, and SSE buffers live only in the current
 request context. The plugin does not use an Nginx shared dictionary, etcd,
@@ -272,19 +292,23 @@ correlation after sensitive mapping state is cleared.
 Use HTTPS with `ssl_verify=true` in production, authenticate the redaction
 service with a resolved secret rather than a literal credential, and authorize
 it for the minimum required caller/tenant scope. The redaction service sees the
-original sensitive values by design and must be operated as a trusted data
-processor. If `ai-request-rewrite`, `ai-rag`, or external moderation plugins
-are also bound, their services may receive or inspect raw data; do not bind
-them when the redaction service must be the only external raw-data recipient
-unless those services are explicitly trusted.
+original sensitive values and controls which values reach the LLM; it must be
+operated as a trusted data processor. APISIX validates the returned contract but
+does not determine whether every sensitive value was removed. If
+`ai-request-rewrite`, `ai-rag`, or external moderation plugins are also bound,
+their services may receive or inspect raw data. When operators intend the
+redaction service to be the sole external raw-data recipient, they must also
+exclude or explicitly trust those services; this plugin cannot enforce that
+route-wide property.
 
 ## 中文
 
 ### 概述与执行顺序
 
-`bk-ai-sensitive-data-redaction` 对最终 AI JSON 请求中的敏感值进行脱敏，只把
-脱敏后的请求发送给 LLM，并在客户端响应中精确还原已知占位符。在这条处理链路中，
-脱敏服务是唯一会接收原始请求值的外部组件。
+`bk-ai-sensitive-data-redaction` 将最终 AI JSON 请求发送给脱敏服务，在协议校验
+通过后把服务返回的 body 设置为 LLM 请求，并在客户端响应中精确还原已知占位符。
+脱敏服务会接收原始请求值。插件信任该服务能够识别并替换全部敏感值，无法证明返回
+body 已完整脱敏。
 
 插件名为 `bk-ai-sensitive-data-redaction`，优先级为 `1039`。APISIX 按优先级
 从高到低执行，因此本插件会在 `ai-proxy-multi`（`1041`）或 `ai-proxy`
@@ -385,9 +409,10 @@ request-ID 来源是否错误地在多个请求间复用了同一个 UUID。
 `session_id` 可选。`session_id_header` 中的非空值必须符合相同 UUID 格式，否则
 返回 HTTP 400。它只用于第三方服务或 Agent 多轮会话的关联，不会成为 APISIX
 存储键，也不会用于选择 mapping。多轮复用同一个 session ID 不会让 APISIX 持久化
-或复用 replacement：每个 HTTP 请求都按其唯一 `request_id` 持有独立的 mapping
-和流状态；后续轮次再次携带的会话历史会重新脱敏。占位符还原始终绑定当前 HTTP
-请求的 `request_id`，而不是 `session_id`。
+或复用 replacement：每个 HTTP 请求只在当前请求上下文中存储独立 mapping 和流
+状态，占位符则按唯一 `request_id` 划分命名空间；不存在以 request ID 为键的
+mapping 查询表。后续轮次再次携带的会话历史会重新脱敏。占位符还原始终绑定当前
+HTTP 请求的 `request_id`，而不是 `session_id`。
 
 请求校验通过后，APISIX 使用 `Content-Type: application/json` 向配置的 endpoint
 发起一次 `POST`（若连接或请求 I/O 失败，则只尝试一次）。只有配置 `auth_value`
@@ -445,6 +470,10 @@ request-ID 来源是否错误地在多个请求间复用了同一个 UUID。
 - 占位符与原始值的字符串字节总数不超过 `max_mapping_bytes`；以及
 - 脱敏 body 的紧凑编码不超过 `max_request_body_bytes`。
 
+这些校验只能确认响应结构和 mapping 一致性，不能确认脱敏完整性。例如，未修改的
+`body` 加空 `replacements` 数组也符合协议。因此脱敏服务位于安全信任边界内：如果
+它漏掉敏感值，该值可能被发送给 LLM。
+
 原始和脱敏 AI body 编码后都受 `max_request_body_bytes` 限制；原始 body 超限
 返回 HTTP 413，脱敏 body 超限属于第三方协议错误，返回 HTTP 502。完整的第三方
 出站请求 envelope 没有独立的 schema 限制。第三方响应的 wire body 按以下实现上限
@@ -479,18 +508,21 @@ min(27 + 6 * max_request_body_bytes
 
 处理器会跨传输 chunk 保留不完整 SSE frame 和占位符前缀。文本字段写入原始值，
 JSON fragment 字段写入经过 JSON 转义的原始值。注释/keepalive frame、格式错误的
-事件、未知事件结构以及上述列表以外的字段均原样透传，因此保持脱敏状态。未终止
-SSE remainder 的上限为 1 MiB；若它在 EOF 前超过该大小，插件会将其原样输出并重置
+事件、未知事件结构以及上述列表以外的字段均原样透传，不执行额外还原。未终止 SSE
+remainder 的上限为 1 MiB；若它在 EOF 前超过该大小，插件会将其原样输出并重置
 remainder buffer，而不是拒绝响应。
 
 客户端直接可见的 Bedrock `bedrock-converse` 原始 AWS EventStream 以及任意
 passthrough 流式协议，会在调用脱敏服务和 LLM 之前以 HTTP 400 拒绝。若 Bedrock
-上游被 `ai-proxy` 转换成上述受支持的 OpenAI 或 Anthropic 客户端可见 SSE 协议，
-则仍受支持，因为本插件看到并还原的是转换后的 SSE。
+AWS EventStream 需要转换成受支持的客户端可见 SSE，当前 checkout 并不存在此类
+converter，因此目前不支持 Bedrock 流式响应。若将来新增 converter，并在本响应
+hook 之前生成 OpenAI 或 Anthropic SSE，则该架构可以还原转换后的输出；这是未来
+条件，不是当前能力。
 
-遇到协议终止事件或传输 EOF 时，插件会 flush 待处理状态并清除敏感请求 mapping。
-若客户端提前断开，AI 流式循环可能在执行 EOF 回调前停止；此时剩余缓冲响应已无法
-发送，请求局部状态会随请求回收，而不会被持久化。
+协议终止事件只会 finalize 并 flush 待处理的 processor 状态，不会清除请求 mapping。
+只有响应 hook 收到 `eof=true`、执行失败清理，或请求被销毁时，mapping 和其他敏感
+状态才会清除。若客户端提前断开，AI 流式循环可能在执行 EOF 回调前停止；此时剩余
+缓冲响应已无法发送，请求局部状态会随请求回收，而不会被持久化。
 
 ### 失败、安全与可观测性
 
@@ -503,10 +535,12 @@ passthrough 流式协议，会在调用脱敏服务和 LLM 之前以 HTTP 400 �
 - HTTP 502：脱敏服务连接/请求/读取失败、返回非 200、响应格式错误或超限、修改了
   协议/model/stream、mapping 无效，或脱敏 body 超限。
 
-响应侧还原绝不会用未脱敏数据作为 fallback。完整 JSON 无法解码或编码，或 SSE
-还原器失败时，响应继续使用仍处于脱敏状态的数据；SSE 还原器失败后，后续 chunk
-保持脱敏 passthrough。未知、被修改或不完整的占位符永远不会被还原；协议终止事件
-或 EOF 到达时，待处理的不完整占位符会仍以脱敏形式输出，并计入 unresolved 数量。
+响应侧还原不会主动获取或插入未脱敏 fallback。完整 JSON 无法解码或编码，或 SSE
+还原器失败时，插件会透传上游字节和已缓冲的占位符数据；SSE 还原器失败后，后续
+chunk 保持 passthrough。如果上游遵守协议，这会保留占位符；但若脱敏服务或上游
+违反协议，插件无法保证透传字节中不存在敏感数据。发生后续失败前，先前成功还原的
+流式内容也可能已经发送。未知、被修改或不完整的占位符永远不会被还原；协议终止
+事件或 EOF 到达时，待处理的不完整占位符会原样输出，并计入 unresolved 数量。
 
 所有 mapping、命名空间、session ID 和 SSE buffer 只存在于当前请求上下文中。
 插件不使用 Nginx shared dictionary、etcd、Redis、文件或其他跨请求存储。禁止记录
@@ -521,7 +555,9 @@ passthrough 流式协议，会在调用脱敏服务和 LLM 之前以 HTTP 400 �
 状态清理后仍可在本地关联。
 
 生产环境应使用 HTTPS 和 `ssl_verify=true`，通过已解析的 secret 而不是字面量凭据
-认证脱敏服务，并按调用方/租户授予最小权限。脱敏服务按设计会看到原始敏感值，必须
-作为受信任的数据处理方运行。如果路由还绑定了 `ai-request-rewrite`、`ai-rag` 或
-外部 moderation 插件，它们的服务也可能接收或检查原始数据；当脱敏服务必须是唯一
-接收原始数据的外部组件时，不要绑定这些插件，除非明确信任相应服务。
+认证脱敏服务，并按调用方/租户授予最小权限。脱敏服务会看到原始敏感值并决定哪些值
+进入 LLM，必须作为受信任的数据处理方运行。APISIX 会校验返回协议，但不会判断是否
+删除了全部敏感值。如果路由还绑定了 `ai-request-rewrite`、`ai-rag` 或外部
+moderation 插件，它们的服务也可能接收或检查原始数据。当运维方要求脱敏服务成为
+唯一接收原始数据的外部组件时，还必须排除或明确信任这些服务；本插件无法强制保证
+整个路由都满足该属性。
