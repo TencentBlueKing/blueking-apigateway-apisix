@@ -205,7 +205,11 @@ min(29 + 6 * max_request_body_bytes
 An over-limit `Content-Length` is rejected before reading, and chunked or
 undeclared bodies are bounded while reading. These multipliers cover the
 worst-case JSON escaping and mapping envelope; the decoded mapping limits above
-are still validated separately.
+are still validated separately. The same ceiling limits each non-streaming
+restored body. For each streaming filter invocation, it limits aggregate
+restored-field bytes and each reconstructed JSON event. This bounds
+placeholder-driven expansion, not unchanged SSE frames or framing overhead. If
+the restoration limit is exceeded, the affected bytes remain masked.
 
 ### Response protocols and restoration
 
@@ -294,10 +298,11 @@ request context. The plugin does not use an Nginx shared dictionary, etcd,
 Redis, files, or another cross-request store. On entry to the plugin's access
 phase, request-payload logging is set to `{}` and remains empty through plugin
 validation, lower-priority access, provider routing, and request-build failures.
-Only a contract-verified masked body replaces it. While the final-body filter is
-active, body-bearing model options, LLM/request-body overrides, and
-authentication values are suppressed from the relevant AI-proxy logs; the
-original body, mapping, and session ID are not logged by this path.
+It also remains empty after a contract-verified masked body is accepted. While
+the final-body filter is active, body-bearing model options, LLM/request-body
+overrides, and authentication values are suppressed from the relevant AI-proxy
+logs; the original body, masked body, mapping, and session ID are not logged by
+this path.
 
 This is not a blanket promise that every provider option or override-derived
 value is absent from logs. Standard AI-proxy transport logs may retain
@@ -513,7 +518,10 @@ min(29 + 6 * max_request_body_bytes
 
 超限的 `Content-Length` 会在读取前被拒绝；chunked 或未声明长度的响应则在读取
 过程中受限。这些倍数覆盖最坏情况的 JSON 转义和 mapping envelope；解码后仍会
-单独执行上述 mapping 限制校验。
+单独执行上述 mapping 限制校验。同一上限也用于限制每次非流式 body 还原；对每次流式
+filter 调用，它限制聚合的已还原字段字节数，并逐个限制重建后的 JSON 事件。这限制的
+是占位符引起的扩张，不包括未修改的 SSE frame 或 framing 开销。还原超过该上限时，
+受影响的字节保持脱敏状态。
 
 ### 响应协议与还原
 
@@ -580,10 +588,10 @@ chunk 保持 passthrough。如果上游遵守协议，这会保留占位符；�
 所有 mapping、命名空间、session ID 和 SSE buffer 只存在于当前请求上下文中。
 插件不使用 Nginx shared dictionary、etcd、Redis、文件或其他跨请求存储。进入本
 插件 access 阶段时，请求 payload 日志即被设置为 `{}`；在插件校验、较低优先级
-access、provider 路由和请求构建失败期间均保持为空，只有通过协议校验的脱敏 body
-会替换它。最终 body filter 生效时，相关 AI-proxy 日志会抑制包含 body 的 model
-options、LLM/request-body override 和认证值；该路径不会记录原始 body、mapping 或
-session ID。
+access、provider 路由和请求构建失败期间均保持为空；通过协议校验的脱敏 body 被接受
+后也继续保持为空。最终 body filter 生效时，相关 AI-proxy 日志会抑制包含 body 的 model
+options、LLM/request-body override 和认证值；该路径不会记录原始 body、脱敏 body、
+mapping 或 session ID。
 
 这不代表日志中绝不会出现任何 provider option 或由 override 派生的值。标准
 AI-proxy 传输日志仍可能保留 endpoint 派生的非 body 元数据，例如 `scheme`、`host`、
