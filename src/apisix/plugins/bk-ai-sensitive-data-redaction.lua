@@ -26,9 +26,7 @@ local url = require("socket.url")
 local uuid = require("resty.jit-uuid")
 local getmetatable = getmetatable
 local math_min = math.min
-local pairs = pairs
 local pcall = pcall
-local setmetatable = setmetatable
 local string_byte = string.byte
 local string_lower = string.lower
 local table_concat = table.concat
@@ -61,14 +59,15 @@ local FORBIDDEN_AUTH_HEADERS = {
     ["upgrade"] = true,
 }
 
--- A response contains the masked body plus replacement strings. Any decoded JSON byte can
--- occupy at most six wire bytes as a \u00XX escape. The fixed compact envelope is 27 bytes,
+-- A response contains the masked raw JSON string plus replacement strings. Any raw body or
+-- decoded mapping byte can occupy at most six wire bytes as a \u00XX escape. The fixed compact
+-- envelope is 29 bytes,
 -- and each mapping entry adds at most 33 structural bytes including its separator:
---   27 + 6*max_request_body_bytes + 6*max_mapping_bytes + 33*max_mapping_entries
+--   29 + 6*max_request_body_bytes + 6*max_mapping_bytes + 33*max_mapping_entries
 -- The hard ceiling keeps a misconfigured limit from permitting an unbounded worker buffer.
 local MAX_RESPONSE_WIRE_BYTES = 64 * 1024 * 1024
 local MAX_RESPONSE_READ_BYTES = 8192
-local RESPONSE_ENVELOPE_BYTES = 27
+local RESPONSE_ENVELOPE_BYTES = 29
 local JSON_ESCAPE_MULTIPLIER = 6
 local MAPPING_ENTRY_STRUCTURE_BYTES = 33
 
@@ -452,12 +451,8 @@ end
 
 
 local function validate_control_fields(ctx, original, masked)
-    if type(masked) ~= "table" or getmetatable(masked) == core.json.array_mt then
-        return "redaction service body must be an object"
-    end
-
     local masked_protocol = protocols.detect(masked, ctx)
-    if masked_protocol ~= ctx.ai_client_protocol then
+    if masked_protocol ~= ctx.ai_target_protocol then
         return "redaction service changed the AI protocol"
     end
 
@@ -471,14 +466,10 @@ local function validate_control_fields(ctx, original, masked)
 end
 
 
-local function replace_table(target, source)
-    for key in pairs(target) do
-        target[key] = nil
-    end
-    for key, value in pairs(source) do
-        target[key] = value
-    end
-    setmetatable(target, getmetatable(source))
+local function clear_attempt_state(ctx)
+    ctx._ai_redaction_mapping = nil
+    ctx._ai_redaction_sse_restorer = nil
+    ctx._ai_redaction_stream_passthrough = nil
 end
 
 
@@ -522,19 +513,9 @@ function _M.access(conf, ctx)
                     " is not supported for response restoration"
     end
 
-    local body, body_err = core.request.get_json_request_body_table(
-        conf.max_request_body_bytes
-    )
-    if not body then
-        return body_status(body_err), body_err
-    end
-
-    local encoded_body, encode_err = core.json.encode(body)
-    if not encoded_body then
-        return 400, {message = "failed to encode request body: " .. (encode_err or "unknown")}
-    end
-    if #encoded_body > conf.max_request_body_bytes then
-        return 413, {message = "request body is greater than the maximum size"}
+    local raw_body, body_err = core.request.get_body(conf.max_request_body_bytes, ctx)
+    if not raw_body then
+        return body_status(body_err), {message = body_err}
     end
 
     local request_id = resolve_request_id(ctx)
@@ -547,52 +528,83 @@ function _M.access(conf, ctx)
         return 500, "invalid redaction service authentication configuration"
     end
 
+    if ctx.ai_final_request_body_filter ~= nil then
+        return 500, "AI final request body filter is already registered"
+    end
+
     local namespace = namespace_for(request_id)
-    local result, redact_err = call_redaction_service(
-        conf, request_id, session_id, namespace, body
-    )
-    if not result then
-        return 502, {message = redact_err}
-    end
-
-    local control_err = validate_control_fields(ctx, body, result.body)
-    if control_err then
-        return 502, {message = control_err}
-    end
-
-    if type(result.replacements) ~= "table"
-            or getmetatable(result.replacements) ~= core.json.array_mt then
-        return 502, {message = "replacements must be a JSON array"}
-    end
-
-    local mapping, mapping_err = restorer.validate_mapping(
-        namespace,
-        result.body,
-        result.replacements,
-        conf.max_mapping_entries,
-        conf.max_mapping_bytes
-    )
-    if not mapping then
-        return 502, {message = mapping_err}
-    end
-
-    local masked_body, masked_encode_err = core.json.encode(result.body)
-    if not masked_body then
-        return 502, {
-            message = "failed to encode masked body: " .. (masked_encode_err or "unknown"),
-        }
-    end
-    if #masked_body > conf.max_request_body_bytes then
-        return 502, {message = "masked body size limit exceeded"}
-    end
-
-    replace_table(body, result.body)
-    ngx.req.set_body_data(masked_body)
     ctx._ai_redaction_request_id = request_id
     ctx._ai_redaction_session_id = session_id
     ctx._ai_redaction_namespace = namespace
-    ctx._ai_redaction_mapping = mapping
-    ctx.ai_request_body_changed = true
+    ctx.ai_final_request_body_filter = function(final_raw_body)
+        if type(final_raw_body) ~= "string" then
+            return nil, {
+                message = "final AI request body must be a JSON object string",
+            }, 400
+        end
+        if #final_raw_body > conf.max_request_body_bytes then
+            return nil, {message = "request body is greater than the maximum size"}, 413
+        end
+
+        local original = core.json.decode(final_raw_body)
+        if not original then
+            return nil, {message = "final AI request body must be valid JSON"}, 400
+        end
+        if type(original) ~= "table"
+                or getmetatable(original) == core.json.array_mt then
+            return nil, {
+                message = "final AI request body must be a JSON object string",
+            }, 400
+        end
+
+        clear_attempt_state(ctx)
+        local result, redact_err = call_redaction_service(
+            conf, request_id, session_id, namespace, final_raw_body
+        )
+        if not result then
+            return nil, {message = redact_err}, 502
+        end
+
+        if type(result.body) ~= "string" then
+            return nil, {message = "redaction service body must be a raw JSON string"}, 502
+        end
+        local masked = core.json.decode(result.body)
+        if not masked then
+            return nil, {message = "redaction service body must be valid JSON"}, 502
+        end
+        if type(masked) ~= "table"
+                or getmetatable(masked) == core.json.array_mt then
+            return nil, {message = "redaction service body must be an object"}, 502
+        end
+
+        local control_err = validate_control_fields(ctx, original, masked)
+        if control_err then
+            return nil, {message = control_err}, 502
+        end
+
+        if type(result.replacements) ~= "table"
+                or getmetatable(result.replacements) ~= core.json.array_mt then
+            return nil, {message = "replacements must be a JSON array"}, 502
+        end
+
+        local mapping, mapping_err = restorer.validate_mapping(
+            namespace,
+            result.body,
+            result.replacements,
+            conf.max_mapping_entries,
+            conf.max_mapping_bytes
+        )
+        if not mapping then
+            return nil, {message = mapping_err}, 502
+        end
+
+        if #result.body > conf.max_request_body_bytes then
+            return nil, {message = "masked body size limit exceeded"}, 502
+        end
+
+        ctx._ai_redaction_mapping = mapping
+        return result.body
+    end
 end
 
 

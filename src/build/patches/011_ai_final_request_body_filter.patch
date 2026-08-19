@@ -1,0 +1,83 @@
+diff --git a/apisix/plugins/ai-providers/base.lua b/apisix/plugins/ai-providers/base.lua
+index 407fe0b..5f984fc 100644
+--- a/apisix/plugins/ai-providers/base.lua
++++ b/apisix/plugins/ai-providers/base.lua
+@@ -97,6 +97,12 @@ end
+ -- @return string|nil err Error message
+ function _M.build_request(self, ctx, conf, request_body, opts)
+     local body_changed = false
++    local final_body_filter = ctx.ai_final_request_body_filter
++    if final_body_filter then
++        -- A provider build mutates its request table during conversion and overrides.
++        -- Keep each ai-proxy-multi attempt isolated from the cached client request.
++        request_body = core.table.deepcopy(request_body)
++    end
+
+     -- Protocol conversion (when a converter bridges client→target protocol)
+     local converter = ctx.ai_converter
+@@ -263,6 +269,43 @@ function _M.build_request(self, ctx, conf, request_body, opts)
+         params.body = request_body
+     end
+
++    if final_body_filter then
++        local raw_body = params.body
++        if type(raw_body) ~= "string" then
++            local encode_err
++            if self.aws_sigv4 and auth.aws then
++                raw_body, encode_err = core.json.encode(raw_body)
++            else
++                raw_body, encode_err = transport_http.encode_body(raw_body)
++            end
++            if not raw_body then
++                return nil, "failed to encode final AI request body: " ..
++                            (encode_err or "unknown")
++            end
++        end
++
++        local ok, filtered_body, error_body, status = pcall(final_body_filter, raw_body)
++        local valid_failure = filtered_body == nil
++                              and (type(error_body) == "string"
++                                   or type(error_body) == "table")
++                              and type(status) == "number"
++                              and status >= 400 and status < 600
++                              and status % 1 == 0
++        if not ok or (type(filtered_body) ~= "string" and not valid_failure)
++                or (type(filtered_body) == "string"
++                    and (error_body ~= nil or status ~= nil)) then
++            -- ai-proxy-multi treats a missing picker as an abort signal and returns
++            -- the status directly instead of selecting another LLM instance.
++            ctx.server_picker = nil
++            return nil, {message = "failed to filter final AI request body"}, 500
++        end
++        if valid_failure then
++            ctx.server_picker = nil
++            return nil, error_body, status
++        end
++        params.body = filtered_body
++    end
++
+     -- AWS SigV4 signing (must be last — signs the finalized body)
+     if self.aws_sigv4 and auth.aws then
+         local auth_aws = require("apisix.plugins.ai-transport.auth-aws")
+diff --git a/apisix/plugins/ai-transport/http.lua b/apisix/plugins/ai-transport/http.lua
+index eb7efc3..7c3d876 100644
+--- a/apisix/plugins/ai-transport/http.lua
++++ b/apisix/plugins/ai-transport/http.lua
+@@ -103,7 +103,7 @@ local function rapidjson_encode(body)
+ end
+
+
+-local function encode_body(body)
++function _M.encode_body(body)
+     local ok, encoded = pcall(rapidjson_encode, body)
+     if ok and encoded then
+         return encoded
+@@ -159,7 +159,7 @@ function _M.request(params, timeout)
+         req_json = params.body
+     else
+         local err
+-        req_json, err = encode_body(params.body)
++        req_json, err = _M.encode_body(params.body)
+         if not req_json then
+             httpc:close()
+             return nil, "encode body: " .. (err or "unknown"), {

@@ -33,6 +33,7 @@ local MAX_JSON_DEPTH = 128
 local INVALID_JSON_ERROR = "invalid JSON"
 local JSON_DEPTH_ERROR = "JSON nesting depth limit exceeded"
 local JSON_LITERALS = {"true", "false", "null"}
+local scan_json_text
 
 
 local function is_dense_array(value)
@@ -94,9 +95,13 @@ function _M.validate_mapping(namespace, body, replacements, max_entries, max_byt
         return nil, "mapping entry limit exceeded"
     end
 
-    local encoded_body, encode_err = core.json.encode(body)
-    if not encoded_body then
-        return nil, "failed to encode masked body: " .. encode_err
+    local raw_body = body
+    if type(raw_body) ~= "string" then
+        local encode_err
+        raw_body, encode_err = core.json.encode(body)
+        if not raw_body then
+            return nil, "failed to encode masked body: " .. encode_err
+        end
     end
 
     local mapping = {}
@@ -127,18 +132,9 @@ function _M.validate_mapping(namespace, body, replacements, max_entries, max_byt
     end
 
     local present = {}
-    local search_from = 1
-    while true do
-        local start_pos, end_pos, candidate = find_token_candidate(
-            encoded_body, namespace, search_from
-        )
-        if not start_pos then
-            break
-        end
-        if mapping[candidate] ~= nil then
-            present[candidate] = true
-        end
-        search_from = end_pos + 1
+    local scanned, _, scan_err = scan_json_text(raw_body, mapping, namespace, 0, present)
+    if not scanned then
+        return nil, "failed to scan masked body: " .. scan_err
     end
 
     for _, token in ipairs(tokens) do
@@ -168,7 +164,7 @@ local function contains_known_token(value, mapping, namespace)
 end
 
 
-local function restore_string(value, mapping, namespace)
+local function restore_string(value, mapping, namespace, present)
     local out = {}
     local pos = 1
     local search_from = 1
@@ -183,6 +179,9 @@ local function restore_string(value, mapping, namespace)
 
         local original = mapping[candidate]
         if original ~= nil then
+            if present then
+                present[candidate] = true
+            end
             out[#out + 1] = string_sub(value, pos, start_pos - 1)
             out[#out + 1] = original
             pos = end_pos + 1
@@ -369,8 +368,6 @@ local function find_string_end(raw, start_pos)
 end
 
 
-local scan_json_text
-
 local function parse_string(scanner, pos, is_key, depth)
     local end_pos = find_string_end(scanner.raw, pos)
     if not end_pos then
@@ -395,7 +392,7 @@ local function parse_string(scanner, pos, is_key, depth)
     local first_non_space = decoded:match("^%s*(.)")
     if first_non_space == "{" or first_non_space == "[" then
         local embedded, embedded_count, embedded_err = scan_json_text(
-            decoded, scanner.mapping, scanner.namespace, depth + 1
+            decoded, scanner.mapping, scanner.namespace, depth + 1, scanner.present
         )
         if embedded then
             if embedded_count == 0 then
@@ -416,7 +413,7 @@ local function parse_string(scanner, pos, is_key, depth)
     end
 
     local restored, count = restore_string(
-        decoded, scanner.mapping, scanner.namespace
+        decoded, scanner.mapping, scanner.namespace, scanner.present
     )
     if count == 0 then
         append(scanner, raw_string)
@@ -610,12 +607,13 @@ parse_value = function(scanner, pos, depth)
 end
 
 
-scan_json_text = function(raw_json, mapping, namespace, initial_depth)
+scan_json_text = function(raw_json, mapping, namespace, initial_depth, present)
     local scanner = {
         raw = raw_json,
         length = #raw_json,
         mapping = mapping,
         namespace = namespace,
+        present = present,
         output = {},
     }
     local pos, count_or_err = parse_value(scanner, 1, initial_depth or 0)

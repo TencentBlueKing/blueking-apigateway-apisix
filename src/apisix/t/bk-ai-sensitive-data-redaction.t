@@ -40,7 +40,8 @@ add_block_preprocessor(sub {
 
                     ngx.req.read_body()
                     local payload = assert(core.json.decode(ngx.req.get_body_data()))
-                    local body = payload.body
+                    assert(type(payload.body) == "string")
+                    local body = assert(core.json.decode(payload.body))
                     local content
                     local install
                     if type(body.input) == "string" then
@@ -67,7 +68,7 @@ add_block_preprocessor(sub {
 
                     ngx.header.content_type = "application/json"
                     ngx.print(assert(core.json.encode({
-                        body = body,
+                        body = assert(core.json.encode(body)),
                         replacements = {
                             {
                                 placeholder = token,
@@ -408,12 +409,14 @@ passed
 
                 ngx.req.read_body()
                 local payload = assert(core.json.decode(ngx.req.get_body_data()))
-                assert(payload.body.messages[1].content == "phone: 13800138000")
+                assert(type(payload.body) == "string")
+                local body = assert(core.json.decode(payload.body))
+                assert(body.messages[1].content == "phone: 13800138000")
                 local token = payload.placeholder_namespace .. "1__"
-                payload.body.messages[1].content = "phone: " .. token
+                body.messages[1].content = "phone: " .. token
                 ngx.header.content_type = "application/json"
                 ngx.print(assert(core.json.encode({
-                    body = payload.body,
+                    body = assert(core.json.encode(body)),
                     replacements = {
                         {
                             placeholder = token,

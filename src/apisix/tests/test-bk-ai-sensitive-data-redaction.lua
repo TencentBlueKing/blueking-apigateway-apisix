@@ -27,6 +27,7 @@ describe(
         local behavior
         local observed
         local request_body
+        local raw_request_body
         local request_headers
         local installed_body
 
@@ -58,6 +59,7 @@ describe(
             })
             ctx.picked_ai_instance = {provider = "openai"}
             ctx.ai_client_protocol = "openai-chat"
+            ctx.ai_target_protocol = "openai-chat"
             for key, value in pairs(overrides or {}) do
                 if key == "var" then
                     for var_name, var_value in pairs(value) do
@@ -71,11 +73,11 @@ describe(
         end
 
         local function success_value(payload)
-            local masked_body = assert(core.json.decode(assert(core.json.encode(payload.body))))
+            local masked_body = assert(core.json.decode(payload.body))
             local token = payload.placeholder_namespace .. "1__"
             masked_body.messages[1].content = "phone: " .. token
             return {
-                body = masked_body,
+                body = assert(core.json.encode(masked_body)),
                 replacements = {
                     {
                         placeholder = token,
@@ -89,9 +91,25 @@ describe(
             return assert(core.json.encode(success_value(payload)))
         end
 
+        local function mutate_success_response(payload, mutate)
+            local value = success_value(payload)
+            local body = assert(core.json.decode(value.body))
+            mutate(body, value)
+            value.body = assert(core.json.encode(body))
+            return assert(core.json.encode(value))
+        end
+
         local function assert_no_request_mutation()
             assert.is_nil(installed_body)
             assert.stub(ngx.req.set_body_data).was_not_called()
+        end
+
+        local function run_filter(ctx, conf, body)
+            local code, err = plugin.access(conf or config(), ctx)
+            if code then
+                return code, err
+            end
+            return ctx.ai_final_request_body_filter(body or raw_request_body)
         end
 
         before_each(
@@ -108,6 +126,7 @@ describe(
                     metadata = {source = "final-client-body"},
                 }
                 request_headers = {}
+                raw_request_body = assert(core.json.encode(request_body))
                 installed_body = nil
                 behavior = {
                     connect_ok = true,
@@ -134,6 +153,20 @@ describe(
                             return nil, behavior.body_error
                         end
                         return request_body
+                    end
+                )
+                stub(
+                    core.request, "get_body", function(max_size)
+                        observed.body_limit = max_size
+                        if behavior.body_error then
+                            return nil, behavior.body_error.message or behavior.body_error
+                        end
+                        if max_size and #raw_request_body > max_size then
+                            return nil, "request size " .. #raw_request_body ..
+                                        " is greater than the maximum size " .. max_size ..
+                                        " allowed"
+                        end
+                        return raw_request_body
                     end
                 )
                 stub(
@@ -226,9 +259,288 @@ describe(
         after_each(
             function()
                 core.request.get_json_request_body_table:revert()
+                core.request.get_body:revert()
                 core.request.header:revert()
                 ngx.req.set_body_data:revert()
                 http.new:revert()
+            end
+        )
+
+        context(
+            "final request body callback contract", function()
+                local function register_filter(ctx, conf)
+                    local code, err = plugin.access(conf or config(), ctx)
+                    assert.is_nil(code)
+                    assert.is_nil(err)
+                    assert.is_function(ctx.ai_final_request_body_filter)
+                    return ctx.ai_final_request_body_filter
+                end
+
+                it(
+                    "registers request identity without I/O or request-body mutation",
+                    function()
+                        local request_id = "da584df5-7bd5-4590-98e0-8f92a89f9494"
+                        local ctx = request_context({
+                            var = {apisix_request_id = request_id},
+                        })
+
+                        register_filter(ctx)
+
+                        assert.is_equal(0, observed.new_count)
+                        assert.is_equal(0, observed.request_count)
+                        assert.is_equal(request_id, ctx._ai_redaction_request_id)
+                        assert.is_equal(
+                            "__BK_REDACT_da584df57bd5459098e08f92a89f9494_",
+                            ctx._ai_redaction_namespace
+                        )
+                        assert.is_equal(
+                            "phone: 13800138000", request_body.messages[1].content
+                        )
+                        assert_no_request_mutation()
+                    end
+                )
+
+                it(
+                    "rejects an existing final-body callback instead of replacing it",
+                    function()
+                        local existing = function(body)
+                            return body
+                        end
+                        local ctx = request_context({
+                            ai_final_request_body_filter = existing,
+                        })
+
+                        local code, err = plugin.access(config(), ctx)
+
+                        assert.is_equal(500, code)
+                        assert.is_equal(
+                            "AI final request body filter is already registered", err
+                        )
+                        assert.is_equal(existing, ctx.ai_final_request_body_filter)
+                        assert.is_equal(0, observed.request_count)
+                    end
+                )
+
+                it(
+                    "sends and returns raw JSON strings while preserving numeric lexemes",
+                    function()
+                        local ctx = request_context({
+                            ai_target_protocol = "openai-chat",
+                            var = {
+                                apisix_request_id =
+                                    "da584df5-7bd5-4590-98e0-8f92a89f9494",
+                            },
+                        })
+                        local namespace =
+                            "__BK_REDACT_da584df57bd5459098e08f92a89f9494_"
+                        local token = namespace .. "1__"
+                        local final_body =
+                            '{"model":"gpt-4o","stream":false,' ..
+                            '"large":9007199254740993,' ..
+                            '"long":123456789012345678901234567890,' ..
+                            '"negative_zero":-0,"exponent":1.2300e+40,' ..
+                            '"messages":[{"role":"user",' ..
+                            '"content":"phone: 13800138000"}]}'
+                        behavior.response_builder = function(payload)
+                            assert.is_equal(final_body, payload.body)
+                            return assert(core.json.encode({
+                                body = final_body:gsub("13800138000", token, 1),
+                                replacements = {{
+                                    placeholder = token,
+                                    original = "13800138000",
+                                }},
+                            }))
+                        end
+
+                        local filter = register_filter(ctx)
+                        local masked, err, status = filter(final_body)
+
+                        assert.is_nil(err)
+                        assert.is_nil(status)
+                        assert.is_string(observed.payload.body)
+                        assert.is_equal(
+                            final_body:gsub("13800138000", token, 1), masked
+                        )
+                        assert.is_truthy(masked:find("9007199254740993", 1, true))
+                        assert.is_truthy(masked:find(
+                            "123456789012345678901234567890", 1, true
+                        ))
+                        assert.is_truthy(masked:find("-0", 1, true))
+                        assert.is_truthy(masked:find("1.2300e+40", 1, true))
+                        assert.is_same({[token] = "13800138000"},
+                                       ctx._ai_redaction_mapping)
+                        assert_no_request_mutation()
+                    end
+                )
+
+                it(
+                    "finds escaped placeholder spellings in the raw masked JSON",
+                    function()
+                        local ctx = request_context({
+                            ai_target_protocol = "openai-chat",
+                            var = {
+                                apisix_request_id =
+                                    "da584df5-7bd5-4590-98e0-8f92a89f9494",
+                            },
+                        })
+                        local namespace =
+                            "__BK_REDACT_da584df57bd5459098e08f92a89f9494_"
+                        local token = namespace .. "1__"
+                        behavior.response_builder = function()
+                            return '{"body":"{\\"model\\":\\"gpt-4o\\",' ..
+                                   '\\"stream\\":false,\\"messages\\":[{' ..
+                                   '\\"role\\":\\"user\\",\\"content\\":' ..
+                                   '\\"\\u005f' .. token:sub(2) .. '\\"}]}",' ..
+                                   '"replacements":[{"placeholder":' ..
+                                   assert(core.json.encode(token)) .. ',' ..
+                                   '"original":"secret"}]}'
+                        end
+
+                        local masked, err = register_filter(ctx)(raw_request_body)
+
+                        assert.is_nil(err)
+                        assert.is_string(masked)
+                        assert.is_equal("secret", ctx._ai_redaction_mapping[token])
+                    end
+                )
+
+                it(
+                    "clears an earlier attempt before replacing it only after validation",
+                    function()
+                        local ctx = request_context({
+                            ai_target_protocol = "openai-chat",
+                            var = {
+                                apisix_request_id =
+                                    "da584df5-7bd5-4590-98e0-8f92a89f9494",
+                            },
+                        })
+                        local filter = register_filter(ctx)
+                        local namespace = ctx._ai_redaction_namespace
+                        local first = namespace .. "1__"
+                        local second = namespace .. "2__"
+                        behavior.response_builder = function(payload)
+                            local token = observed.request_count == 1 and first or second
+                            return assert(core.json.encode({
+                                body = payload.body:gsub("13800138000", token, 1),
+                                replacements = {{
+                                    placeholder = token,
+                                    original = observed.request_count == 1 and
+                                               "first-secret" or "second-secret",
+                                }},
+                            }))
+                        end
+
+                        assert.is_string(filter(raw_request_body))
+                        ctx._ai_redaction_sse_restorer = {stale = true}
+                        ctx._ai_redaction_stream_passthrough = true
+                        assert.is_string(filter(raw_request_body))
+
+                        assert.is_nil(ctx._ai_redaction_mapping[first])
+                        assert.is_equal("second-secret", ctx._ai_redaction_mapping[second])
+                        assert.is_nil(ctx._ai_redaction_sse_restorer)
+                        assert.is_nil(ctx._ai_redaction_stream_passthrough)
+
+                        behavior.response_builder = function()
+                            return '{"body":"not-json","replacements":[]}'
+                        end
+                        local masked, err, status = filter(raw_request_body)
+                        assert.is_nil(masked)
+                        assert.is_same({
+                            message = "redaction service body must be valid JSON",
+                        }, err)
+                        assert.is_equal(502, status)
+                        assert.is_nil(ctx._ai_redaction_mapping)
+                    end
+                )
+
+                for _, case in ipairs({
+                    {
+                        name = "a non-string input",
+                        body = {},
+                        status = 400,
+                        message = "final AI request body must be a JSON object string",
+                    },
+                    {
+                        name = "malformed input JSON",
+                        body = "{",
+                        status = 400,
+                        message = "final AI request body must be valid JSON",
+                    },
+                    {
+                        name = "a non-object input",
+                        body = "[]",
+                        status = 400,
+                        message = "final AI request body must be a JSON object string",
+                    },
+                }) do
+                    it(
+                        "rejects " .. case.name .. " without a service call", function()
+                            local ctx = request_context({
+                                ai_target_protocol = "openai-chat",
+                            })
+
+                            local masked, err, status = register_filter(ctx)(case.body)
+
+                            assert.is_nil(masked)
+                            assert.is_same({message = case.message}, err)
+                            assert.is_equal(case.status, status)
+                            assert.is_equal(0, observed.request_count)
+                        end
+                    )
+                end
+
+                it(
+                    "uses the raw-string response envelope cap including its quotes",
+                    function()
+                        local ctx = request_context({
+                            ai_target_protocol = "openai-chat",
+                        })
+                        -- 29 fixed bytes + 6*200 body + 6*20 mapping + 33*2 = 1415.
+                        behavior.response_headers["Content-Length"] = "1416"
+                        behavior.response_builder = function()
+                            return "{}"
+                        end
+
+                        local masked, err, status = register_filter(ctx, config({
+                            max_request_body_bytes = 200,
+                            max_mapping_bytes = 20,
+                            max_mapping_entries = 2,
+                        }))(raw_request_body)
+
+                        assert.is_nil(masked)
+                        assert.is_same({
+                            message = "redaction service response size limit exceeded",
+                        }, err)
+                        assert.is_equal(502, status)
+                        assert.is_equal(0, observed.body_reader_count)
+                    end
+                )
+
+                it(
+                    "clamps a worst-case escaped response at the 64 MiB ceiling",
+                    function()
+                        local ctx = request_context({
+                            ai_target_protocol = "openai-chat",
+                        })
+                        behavior.response_headers["Content-Length"] = "67108865"
+                        behavior.response_builder = function()
+                            return "{}"
+                        end
+
+                        local masked, err, status = register_filter(ctx, config({
+                            max_request_body_bytes = 67108864,
+                            max_mapping_bytes = 67108864,
+                            max_mapping_entries = 1000000,
+                        }))(raw_request_body)
+
+                        assert.is_nil(masked)
+                        assert.is_same({
+                            message = "redaction service response size limit exceeded",
+                        }, err)
+                        assert.is_equal(502, status)
+                        assert.is_equal(0, observed.body_reader_count)
+                    end
+                )
             end
         )
 
@@ -359,10 +671,11 @@ describe(
                         })
                         request_headers["X-AI-Session-Id"] = session_id
 
-                        local code, err = plugin.access(config(), ctx)
+                        local masked, err, code = run_filter(ctx)
 
-                        assert.is_nil(code)
+                        assert.is_string(masked)
                         assert.is_nil(err)
+                        assert.is_nil(code)
                         assert.is_equal(1, observed.request_count)
                         assert.is_equal(apisix_request_id, observed.payload.request_id)
                         assert.is_equal(session_id, observed.payload.session_id)
@@ -380,7 +693,7 @@ describe(
                                 },
                             },
                             metadata = {source = "final-client-body"},
-                        }, observed.payload.body)
+                        }, assert(core.json.decode(observed.payload.body)))
                         assert.is_equal(apisix_request_id, ctx._ai_redaction_request_id)
                         assert.is_equal(session_id, ctx._ai_redaction_session_id)
                     end
@@ -396,9 +709,9 @@ describe(
                             },
                         })
 
-                        local code = plugin.access(config(), ctx)
+                        local masked = run_filter(ctx)
 
-                        assert.is_nil(code)
+                        assert.is_string(masked)
                         assert.is_equal(1, observed.request_count)
                         assert.is_equal(bk_request_id, observed.payload.request_id)
                     end
@@ -413,9 +726,9 @@ describe(
                             },
                         })
 
-                        local code = plugin.access(config(), ctx)
+                        local masked = run_filter(ctx)
 
-                        assert.is_nil(code)
+                        assert.is_string(masked)
                         assert.is_equal(1, observed.request_count)
                         local uuid_v4_pattern =
                             [[^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-4[0-9a-fA-F]{3}-]] ..
@@ -439,9 +752,9 @@ describe(
                             },
                         })
 
-                        local code = plugin.access(config(), ctx)
+                        local masked = run_filter(ctx)
 
-                        assert.is_nil(code)
+                        assert.is_string(masked)
                         assert.is_equal(1, observed.request_count)
                         assert.is_nil(observed.payload.session_id)
                         assert.is_nil(ctx._ai_redaction_session_id)
@@ -467,9 +780,9 @@ describe(
                     "sends authentication and connection settings once", function()
                         local ctx = request_context()
 
-                        local code = plugin.access(config(), ctx)
+                        local masked = run_filter(ctx)
 
-                        assert.is_nil(code)
+                        assert.is_string(masked)
                         assert.is_equal(1, observed.new_count)
                         assert.is_equal(1, observed.connect_count)
                         assert.is_equal(1, observed.request_count)
@@ -508,9 +821,9 @@ describe(
                         local conf = config({keepalive = false})
                         conf.auth_value = nil
 
-                        local code = plugin.access(conf, ctx)
+                        local masked = run_filter(ctx, conf)
 
-                        assert.is_nil(code)
+                        assert.is_string(masked)
                         assert.is_equal(1, observed.request_count)
                         assert.is_equal(0, observed.keepalive_count)
                         assert.is_equal(1, observed.close_count)
@@ -532,13 +845,14 @@ describe(
                         behavior.keepalive_ok = false
                         behavior.keepalive_error = "pool rejected connection"
 
-                        local code, err = plugin.access(config(), ctx)
+                        local masked, err, code = run_filter(ctx)
 
-                        assert.is_nil(code)
+                        assert.is_string(masked)
                         assert.is_nil(err)
+                        assert.is_nil(code)
                         assert.is_equal(1, observed.keepalive_count)
                         assert.is_equal(1, observed.close_count)
-                        assert.is_not_nil(installed_body)
+                        assert_no_request_mutation()
                     end
                 )
             end
@@ -571,7 +885,7 @@ describe(
                 end
 
                 it(
-                    "allows supported SSE client protocol with a Bedrock provider", function()
+                    "registers supported SSE client protocol without service I/O", function()
                         local ctx = request_context({
                             picked_ai_instance = {provider = "bedrock"},
                             ai_client_protocol = "openai-chat",
@@ -582,7 +896,8 @@ describe(
                         local code = plugin.access(config(), ctx)
 
                         assert.is_nil(code)
-                        assert.is_equal(1, observed.request_count)
+                        assert.is_function(ctx.ai_final_request_body_filter)
+                        assert.is_equal(0, observed.request_count)
                     end
                 )
 
@@ -621,18 +936,19 @@ describe(
                 )
 
                 it(
-                    "rechecks the final cached JSON body against the configured limit", function()
+                    "checks the original raw JSON body against the configured limit", function()
                         local ctx = request_context()
-                        request_body.messages[1].content = string.rep("x", 128)
+                        raw_request_body = '{"messages":[{"role":"user","content":"' ..
+                                           string.rep("x", 128) .. '"}]}'
 
                         local code, err = plugin.access(
                             config({max_request_body_bytes = 64}), ctx
                         )
 
                         assert.is_equal(413, code)
-                        assert.is_same({
-                            message = "request body is greater than the maximum size",
-                        }, err)
+                        assert.is_truthy(err.message:find(
+                            "is greater than the maximum size 64", 1, true
+                        ))
                         assert.is_equal(64, observed.body_limit)
                         assert.is_equal(0, observed.request_count)
                         assert_no_request_mutation()
@@ -683,7 +999,7 @@ describe(
                     local ctx = request_context()
                     local original = assert(core.json.encode(request_body))
 
-                    local code, err = plugin.access(config(), ctx)
+                    local _, err, code = run_filter(ctx)
 
                     assert.is_equal(502, code)
                     assert.is_same({message = expected_message}, err)
@@ -760,18 +1076,52 @@ describe(
                     end
                 )
 
+                for _, case in ipairs({
+                    {
+                        name = "a non-string response body",
+                        response = function(payload)
+                            local value = success_value(payload)
+                            value.body = assert(core.json.decode(value.body))
+                            return assert(core.json.encode(value))
+                        end,
+                        message = "redaction service body must be a raw JSON string",
+                    },
+                    {
+                        name = "malformed response body text",
+                        response = function()
+                            return '{"body":"{","replacements":[]}'
+                        end,
+                        message = "redaction service body must be valid JSON",
+                    },
+                    {
+                        name = "non-object response body text",
+                        response = function()
+                            return '{"body":"[]","replacements":[]}'
+                        end,
+                        message = "redaction service body must be an object",
+                    },
+                }) do
+                    it(
+                        "rejects " .. case.name, function()
+                            behavior.response_builder = case.response
+
+                            assert_502_without_mutation(case.message)
+                        end
+                    )
+                end
+
                 it(
                     "rejects an oversized declared response before reading it", function()
                         local ctx = request_context()
-                        -- Wire cap = 27 + 6*200 body bytes + 6*20 mapping bytes
-                        --            + 33*2 mapping entries = 1413 bytes.
-                        behavior.response_headers["Content-Length"] = "1414"
+                        -- Wire cap = 29 + 6*200 body bytes + 6*20 mapping bytes
+                        --            + 33*2 mapping entries = 1415 bytes.
+                        behavior.response_headers["Content-Length"] = "1416"
 
-                        local code, err = plugin.access(config({
+                        local _, err, code = run_filter(ctx, config({
                             max_request_body_bytes = 200,
                             max_mapping_bytes = 20,
                             max_mapping_entries = 2,
-                        }), ctx)
+                        }))
 
                         assert.is_equal(502, code)
                         assert.is_same({
@@ -781,9 +1131,8 @@ describe(
                         assert.is_equal(0, observed.read_body_count)
                         assert.is_equal(0, observed.keepalive_count)
                         assert.is_equal(1, observed.close_count)
-                        assert.is_nil(ctx._ai_redaction_request_id)
-                        assert.is_nil(ctx._ai_redaction_session_id)
-                        assert.is_nil(ctx._ai_redaction_namespace)
+                        assert.is_not_nil(ctx._ai_redaction_request_id)
+                        assert.is_not_nil(ctx._ai_redaction_namespace)
                         assert.is_nil(ctx._ai_redaction_mapping)
                         assert.is_nil(ctx.ai_request_body_changed)
                         assert_no_request_mutation()
@@ -794,13 +1143,13 @@ describe(
                     "does not reject a declared response at the exact derived cap",
                     function()
                         local ctx = request_context()
-                        behavior.response_headers["Content-Length"] = "1413"
+                        behavior.response_headers["Content-Length"] = "1415"
 
-                        local code, err = plugin.access(config({
+                        local _, err, code = run_filter(ctx, config({
                             max_request_body_bytes = 200,
                             max_mapping_bytes = 20,
                             max_mapping_entries = 2,
-                        }), ctx)
+                        }))
 
                         assert.is_equal(502, code)
                         assert.is_same({
@@ -810,9 +1159,8 @@ describe(
                         assert.is_equal(0, observed.read_body_count)
                         assert.is_equal(1, observed.keepalive_count)
                         assert.is_equal(0, observed.close_count)
-                        assert.is_nil(ctx._ai_redaction_request_id)
-                        assert.is_nil(ctx._ai_redaction_session_id)
-                        assert.is_nil(ctx._ai_redaction_namespace)
+                        assert.is_not_nil(ctx._ai_redaction_request_id)
+                        assert.is_not_nil(ctx._ai_redaction_namespace)
                         assert.is_nil(ctx._ai_redaction_mapping)
                         assert.is_nil(ctx.ai_request_body_changed)
                         assert_no_request_mutation()
@@ -823,21 +1171,21 @@ describe(
                     "bounds reader allocations when one wire chunk exceeds the cap",
                     function()
                         local ctx = request_context()
-                        -- Wire cap = 27 + 6*1400 body bytes + 6*1 mapping byte
-                        --            + 33*1 mapping entry = 8466 bytes.
-                        behavior.response_body = string.rep("a", 8467)
+                        -- Wire cap = 29 + 6*1400 body bytes + 6*1 mapping byte
+                        --            + 33*1 mapping entry = 8468 bytes.
+                        behavior.response_body = string.rep("a", 8469)
 
-                        local code, err = plugin.access(config({
+                        local _, err, code = run_filter(ctx, config({
                             max_request_body_bytes = 1400,
                             max_mapping_bytes = 1,
                             max_mapping_entries = 1,
-                        }), ctx)
+                        }))
 
                         assert.is_equal(502, code)
                         assert.is_same({
                             message = "redaction service response size limit exceeded",
                         }, err)
-                        assert.is_same({8192, 275}, observed.body_reader_sizes)
+                        assert.is_same({8192, 277}, observed.body_reader_sizes)
                         for _, read_size in ipairs(observed.body_reader_sizes) do
                             assert.is_true(read_size > 0)
                             assert.is_true(read_size <= 8192)
@@ -847,9 +1195,8 @@ describe(
                         assert.is_equal(0, observed.read_body_count)
                         assert.is_equal(0, observed.keepalive_count)
                         assert.is_equal(1, observed.close_count)
-                        assert.is_nil(ctx._ai_redaction_request_id)
-                        assert.is_nil(ctx._ai_redaction_session_id)
-                        assert.is_nil(ctx._ai_redaction_namespace)
+                        assert.is_not_nil(ctx._ai_redaction_request_id)
+                        assert.is_not_nil(ctx._ai_redaction_namespace)
                         assert.is_nil(ctx._ai_redaction_mapping)
                         assert.is_nil(ctx.ai_request_body_changed)
                         assert_no_request_mutation()
@@ -860,20 +1207,19 @@ describe(
                     "rejects a decoded masked body above the request-body limit", function()
                         local ctx = request_context()
                         behavior.response_builder = function(payload)
-                            local value = success_value(payload)
-                            value.body.padding = string.rep("x", 256)
-                            return assert(core.json.encode(value))
+                            return mutate_success_response(payload, function(body)
+                                body.padding = string.rep("x", 256)
+                            end)
                         end
 
-                        local code, err = plugin.access(config({
+                        local _, err, code = run_filter(ctx, config({
                             max_request_body_bytes = 200,
-                        }), ctx)
+                        }))
 
                         assert.is_equal(502, code)
                         assert.is_same({message = "masked body size limit exceeded"}, err)
-                        assert.is_nil(ctx._ai_redaction_request_id)
-                        assert.is_nil(ctx._ai_redaction_session_id)
-                        assert.is_nil(ctx._ai_redaction_namespace)
+                        assert.is_not_nil(ctx._ai_redaction_request_id)
+                        assert.is_not_nil(ctx._ai_redaction_namespace)
                         assert.is_nil(ctx._ai_redaction_mapping)
                         assert.is_nil(ctx.ai_request_body_changed)
                         assert_no_request_mutation()
@@ -883,11 +1229,11 @@ describe(
                 it(
                     "rejects a masked body with another protocol", function()
                         behavior.response_builder = function(payload)
-                            local value = success_value(payload)
-                            value.body.messages = nil
-                            value.body.input = "phone: " ..
-                                               payload.placeholder_namespace .. "1__"
-                            return assert(core.json.encode(value))
+                            return mutate_success_response(payload, function(body)
+                                body.messages = nil
+                                body.input = "phone: " ..
+                                             payload.placeholder_namespace .. "1__"
+                            end)
                         end
 
                         assert_502_without_mutation(
@@ -899,9 +1245,9 @@ describe(
                 it(
                     "rejects a changed model", function()
                         behavior.response_builder = function(payload)
-                            local value = success_value(payload)
-                            value.body.model = "other-model"
-                            return assert(core.json.encode(value))
+                            return mutate_success_response(payload, function(body)
+                                body.model = "other-model"
+                            end)
                         end
 
                         assert_502_without_mutation(
@@ -913,9 +1259,9 @@ describe(
                 it(
                     "rejects a changed stream flag", function()
                         behavior.response_builder = function(payload)
-                            local value = success_value(payload)
-                            value.body.stream = true
-                            return assert(core.json.encode(value))
+                            return mutate_success_response(payload, function(body)
+                                body.stream = true
+                            end)
                         end
 
                         assert_502_without_mutation(
@@ -929,8 +1275,10 @@ describe(
                         behavior.response_builder = function(payload)
                             local value = success_value(payload)
                             local foreign = "__BK_REDACT_" .. string.rep("0", 32) .. "_1__"
-                            value.body.messages[1].content = foreign
                             value.replacements[1].placeholder = foreign
+                            local body = assert(core.json.decode(value.body))
+                            body.messages[1].content = foreign
+                            value.body = assert(core.json.encode(body))
                             return assert(core.json.encode(value))
                         end
 
@@ -943,9 +1291,9 @@ describe(
                 it(
                     "rejects a declared placeholder absent from the masked body", function()
                         behavior.response_builder = function(payload)
-                            local value = success_value(payload)
-                            value.body.messages[1].content = "no placeholder"
-                            return assert(core.json.encode(value))
+                            return mutate_success_response(payload, function(body)
+                                body.messages[1].content = "no placeholder"
+                            end)
                         end
 
                         assert_502_without_mutation(
@@ -959,8 +1307,10 @@ describe(
                         behavior.response_builder = function(payload)
                             local value = success_value(payload)
                             local second = payload.placeholder_namespace .. "2__"
-                            value.body.messages[1].content =
-                                value.body.messages[1].content .. " " .. second
+                            local body = assert(core.json.decode(value.body))
+                            body.messages[1].content =
+                                body.messages[1].content .. " " .. second
+                            value.body = assert(core.json.encode(body))
                             value.replacements[2] = {
                                 placeholder = second,
                                 original = "second-secret",
@@ -969,8 +1319,8 @@ describe(
                         end
                         local ctx = request_context()
 
-                        local code, err = plugin.access(
-                            config({max_mapping_entries = 1}), ctx
+                        local _, err, code = run_filter(
+                            ctx, config({max_mapping_entries = 1})
                         )
 
                         assert.is_equal(502, code)
@@ -984,8 +1334,8 @@ describe(
                     "rejects mappings above the byte limit", function()
                         local ctx = request_context()
 
-                        local code, err = plugin.access(
-                            config({max_mapping_bytes = 1}), ctx
+                        local _, err, code = run_filter(
+                            ctx, config({max_mapping_bytes = 1})
                         )
 
                         assert.is_equal(502, code)
@@ -1023,23 +1373,25 @@ describe(
                             "__BK_REDACT_da584df57bd5459098e08f92a89f9494_"
                         local token = namespace .. "1__"
 
-                        local code, err = plugin.access(config(), ctx)
+                        local masked_body, err, code = run_filter(ctx)
 
-                        assert.is_nil(code)
+                        assert.is_string(masked_body)
                         assert.is_nil(err)
+                        assert.is_nil(code)
                         assert.is_equal(1, observed.request_count)
-                        local masked = assert(core.json.decode(installed_body))
+                        local masked = assert(core.json.decode(masked_body))
                         assert.is_equal("phone: " .. token, masked.messages[1].content)
                         assert.is_equal(
-                            "phone: " .. token, request_body.messages[1].content
+                            "phone: 13800138000", request_body.messages[1].content
                         )
                         assert.is_equal("gpt-4o", masked.model)
                         assert.is_false(masked.stream)
                         assert.is_equal(request_id, ctx._ai_redaction_request_id)
                         assert.is_equal(namespace, ctx._ai_redaction_namespace)
                         assert.is_same({[token] = "13800138000"}, ctx._ai_redaction_mapping)
-                        assert.is_true(ctx.ai_request_body_changed)
+                        assert.is_nil(ctx.ai_request_body_changed)
                         assert.is_nil(ctx._ai_redaction_sse_restorer)
+                        assert_no_request_mutation()
                     end
                 )
             end
