@@ -1043,5 +1043,123 @@ describe(
                 )
             end
         )
+
+        context(
+            "non-stream response restoration", function()
+                before_each(
+                    function()
+                        stub(core.log, "error")
+                    end
+                )
+
+                after_each(
+                    function()
+                        core.log.error:revert()
+                    end
+                )
+
+                it(
+                    "restores nested JSON strings and clears request-sensitive state",
+                    function()
+                        local request_id = "da584df5-7bd5-4590-98e0-8f92a89f9494"
+                        local namespace =
+                            "__BK_REDACT_da584df57bd5459098e08f92a89f9494_"
+                        local known = namespace .. "1__"
+                        local unknown = namespace .. "9__"
+                        local original = "line one\n\"line two\""
+                        local ctx = request_context({
+                            var = {request_type = "ai_chat"},
+                            _ai_redaction_request_id = request_id,
+                            _ai_redaction_session_id =
+                                "24395b38-bf3f-426c-a632-10df20ec69c8",
+                            _ai_redaction_namespace = namespace,
+                            _ai_redaction_mapping = {[known] = original},
+                            _ai_redaction_sse_restorer = {},
+                        })
+                        local response = {
+                            choices = {
+                                {
+                                    message = {
+                                        content = "echo: " .. known .. ":" .. unknown,
+                                        tool_calls = {
+                                            {
+                                                id = "call_1",
+                                                type = "function",
+                                                ["function"] = {
+                                                    name = "save_contact",
+                                                    arguments = core.json.encode({phone = known}),
+                                                },
+                                            },
+                                        },
+                                    },
+                                },
+                            },
+                        }
+
+                        local code, restored_body = plugin.lua_body_filter(
+                            config(), ctx, {}, assert(core.json.encode(response)), true
+                        )
+
+                        assert.is_nil(code)
+                        local restored = assert(core.json.decode(restored_body))
+                        assert.is_equal(
+                            "echo: " .. original .. ":" .. unknown,
+                            restored.choices[1].message.content
+                        )
+                        local arguments = assert(core.json.decode(
+                            restored.choices[1].message.tool_calls[1]["function"].arguments
+                        ))
+                        assert.is_equal(original, arguments.phone)
+                        assert.is_equal(2, ctx._ai_redaction_restored_count)
+                        assert.is_equal(request_id, ctx._ai_redaction_request_id)
+                        assert.is_nil(ctx._ai_redaction_session_id)
+                        assert.is_nil(ctx._ai_redaction_namespace)
+                        assert.is_nil(ctx._ai_redaction_mapping)
+                        assert.is_nil(ctx._ai_redaction_sse_restorer)
+                    end
+                )
+
+                it(
+                    "passes malformed upstream JSON through masked and clears state",
+                    function()
+                        local request_id = "da584df5-7bd5-4590-98e0-8f92a89f9494"
+                        local namespace =
+                            "__BK_REDACT_da584df57bd5459098e08f92a89f9494_"
+                        local known = namespace .. "1__"
+                        local masked_body = "{\"content\":\"" .. known .. "\""
+                        local _, decode_err = core.json.decode(masked_body)
+                        local ctx = request_context({
+                            var = {request_type = "ai_chat"},
+                            _ai_redaction_request_id = request_id,
+                            _ai_redaction_session_id =
+                                "24395b38-bf3f-426c-a632-10df20ec69c8",
+                            _ai_redaction_namespace = namespace,
+                            _ai_redaction_mapping = {[known] = "13800138000"},
+                            _ai_redaction_sse_restorer = {},
+                            _ai_redaction_restored_count = 7,
+                        })
+
+                        local code, restored_body = plugin.lua_body_filter(
+                            config(), ctx, {}, masked_body, true
+                        )
+
+                        assert.is_nil(code)
+                        assert.is_nil(restored_body)
+                        assert.stub(core.log.error).was_called_with(
+                            "failed to decode masked AI response: ",
+                            decode_err,
+                            ", request_id: ",
+                            request_id
+                        )
+                        assert.is_equal(request_id, ctx._ai_redaction_request_id)
+                        assert.is_equal(7, ctx._ai_redaction_restored_count)
+                        assert.is_nil(ctx._ai_redaction_session_id)
+                        assert.is_nil(ctx._ai_redaction_namespace)
+                        assert.is_nil(ctx._ai_redaction_mapping)
+                        assert.is_nil(ctx._ai_redaction_sse_restorer)
+                    end
+                )
+            end
+        )
     end
 )

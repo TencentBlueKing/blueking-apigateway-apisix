@@ -485,6 +485,14 @@ local function replace_table(target, source)
 end
 
 
+local function clear_sensitive_state(ctx)
+    ctx._ai_redaction_session_id = nil
+    ctx._ai_redaction_namespace = nil
+    ctx._ai_redaction_mapping = nil
+    ctx._ai_redaction_sse_restorer = nil
+end
+
+
 function _M.access(conf, ctx)
     if not ctx.picked_ai_instance or not ctx.ai_client_protocol then
         return 500,
@@ -568,6 +576,38 @@ function _M.access(conf, ctx)
     ctx._ai_redaction_namespace = namespace
     ctx._ai_redaction_mapping = mapping
     ctx.ai_request_body_changed = true
+end
+
+
+function _M.lua_body_filter(_, ctx, _, body)
+    if ctx.var.request_type ~= "ai_chat" then
+        return
+    end
+
+    local decoded, decode_err = core.json.decode(body)
+    if not decoded then
+        core.log.error(
+            "failed to decode masked AI response: ", decode_err,
+            ", request_id: ", ctx._ai_redaction_request_id
+        )
+        clear_sensitive_state(ctx)
+        return
+    end
+
+    local restored, count = restorer.restore_json(decoded, ctx._ai_redaction_mapping)
+    local encoded, encode_err = core.json.encode(restored)
+    if not encoded then
+        core.log.error(
+            "failed to encode restored AI response: ", encode_err,
+            ", request_id: ", ctx._ai_redaction_request_id
+        )
+        clear_sensitive_state(ctx)
+        return
+    end
+
+    ctx._ai_redaction_restored_count = count
+    clear_sensitive_state(ctx)
+    return nil, encoded
 end
 
 
