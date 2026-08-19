@@ -20,6 +20,7 @@ local core = require("apisix.core")
 local ipairs = ipairs
 local math_max = math.max
 local pairs = pairs
+local rawget = rawget
 local setmetatable = setmetatable
 local table_concat = table.concat
 local type = type
@@ -27,8 +28,28 @@ local type = type
 local _M = {}
 
 
+local function is_dense_array(value)
+    local count = 0
+    for key in pairs(value) do
+        if type(key) ~= "number" or key < 1 or key % 1 ~= 0 then
+            return false
+        end
+
+        count = count + 1
+    end
+
+    for index = 1, count do
+        if rawget(value, index) == nil then
+            return false
+        end
+    end
+
+    return true
+end
+
+
 function _M.validate_mapping(namespace, body, replacements, max_entries, max_bytes)
-    if type(replacements) ~= "table" then
+    if type(replacements) ~= "table" or not is_dense_array(replacements) then
         return nil, "replacements must be an array"
     end
 

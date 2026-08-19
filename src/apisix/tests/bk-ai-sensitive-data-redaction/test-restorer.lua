@@ -115,6 +115,48 @@ describe(
                 end
 
                 it(
+                    "rejects an object-shaped replacements table", function()
+                        local mapping, err = restorer.validate_mapping(
+                            namespace,
+                            body,
+                            {
+                                placeholder = token,
+                                original = "13800138000",
+                            },
+                            10,
+                            1024
+                        )
+
+                        assert.is_nil(mapping)
+                        assert.is_equal("replacements must be an array", err)
+                    end
+                )
+
+                it(
+                    "rejects a sparse replacements table", function()
+                        local mapping, err = restorer.validate_mapping(
+                            namespace,
+                            body,
+                            {
+                                [1] = {
+                                    placeholder = token,
+                                    original = "13800138000",
+                                },
+                                [3] = {
+                                    placeholder = namespace .. "2__",
+                                    original = "13900139000",
+                                },
+                            },
+                            10,
+                            1024
+                        )
+
+                        assert.is_nil(mapping)
+                        assert.is_equal("replacements must be an array", err)
+                    end
+                )
+
+                it(
                     "rejects mappings above the entry limit", function()
                         local mapping, err = restorer.validate_mapping(
                             namespace,
