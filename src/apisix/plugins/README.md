@@ -79,6 +79,13 @@ proxy 预处理：17000 ~ 17500
 - bk-resource-header-rewrite                # priority: 17420
 - bk-mock                                   # priority: 17150
 
+AI 执行与响应恢复：
+
+- ai-proxy-multi                           # priority: 1041
+- ai-proxy                                 # priority: 1040
+- bk-ai-sensitive-data-redaction           # priority: 1039 # APISIX 按优先级从高到低执行，因此在 ai-proxy/ai-proxy-multi 之后运行；[使用说明](bk-ai-sensitive-data-redaction/README.md)
+- ai-rate-limiting                         # priority: 1030
+
 官方插件：
 
 - fault-injection                           # priority: 11000
