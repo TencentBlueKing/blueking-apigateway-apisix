@@ -20,12 +20,19 @@ local core = require("apisix.core")
 local http = require("resty.http")
 local protocols = require("apisix.plugins.ai-protocols")
 local restorer = require("apisix.plugins.bk-ai-sensitive-data-redaction.restorer")
+local secret = require("apisix.secret")
 local url = require("socket.url")
 local uuid = require("resty.jit-uuid")
 local getmetatable = getmetatable
+local math_min = math.min
 local pairs = pairs
+local pcall = pcall
 local require = require
 local setmetatable = setmetatable
+local string_byte = string.byte
+local string_lower = string.lower
+local table_concat = table.concat
+local tonumber = tonumber
 local tostring = tostring
 local type = type
 
@@ -41,6 +48,31 @@ local SUPPORTED_STREAM_PROTOCOLS = {
     ["openai-responses"] = true,
     ["anthropic-messages"] = true,
 }
+
+local FORBIDDEN_AUTH_HEADERS = {
+    ["connection"] = true,
+    ["content-length"] = true,
+    ["content-type"] = true,
+    ["host"] = true,
+    ["keep-alive"] = true,
+    ["proxy-authenticate"] = true,
+    ["proxy-authorization"] = true,
+    ["te"] = true,
+    ["trailer"] = true,
+    ["trailers"] = true,
+    ["transfer-encoding"] = true,
+    ["upgrade"] = true,
+}
+
+-- A response contains the masked body plus replacement strings. Any decoded JSON byte can
+-- occupy at most six wire bytes as a \u00XX escape. The fixed compact envelope is 27 bytes,
+-- and each mapping entry adds at most 33 structural bytes including its separator:
+--   27 + 6*max_request_body_bytes + 6*max_mapping_bytes + 33*max_mapping_entries
+-- The hard ceiling keeps a misconfigured limit from permitting an unbounded worker buffer.
+local MAX_RESPONSE_WIRE_BYTES = 64 * 1024 * 1024
+local RESPONSE_ENVELOPE_BYTES = 27
+local JSON_ESCAPE_MULTIPLIER = 6
+local MAPPING_ENTRY_STRUCTURE_BYTES = 33
 
 local schema = {
     type = "object",
@@ -134,6 +166,44 @@ local function parse_endpoint(endpoint)
 end
 
 
+local function is_safe_auth_header(header_name)
+    return type(header_name) == "string"
+           and core.utils.validate_header_field(header_name)
+           and not FORBIDDEN_AUTH_HEADERS[string_lower(header_name)]
+end
+
+
+local function is_safe_auth_value(value)
+    if type(value) ~= "string" or value == "" then
+        return false
+    end
+
+    for index = 1, #value do
+        local byte = string_byte(value, index)
+        if byte < 32 or byte == 127 then
+            return false
+        end
+    end
+
+    return true
+end
+
+
+local function has_safe_runtime_auth(conf)
+    local header_name = conf.auth_header or "Authorization"
+    if not is_safe_auth_header(header_name) then
+        return false
+    end
+
+    if conf.auth_value == nil then
+        return true
+    end
+
+    return not secret.is_secret_ref(conf.auth_value)
+           and is_safe_auth_value(conf.auth_value)
+end
+
+
 function _M.check_schema(conf)
     local ok, err = core.schema.check(schema, conf)
     if not ok then
@@ -146,8 +216,14 @@ function _M.check_schema(conf)
     end
 
     local auth_header = conf.auth_header or "Authorization"
-    if not core.utils.validate_header_field(auth_header) then
+    if not is_safe_auth_header(auth_header) then
         return false, "invalid auth_header"
+    end
+
+    if conf.auth_value ~= nil
+            and not secret.is_secret_ref(conf.auth_value)
+            and not is_safe_auth_value(conf.auth_value) then
+        return false, "invalid auth_value"
     end
 
     local session_id_header = conf.session_id_header or "X-AI-Session-Id"
@@ -217,7 +293,57 @@ end
 
 
 local function close_connection(httpc)
-    httpc:close()
+    local ok = pcall(httpc.close, httpc)
+    if not ok then
+        core.log.warn("failed to close redaction service connection")
+    end
+end
+
+
+local function response_wire_limit(conf)
+    local derived = RESPONSE_ENVELOPE_BYTES
+                    + JSON_ESCAPE_MULTIPLIER * conf.max_request_body_bytes
+                    + JSON_ESCAPE_MULTIPLIER * conf.max_mapping_bytes
+                    + MAPPING_ENTRY_STRUCTURE_BYTES * conf.max_mapping_entries
+    return math_min(derived, MAX_RESPONSE_WIRE_BYTES)
+end
+
+
+local function read_bounded_response(res, max_bytes)
+    local headers = res.headers or {}
+    local content_length = tonumber(
+        headers["Content-Length"] or headers["content-length"]
+    )
+    if content_length and content_length > max_bytes then
+        return nil, "redaction service response size limit exceeded"
+    end
+
+    if type(res.body_reader) ~= "function" then
+        return nil, "redaction service read failed: response body is unavailable"
+    end
+
+    local chunks = {}
+    local total = 0
+    while true do
+        local chunk, read_err = res.body_reader()
+        if read_err then
+            return nil, "redaction service read failed: " .. read_err
+        end
+        if chunk == nil then
+            break
+        end
+        if type(chunk) ~= "string" then
+            return nil, "redaction service read failed: invalid response chunk"
+        end
+
+        total = total + #chunk
+        if total > max_bytes then
+            return nil, "redaction service response size limit exceeded"
+        end
+        chunks[#chunks + 1] = chunk
+    end
+
+    return table_concat(chunks)
 end
 
 
@@ -229,14 +355,18 @@ local function call_redaction_service(conf, request_id, session_id, namespace, b
 
     local httpc = http.new()
     httpc:set_timeout(conf.timeout)
-    local ok, err = httpc:connect({
+    local connect_options = {
         scheme = parsed.scheme,
         host = parsed.host,
         port = parsed.port,
         ssl_verify = conf.ssl_verify,
         ssl_server_name = parsed.host,
-        pool_size = conf.keepalive and conf.keepalive_pool,
-    })
+    }
+    if conf.keepalive then
+        connect_options.pool_size = conf.keepalive_pool
+    end
+
+    local ok, err = httpc:connect(connect_options)
     if not ok then
         return nil, "redaction service connect failed: " .. (err or "unknown")
     end
@@ -282,20 +412,28 @@ local function call_redaction_service(conf, request_id, session_id, namespace, b
         return nil, "redaction service request failed: " .. (request_err or "unknown")
     end
 
-    local raw, read_err = res:read_body()
+    if res.status ~= 200 then
+        close_connection(httpc)
+        return nil, "redaction service returned status " .. tostring(res.status)
+    end
+
+    local raw, read_err = read_bounded_response(res, response_wire_limit(conf))
     if not raw then
         close_connection(httpc)
-        return nil, "redaction service read failed: " .. (read_err or "unknown")
+        return nil, read_err
     end
 
     if conf.keepalive then
-        httpc:set_keepalive(conf.keepalive_timeout, conf.keepalive_pool)
+        local kept = httpc:set_keepalive(conf.keepalive_timeout, conf.keepalive_pool)
+        if not kept then
+            close_connection(httpc)
+            core.log.warn(
+                "failed to keep redaction service connection alive, request_id: ",
+                request_id
+            )
+        end
     else
         close_connection(httpc)
-    end
-
-    if res.status ~= 200 then
-        return nil, "redaction service returned status " .. tostring(res.status)
     end
 
     local decoded = core.json.decode(raw)
@@ -375,6 +513,10 @@ function _M.access(conf, ctx)
         return 400, session_err
     end
 
+    if not has_safe_runtime_auth(conf) then
+        return 500, "invalid redaction service authentication configuration"
+    end
+
     local namespace = namespace_for(request_id)
     local result, redact_err = call_redaction_service(
         conf, request_id, session_id, namespace, body
@@ -409,6 +551,9 @@ function _M.access(conf, ctx)
         return 502, {
             message = "failed to encode masked body: " .. (masked_encode_err or "unknown"),
         }
+    end
+    if #masked_body > conf.max_request_body_bytes then
+        return 502, {message = "masked body size limit exceeded"}
     end
 
     replace_table(body, result.body)

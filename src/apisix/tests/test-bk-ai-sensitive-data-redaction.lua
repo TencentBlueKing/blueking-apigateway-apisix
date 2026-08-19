@@ -110,6 +110,7 @@ describe(
                 installed_body = nil
                 behavior = {
                     connect_ok = true,
+                    response_headers = {},
                     response_status = 200,
                     response_builder = success_response,
                 }
@@ -118,6 +119,8 @@ describe(
                     connect_count = 0,
                     request_count = 0,
                     read_count = 0,
+                    body_reader_count = 0,
+                    read_body_count = 0,
                     keepalive_count = 0,
                     close_count = 0,
                 }
@@ -162,9 +165,28 @@ describe(
 
                                 observed.payload = assert(core.json.decode(options.body))
                                 local raw = behavior.response_builder(observed.payload)
+                                local chunks = behavior.response_chunks or {raw}
+                                local chunk_index = 0
                                 return {
                                     status = behavior.response_status,
+                                    headers = behavior.response_headers,
+                                    body_reader = function()
+                                        observed.body_reader_count =
+                                            observed.body_reader_count + 1
+                                        if behavior.read_error then
+                                            observed.read_count = observed.read_count + 1
+                                            return nil, behavior.read_error
+                                        end
+
+                                        chunk_index = chunk_index + 1
+                                        local chunk = chunks[chunk_index]
+                                        if chunk then
+                                            observed.read_count = observed.read_count + 1
+                                        end
+                                        return chunk
+                                    end,
                                     read_body = function()
+                                        observed.read_body_count = observed.read_body_count + 1
                                         observed.read_count = observed.read_count + 1
                                         if behavior.read_error then
                                             return nil, behavior.read_error
@@ -240,6 +262,18 @@ describe(
                         conf = {auth_header = "X-Token\r\nInjected"},
                     },
                     {
+                        name = "a literal authentication value containing CRLF",
+                        conf = {auth_value = "secret\r\nInjected: true"},
+                    },
+                    {
+                        name = "a literal authentication value containing NUL",
+                        conf = {auth_value = "secret\0tail"},
+                    },
+                    {
+                        name = "a literal authentication value containing DEL",
+                        conf = {auth_value = "secret\127tail"},
+                    },
+                    {
                         name = "an unsafe session header name",
                         conf = {session_id_header = "Bad Header"},
                     },
@@ -254,6 +288,46 @@ describe(
                         end
                     )
                 end
+
+                for _, header_name in ipairs({
+                    "Content-Length",
+                    "transfer-encoding",
+                    "CONNECTION",
+                    "Keep-Alive",
+                    "Proxy-Authenticate",
+                    "proxy-authorization",
+                    "TE",
+                    "Trailer",
+                    "Upgrade",
+                    "Host",
+                    "content-type",
+                }) do
+                    it(
+                        "rejects forbidden authentication header " .. header_name,
+                        function()
+                            local ok = plugin.check_schema(config({
+                                auth_header = header_name,
+                            }))
+
+                            assert.is_false(ok)
+                        end
+                    )
+                end
+
+                it(
+                    "accepts Authorization, X-* headers, and secret references", function()
+                        local authorization_ok = plugin.check_schema(config({
+                            auth_header = "Authorization",
+                        }))
+                        local custom_ok = plugin.check_schema(config({
+                            auth_header = "X-Redaction-Token",
+                            auth_value = "$secret://vault/redaction/token",
+                        }))
+
+                        assert.is_true(authorization_ok)
+                        assert.is_true(custom_ok)
+                    end
+                )
             end
         )
 
@@ -428,10 +502,31 @@ describe(
                         assert.is_equal(1, observed.request_count)
                         assert.is_equal(0, observed.keepalive_count)
                         assert.is_equal(1, observed.close_count)
-                        assert.is_false(observed.connect_options.pool_size)
+                        assert.is_nil(observed.connect_options.pool_size)
                         assert.is_nil(
                             observed.request_options.headers["X-Redaction-Token"]
                         )
+                    end
+                )
+
+                it(
+                    "closes safely when returning a connection to the pool fails", function()
+                        local ctx = request_context({
+                            var = {
+                                apisix_request_id =
+                                    "da584df5-7bd5-4590-98e0-8f92a89f9494",
+                            },
+                        })
+                        behavior.keepalive_ok = false
+                        behavior.keepalive_error = "pool rejected connection"
+
+                        local code, err = plugin.access(config(), ctx)
+
+                        assert.is_nil(code)
+                        assert.is_nil(err)
+                        assert.is_equal(1, observed.keepalive_count)
+                        assert.is_equal(1, observed.close_count)
+                        assert.is_not_nil(installed_body)
                     end
                 )
             end
@@ -545,6 +640,26 @@ describe(
                         assert_no_request_mutation()
                     end
                 )
+
+                it(
+                    "rejects a resolved authentication value containing CRLF", function()
+                        local ctx = request_context()
+                        local conf = config({
+                            auth_value = "resolved-secret\r\nInjected: true",
+                        })
+
+                        local code, err = plugin.access(conf, ctx)
+
+                        assert.is_equal(500, code)
+                        assert.is_equal(
+                            "invalid redaction service authentication configuration",
+                            err
+                        )
+                        assert.is_equal(0, observed.new_count)
+                        assert.is_equal(0, observed.request_count)
+                        assert_no_request_mutation()
+                    end
+                )
             end
         )
 
@@ -630,6 +745,123 @@ describe(
                         )
 
                         assert.is_equal(1, observed.request_count)
+                    end
+                )
+
+                it(
+                    "rejects an oversized declared response before reading it", function()
+                        local ctx = request_context()
+                        -- Wire cap = 27 + 6*200 body bytes + 6*20 mapping bytes
+                        --            + 33*2 mapping entries = 1413 bytes.
+                        behavior.response_headers["Content-Length"] = "1414"
+
+                        local code, err = plugin.access(config({
+                            max_request_body_bytes = 200,
+                            max_mapping_bytes = 20,
+                            max_mapping_entries = 2,
+                        }), ctx)
+
+                        assert.is_equal(502, code)
+                        assert.is_same({
+                            message = "redaction service response size limit exceeded",
+                        }, err)
+                        assert.is_equal(0, observed.body_reader_count)
+                        assert.is_equal(0, observed.read_body_count)
+                        assert.is_equal(0, observed.keepalive_count)
+                        assert.is_equal(1, observed.close_count)
+                        assert.is_nil(ctx._ai_redaction_request_id)
+                        assert.is_nil(ctx._ai_redaction_session_id)
+                        assert.is_nil(ctx._ai_redaction_namespace)
+                        assert.is_nil(ctx._ai_redaction_mapping)
+                        assert.is_nil(ctx.ai_request_body_changed)
+                        assert_no_request_mutation()
+                    end
+                )
+
+                it(
+                    "does not reject a declared response at the exact derived cap",
+                    function()
+                        local ctx = request_context()
+                        behavior.response_headers["Content-Length"] = "1413"
+
+                        local code, err = plugin.access(config({
+                            max_request_body_bytes = 200,
+                            max_mapping_bytes = 20,
+                            max_mapping_entries = 2,
+                        }), ctx)
+
+                        assert.is_equal(502, code)
+                        assert.is_same({
+                            message = "mapping byte limit exceeded",
+                        }, err)
+                        assert.is_equal(2, observed.body_reader_count)
+                        assert.is_equal(0, observed.read_body_count)
+                        assert.is_equal(1, observed.keepalive_count)
+                        assert.is_equal(0, observed.close_count)
+                        assert.is_nil(ctx._ai_redaction_request_id)
+                        assert.is_nil(ctx._ai_redaction_session_id)
+                        assert.is_nil(ctx._ai_redaction_namespace)
+                        assert.is_nil(ctx._ai_redaction_mapping)
+                        assert.is_nil(ctx.ai_request_body_changed)
+                        assert_no_request_mutation()
+                    end
+                )
+
+                it(
+                    "closes a chunked response when its accumulated body exceeds the cap",
+                    function()
+                        local ctx = request_context()
+                        -- The same 1413-byte derived cap is crossed by the second chunk.
+                        behavior.response_chunks = {
+                            string.rep("a", 1000),
+                            string.rep("b", 414),
+                        }
+
+                        local code, err = plugin.access(config({
+                            max_request_body_bytes = 200,
+                            max_mapping_bytes = 20,
+                            max_mapping_entries = 2,
+                        }), ctx)
+
+                        assert.is_equal(502, code)
+                        assert.is_same({
+                            message = "redaction service response size limit exceeded",
+                        }, err)
+                        assert.is_equal(2, observed.read_count)
+                        assert.is_equal(2, observed.body_reader_count)
+                        assert.is_equal(0, observed.read_body_count)
+                        assert.is_equal(0, observed.keepalive_count)
+                        assert.is_equal(1, observed.close_count)
+                        assert.is_nil(ctx._ai_redaction_request_id)
+                        assert.is_nil(ctx._ai_redaction_session_id)
+                        assert.is_nil(ctx._ai_redaction_namespace)
+                        assert.is_nil(ctx._ai_redaction_mapping)
+                        assert.is_nil(ctx.ai_request_body_changed)
+                        assert_no_request_mutation()
+                    end
+                )
+
+                it(
+                    "rejects a decoded masked body above the request-body limit", function()
+                        local ctx = request_context()
+                        behavior.response_builder = function(payload)
+                            local value = success_value(payload)
+                            value.body.padding = string.rep("x", 256)
+                            return assert(core.json.encode(value))
+                        end
+
+                        local code, err = plugin.access(config({
+                            max_request_body_bytes = 200,
+                        }), ctx)
+
+                        assert.is_equal(502, code)
+                        assert.is_same({message = "masked body size limit exceeded"}, err)
+                        assert.is_nil(ctx._ai_redaction_request_id)
+                        assert.is_nil(ctx._ai_redaction_session_id)
+                        assert.is_nil(ctx._ai_redaction_namespace)
+                        assert.is_nil(ctx._ai_redaction_mapping)
+                        assert.is_nil(ctx.ai_request_body_changed)
+                        assert_no_request_mutation()
                     end
                 )
 
