@@ -75,7 +75,7 @@ index 49cc6c9..9f0e765 100644
          core.log.info("skip response check for this request")
          return
 diff --git a/apisix/plugins/ai-providers/base.lua b/apisix/plugins/ai-providers/base.lua
-index 407fe0b..7f463db 100644
+index 407fe0b..5598753 100644
 --- a/apisix/plugins/ai-providers/base.lua
 +++ b/apisix/plugins/ai-providers/base.lua
 @@ -364,7 +364,7 @@ function _M.parse_response(self, ctx, res, client_proto, converter, conf)
@@ -129,17 +129,22 @@ index 407fe0b..7f463db 100644
      -- Use a local flag instead of reading ctx.var on every chunk.
      local first_token_set = false
 
-@@ -518,6 +537,9 @@ function _M.parse_streaming_response(self, ctx, res, target_proto, converter, co
-                 (ngx_now() - ctx.llm_request_start_time) * 1000)
-             core.log.warn("failed to read response chunk: ", err)
-             res._upstream_bytes = bytes_read
-+            if not finalize_response_filter("upstream_read_error") then
-+                return
-+            end
-             if flush_thread then
+@@ -522,6 +541,14 @@ function _M.parse_streaming_response(self, ctx, res, target_proto, converter, co
                  ngx.thread.kill(flush_thread)
                  flush_thread = nil
-@@ -534,10 +556,22 @@ function _M.parse_streaming_response(self, ctx, res, target_proto, converter, co
+             end
++            local filter_ok, emitted =
++                finalize_response_filter("upstream_read_error")
++            if not filter_ok then
++                return
++            end
++            if output_sent or emitted then
++                return
++            end
+             return transport_http.handle_error(err)
+         end
+         if not chunk then
+@@ -534,10 +561,22 @@ function _M.parse_streaming_response(self, ctx, res, target_proto, converter, co
              res._upstream_bytes = bytes_read
              ctx.var.apisix_upstream_response_time = math.floor(
                  (ngx_now() - ctx.llm_request_start_time) * 1000)
@@ -165,7 +170,7 @@ index 407fe0b..7f463db 100644
                  local msg = "streaming response completed without producing "
                              .. "any output; the upstream likely returned a "
                              .. "different stream format than the converter expects"
-@@ -546,10 +580,6 @@ function _M.parse_streaming_response(self, ctx, res, target_proto, converter, co
+@@ -546,10 +585,6 @@ function _M.parse_streaming_response(self, ctx, res, target_proto, converter, co
              end
              -- Final sync flush: ensure the last async-queued bytes reach the client.
              -- flush_err means client already disconnected; skip to avoid a noisy log.
@@ -176,7 +181,7 @@ index 407fe0b..7f463db 100644
              if not flush_err then
                  ngx.flush(true)
              end
-@@ -636,7 +666,7 @@ function _M.parse_streaming_response(self, ctx, res, target_proto, converter, co
+@@ -636,7 +671,7 @@ function _M.parse_streaming_response(self, ctx, res, target_proto, converter, co
          if converter then
              for _, c in ipairs(converted_chunks) do
                  local ok, flush_err = plugin.lua_response_filter(
@@ -185,7 +190,7 @@ index 407fe0b..7f463db 100644
                  if not ok then
                      abort_on_disconnect(flush_err)
                      return
-@@ -645,7 +675,7 @@ function _M.parse_streaming_response(self, ctx, res, target_proto, converter, co
+@@ -645,7 +680,7 @@ function _M.parse_streaming_response(self, ctx, res, target_proto, converter, co
              end
          else
              local ok, flush_err = plugin.lua_response_filter(
@@ -194,7 +199,7 @@ index 407fe0b..7f463db 100644
              if not ok then
                  abort_on_disconnect(flush_err)
                  return
-@@ -686,6 +716,13 @@ function _M.parse_streaming_response(self, ctx, res, target_proto, converter, co
+@@ -686,6 +721,13 @@ function _M.parse_streaming_response(self, ctx, res, target_proto, converter, co
              ctx.var.apisix_upstream_response_time = duration_ms
              ctx.var.llm_request_done = true
              res._upstream_bytes = bytes_read

@@ -489,23 +489,136 @@ aborting AI stream: max_response_bytes exceeded
                 base, ctx, res, target_proto, nil,
                 {streaming_flush_interval_ms = 0})
             local headers_sent = ngx.headers_sent
+            local fallback_calls = 0
             if code and not headers_sent then
+                fallback_calls = fallback_calls + 1
                 ngx.status = code
             end
             ngx.say("code:", code, ", eof_calls:", eof_calls,
                     ", reason:", abort_reason,
-                    ", headers_sent:", headers_sent)
+                    ", headers_sent:", headers_sent,
+                    ", fallback_calls:", fallback_calls)
         }
     }
 --- response_body
-code:504, eof_calls:1, reason:upstream_read_error, headers_sent:false
+code:504, eof_calls:1, reason:upstream_read_error, headers_sent:false, fallback_calls:1
 --- error_code: 504
 --- error_log
 failed to read response chunk: timeout
 
 
 
-=== TEST 10: downstream disconnect does not invoke EOF finalization
+=== TEST 10: upstream read error with EOF output returns a partial response
+--- config
+    location /t {
+        content_by_lua_block {
+            local base = require("apisix.plugins.ai-providers.base")
+            local eof_calls = 0
+            local abort_reason
+            local fake = {
+                name = "test-upstream-error-emitted-eof-filter",
+                lua_body_filter = function(_, _, _, body, eof, reason)
+                    if eof then
+                        eof_calls = eof_calls + 1
+                        abort_reason = reason
+                        return nil, "pending-error"
+                    end
+                    return nil, body
+                end,
+            }
+            local ctx = {
+                plugins = {fake, {}},
+                var = {},
+                llm_request_start_time = ngx.now(),
+            }
+            local res = {
+                headers = {},
+                body_reader = function()
+                    return nil, "timeout"
+                end,
+            }
+            local target_proto = {
+                parse_sse_event = function()
+                    return {type = "data"}
+                end,
+            }
+
+            local code = base.parse_streaming_response(
+                base, ctx, res, target_proto, nil,
+                {streaming_flush_interval_ms = 0})
+            ngx.say("|code:", code or "nil",
+                    ", eof_calls:", eof_calls,
+                    ", reason:", abort_reason,
+                    ", headers_sent:", ngx.headers_sent)
+        }
+    }
+--- response_body
+pending-error|code:nil, eof_calls:1, reason:upstream_read_error, headers_sent:true
+--- error_code: 200
+--- error_log
+failed to read response chunk: timeout
+
+
+
+=== TEST 11: upstream read error after a chunk returns a partial response
+--- config
+    location /t {
+        content_by_lua_block {
+            local base = require("apisix.plugins.ai-providers.base")
+            local eof_calls = 0
+            local abort_reason
+            local fake = {
+                name = "test-upstream-error-after-output-filter",
+                lua_body_filter = function(_, _, _, body, eof, reason)
+                    if eof then
+                        eof_calls = eof_calls + 1
+                        abort_reason = reason
+                    end
+                    return nil, body
+                end,
+            }
+            local ctx = {
+                plugins = {fake, {}},
+                var = {},
+                llm_request_start_time = ngx.now(),
+            }
+            local read_count = 0
+            local res = {
+                headers = {},
+                body_reader = function()
+                    read_count = read_count + 1
+                    if read_count == 1 then
+                        return "data: {}\n\n"
+                    end
+                    return nil, "timeout"
+                end,
+            }
+            local target_proto = {
+                parse_sse_event = function()
+                    return {type = "data"}
+                end,
+            }
+
+            local code = base.parse_streaming_response(
+                base, ctx, res, target_proto, nil,
+                {streaming_flush_interval_ms = 0})
+            ngx.say("|code:", code or "nil",
+                    ", eof_calls:", eof_calls,
+                    ", reason:", abort_reason,
+                    ", headers_sent:", ngx.headers_sent)
+        }
+    }
+--- response_body
+data: {}
+
+|code:nil, eof_calls:1, reason:upstream_read_error, headers_sent:true
+--- error_code: 200
+--- error_log
+failed to read response chunk: timeout
+
+
+
+=== TEST 12: downstream disconnect does not invoke EOF finalization
 --- config
     location /t {
         content_by_lua_block {
@@ -564,7 +677,7 @@ client disconnected during AI streaming
 
 
 
-=== TEST 11: aborted moderation EOF neither calls service nor fabricates terminator
+=== TEST 13: aborted moderation EOF neither calls service nor fabricates terminator
 --- config
     location /t {
         content_by_lua_block {
@@ -646,7 +759,7 @@ ok:true, err:nil, aborted_emitted:false, aborted_headers_sent:false, service_cal
 
 
 
-=== TEST 12: response byte limit without output returns 502 after one EOF
+=== TEST 14: response byte limit without output returns 502 after one EOF
 --- config
     location /t {
         content_by_lua_block {
@@ -712,7 +825,7 @@ aborting AI stream: max_response_bytes exceeded
 
 
 
-=== TEST 13: stream duration limit without output returns 504 after one EOF
+=== TEST 15: stream duration limit without output returns 504 after one EOF
 --- config
     location /t {
         content_by_lua_block {
