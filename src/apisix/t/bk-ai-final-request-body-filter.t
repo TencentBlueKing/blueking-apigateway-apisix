@@ -552,33 +552,40 @@ final-extra-opts-content-free
 
 
 
-=== TEST 7: ai-proxy-multi log releases least-conn attempt state after filter failure
+=== TEST 7: ai-proxy-multi log defers picker cleanup to the generic log phase
 --- config
     location /t {
         content_by_lua_block {
-            local core = require("apisix.core")
-            local least_conn = require("apisix.balancer.least_conn")
             local ai_proxy_multi = require("apisix.plugins.ai-proxy-multi")
-            local picker = least_conn.new({first = 1}, {first = 1})
+            local cleanup_calls = 0
+            local picker = {
+                after_balance = function(ctx, before_retry)
+                    assert(before_retry == false)
+                    cleanup_calls = cleanup_calls + 1
+                    ctx.balancer_tried_servers = nil
+                end,
+            }
             local ctx = {
                 server_picker = picker,
-                balancer_tried_servers = core.tablepool.fetch(
-                    "balancer_tried_servers", 0, 2
-                ),
+                balancer_tried_servers = {first = true},
                 var = {},
             }
-            local server = assert(picker.get(ctx))
-            ctx.balancer_server = server
 
+            -- APISIX http_log_phase first executes plugin log handlers.
             ai_proxy_multi.log({}, ctx)
+            assert(cleanup_calls == 0)
+            assert(ctx.balancer_tried_servers ~= nil)
 
+            -- It then owns the one request-final picker cleanup.
+            ctx.server_picker.after_balance(ctx, false)
+            assert(cleanup_calls == 1)
             assert(ctx.server_picker == picker)
             assert(ctx.balancer_tried_servers == nil)
-            ngx.say("least-conn-filter-failure-cleaned")
+            ngx.say("picker-cleaned-once-by-generic-log-phase")
         }
     }
 --- response_body
-least-conn-filter-failure-cleaned
+picker-cleaned-once-by-generic-log-phase
 
 
 

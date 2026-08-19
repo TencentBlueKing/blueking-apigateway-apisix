@@ -72,16 +72,6 @@ index dfa15ff36..066d6a7d2 100644
 +    end
 +
      -- AWS SigV4 signing (must be last — signs the finalized body)
-diff --git a/apisix/plugins/ai-proxy-multi.lua b/apisix/plugins/ai-proxy-multi.lua
-index 0d23ad096..0df272b44 100644
---- a/apisix/plugins/ai-proxy-multi.lua
-+++ b/apisix/plugins/ai-proxy-multi.lua
-@@ -650,2 +650,5 @@ function _M.log(conf, ctx)
-     end
-+    if ctx.server_picker then
-+        ctx.server_picker.after_balance(ctx, false)
-+    end
-     if conf.logging then
 diff --git a/apisix/plugins/ai-proxy/base.lua b/apisix/plugins/ai-proxy/base.lua
 index d2b6e67a9..81f3a3705 100644
 --- a/apisix/plugins/ai-proxy/base.lua
