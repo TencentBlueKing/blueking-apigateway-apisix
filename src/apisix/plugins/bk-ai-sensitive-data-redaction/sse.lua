@@ -27,6 +27,8 @@ local type = type
 
 local _M = {}
 
+local MAX_REMAINDER = 1024 * 1024
+
 local CHAT_TEXT_FIELDS = {
     "content",
     "reasoning_content",
@@ -349,11 +351,6 @@ function Processor:process_anthropic_event(event, value)
 end
 
 
-local function is_terminal_event(event, value)
-    return TERMINAL_EVENTS[event.type] or TERMINAL_EVENTS[value.type]
-end
-
-
 function Processor:process_frame(frame)
     local events = sse_codec.decode(frame)
     if #events ~= 1 then
@@ -366,12 +363,17 @@ function Processor:process_frame(frame)
         return final_output .. frame, restored_count, unresolved_count
     end
 
+    if TERMINAL_EVENTS[event.type] then
+        local final_output, restored_count, unresolved_count = self:finalize()
+        return final_output .. frame, restored_count, unresolved_count
+    end
+
     local value = core.json.decode(event.data)
     if type(value) ~= "table" then
         return frame, 0, 0
     end
 
-    if is_terminal_event(event, value) then
+    if TERMINAL_EVENTS[value.type] then
         local final_output, restored_count, unresolved_count = self:finalize()
         return final_output .. frame, restored_count, unresolved_count
     end
@@ -417,6 +419,11 @@ function Processor:feed(chunk, eof)
     end
 
     self.remainder = buffer:sub(start_pos)
+    if not eof and #self.remainder > MAX_REMAINDER then
+        output[#output + 1] = self.remainder
+        self.remainder = ""
+    end
+
     if eof then
         if self.remainder ~= "" then
             local restored, frame_count, frame_unresolved = self:process_frame(self.remainder)

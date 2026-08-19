@@ -538,7 +538,6 @@ describe(
                                 delta = prefix,
                             }) .. "\n\n"
                         local terminal_event =
-                            "event: response.completed\n" ..
                             "data: {\"type\":\"response.completed\"}\n\n"
 
                         local first = processor:feed(delta_event, false)
@@ -551,8 +550,72 @@ describe(
                         assert.is_equal(prefix, flushed.delta)
                         assert.is_equal("response.output_text.delta", flushed.type)
                         assert.is_equal("msg_1", flushed.item_id)
-                        assert.is_equal("response.completed", events[2].type)
+                        assert.is_equal(
+                            "response.completed", core.json.decode(events[2].data).type
+                        )
                         assert.is_equal(0, restored_count)
+                        assert.is_equal(1, unresolved_count)
+                    end
+                )
+
+                it(
+                    "flushes pending text before a plain-text named terminal frame", function()
+                        local processor = assert(sse.new(
+                            "openai-responses", {[token] = "13800138000"}, namespace
+                        ))
+                        local prefix = token:sub(1, 30)
+                        local delta_event =
+                            "event: response.output_text.delta\n" ..
+                            "data: " .. core.json.encode({
+                                type = "response.output_text.delta",
+                                item_id = "msg_1",
+                                delta = prefix,
+                            }) .. "\n\n"
+                        local terminal_event =
+                            "event: response.failed\n" ..
+                            "data: upstream failed\n\n"
+                        processor:feed(delta_event, false)
+
+                        local output, restored_count, unresolved_count =
+                            processor:feed(terminal_event, false)
+                        local events = sse_codec.decode(output)
+                        local flushed = core.json.decode(events[1].data)
+
+                        assert.is_equal(prefix, flushed.delta)
+                        assert.is_equal("response.output_text.delta", flushed.type)
+                        assert.is_equal("response.failed", events[2].type)
+                        assert.is_equal("upstream failed", events[2].data)
+                        assert.is_equal(terminal_event, output:sub(-#terminal_event))
+                        assert.is_equal(0, restored_count)
+                        assert.is_equal(1, unresolved_count)
+                    end
+                )
+
+                it(
+                    "flushes pending text before an empty named terminal frame", function()
+                        local processor = assert(sse.new(
+                            "anthropic-messages", {[token] = "13800138000"}, namespace
+                        ))
+                        local prefix = token:sub(1, 30)
+                        local delta_event =
+                            "event: content_block_delta\n" ..
+                            "data: " .. core.json.encode({
+                                type = "content_block_delta",
+                                index = 0,
+                                delta = {type = "text_delta", text = prefix},
+                            }) .. "\n\n"
+                        local terminal_event = "event: message_stop\ndata:\n\n"
+                        processor:feed(delta_event, false)
+
+                        local output, _, unresolved_count =
+                            processor:feed(terminal_event, false)
+                        local events = sse_codec.decode(output)
+                        local flushed = core.json.decode(events[1].data)
+
+                        assert.is_equal(prefix, flushed.delta.text)
+                        assert.is_equal("message_stop", events[2].type)
+                        assert.is_equal("", events[2].data)
+                        assert.is_equal(terminal_event, output:sub(-#terminal_event))
                         assert.is_equal(1, unresolved_count)
                     end
                 )
@@ -606,6 +669,48 @@ describe(
                         assert.is_equal("13800138000", data.delta.text)
                         assert.is_equal(1, restored_count)
                         assert.is_equal(0, unresolved_count)
+                    end
+                )
+
+                it(
+                    "bounds incomplete frame buffering at one MiB", function()
+                        local limit = 1024 * 1024
+                        local at_limit = string.rep("x", limit)
+                        local at_limit_processor = assert(sse.new(
+                            "openai-chat", {[token] = "13800138000"}, namespace
+                        ))
+
+                        local held = at_limit_processor:feed(at_limit, false)
+                        local completed = at_limit_processor:feed("\n\n", false)
+
+                        assert.is_equal("", held)
+                        assert.is_equal(at_limit .. "\n\n", completed)
+
+                        local above_limit = string.rep("x", limit + 1)
+                        local processor = assert(sse.new(
+                            "openai-chat", {[token] = "13800138000"}, namespace
+                        ))
+
+                        local emitted, restored_count, unresolved_count =
+                            processor:feed(above_limit, false)
+
+                        assert.is_equal(above_limit, emitted)
+                        assert.is_equal(0, restored_count)
+                        assert.is_equal(0, unresolved_count)
+
+                        local valid_event = "data: " .. core.json.encode({
+                            choices = {
+                                {
+                                    index = 0,
+                                    delta = {content = token},
+                                },
+                            },
+                        }) .. "\n\n"
+                        local output, later_count = processor:feed(valid_event, false)
+                        local data = core.json.decode(sse_codec.decode(output)[1].data)
+
+                        assert.is_equal("13800138000", data.choices[1].delta.content)
+                        assert.is_equal(1, later_count)
                     end
                 )
 
