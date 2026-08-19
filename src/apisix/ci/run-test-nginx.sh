@@ -1,5 +1,19 @@
 #!/bin/bash
 
+echo "apply the AI response filter EOF patch"
+if ! patch --batch --forward --fuzz=0 -p1 -d /usr/local/apisix \
+    < /bkgateway/patches/010_ai_response_filter_eof.patch; then
+    echo "failed to apply 010_ai_response_filter_eof.patch" >&2
+    exit 1
+fi
+
+echo "apply the AI final request body filter patch"
+if ! patch --batch --forward --fuzz=0 -p1 -d /usr/local/apisix \
+    < /bkgateway/patches/011_ai_final_request_body_filter.patch; then
+    echo "failed to apply 011_ai_final_request_body_filter.patch" >&2
+    exit 1
+fi
+
 echo "start etcd"
 nohup etcd >/tmp/etcd.log 2>&1 &
 

@@ -27,6 +27,7 @@ test-nginx:
 	@docker run --rm ${RUN_WITH_IT} \
 	-v ${ROOT_DIR}/t:/bkgateway/t/ \
 	-v ${ROOT_DIR}/plugins:/bkgateway/apisix/plugins \
+	-v ${ROOT_DIR}/../build/patches:/bkgateway/patches:ro \
 	apisix-test-nginx-317 "/run-test-nginx.sh" $(if $(CASE_FILE),$(CASE_FILE))
 
 .PHONY: apisix-test-images
