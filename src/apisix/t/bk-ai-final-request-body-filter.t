@@ -1375,3 +1375,222 @@ routing-failure-payload-safe
 routing-client-secret
 rewrite-residue-secret
 routing-override-secret
+
+
+
+=== TEST 19: finalized-filter request logs omit headers while transport stays intact
+--- config
+    location /t {
+        content_by_lua_block {
+            local core = require("apisix.core")
+            local base = require("apisix.plugins.ai-proxy.base")
+            local provider_base = require("apisix.plugins.ai-providers.base")
+            local transport = require("apisix.plugins.ai-transport.http")
+            local exporter = require("apisix.plugins.prometheus.exporter")
+            local module_name = "apisix.plugins.ai-providers.task14-filtered-log-probe"
+            local original_provider = package.loaded[module_name]
+            local original_request = transport.request
+            local original_log_info = core.log.info
+            local original_inc = exporter.inc_llm_active_connections
+            local original_dec = exporter.dec_llm_active_connections
+            local logged = {}
+            local transported
+
+            package.loaded[module_name] = provider_base.new({
+                capabilities = {
+                    ["openai-chat"] = {
+                        path = "/v1/chat/completions",
+                        host = "filtered-llm.example.com",
+                    },
+                },
+            })
+            transport.request = function(params)
+                transported = core.table.deepcopy(params)
+                return nil, "timeout"
+            end
+            core.log.info = function(...)
+                for index = 1, select("#", ...) do
+                    logged[#logged + 1] = tostring(select(index, ...))
+                end
+            end
+            exporter.inc_llm_active_connections = function() end
+            exporter.dec_llm_active_connections = function() end
+
+            local ctx = {
+                ai_client_protocol = "openai-chat",
+                ai_final_request_body_filter = function(body)
+                    local masked = body:gsub(
+                        "filtered%-client%-body%-secret", "masked-final-body", 1
+                    )
+                    return masked
+                end,
+                picked_ai_instance = {
+                    name = "filtered-log-probe",
+                    provider = "task14-filtered-log-probe",
+                    auth = {
+                        header = {["X-Custom-Token"] = "custom-auth-value"},
+                    },
+                    override = {
+                        endpoint = "https://filtered-llm.example.com" ..
+                                   "/v1/chat/completions" ..
+                                   "?query-token=query-log-secret",
+                    },
+                },
+                var = {
+                    uri = "/v1/chat/completions",
+                    request_type = "ai_chat",
+                },
+            }
+            ngx.ctx.api_ctx = ctx
+
+            local ok, err = xpcall(function()
+                local code = base.before_proxy({ssl_verify = true}, ctx)
+                assert(type(code) == "number")
+            end, debug.traceback)
+            package.loaded[module_name] = original_provider
+            transport.request = original_request
+            core.log.info = original_log_info
+            exporter.inc_llm_active_connections = original_inc
+            exporter.dec_llm_active_connections = original_dec
+            assert(ok, err)
+
+            assert(transported.method == "POST")
+            assert(transported.scheme == "https")
+            assert(transported.host == "filtered-llm.example.com")
+            assert(transported.path == "/v1/chat/completions")
+            assert(transported.headers["x-ai-session-id"] == "session-header-value")
+            assert(transported.headers["x-custom-token"] == "custom-auth-value")
+            assert(transported.headers["x-forwarded-probe"] == "forwarded-value")
+            assert(transported.query["query-token"] == "query-log-secret")
+            assert(transported.body:find("masked-final-body", 1, true))
+            assert(not transported.body:find(
+                "filtered-client-body-secret", 1, true
+            ))
+
+            local output = table.concat(logged)
+            assert(output:find("sending request to LLM server", 1, true), output)
+            assert(output:find("filtered-llm.example.com", 1, true), output)
+            assert(output:find("/v1/chat/completions", 1, true), output)
+            for _, forbidden in ipairs({
+                "x-ai-session-id",
+                "session-header-value",
+                "x-custom-token",
+                "custom-auth-value",
+                "x-forwarded-probe",
+                "forwarded-value",
+                "query-token",
+                "query-log-secret",
+                "filtered-client-body-secret",
+                "masked-final-body",
+            }) do
+                assert(not output:lower():find(forbidden, 1, true), output)
+            end
+            ngx.say("filtered-request-log-header-free")
+        }
+    }
+--- request
+POST /t
+{"model":"test","messages":[{"role":"user","content":"filtered-client-body-secret"}]}
+--- more_headers
+Content-Type: application/json
+X-AI-Session-Id: session-header-value
+X-Forwarded-Probe: forwarded-value
+--- response_body
+filtered-request-log-header-free
+
+
+
+=== TEST 20: routes without a finalized filter retain forwarded request headers in logs
+--- config
+    location /t {
+        content_by_lua_block {
+            local core = require("apisix.core")
+            local base = require("apisix.plugins.ai-proxy.base")
+            local provider_base = require("apisix.plugins.ai-providers.base")
+            local transport = require("apisix.plugins.ai-transport.http")
+            local exporter = require("apisix.plugins.prometheus.exporter")
+            local module_name = "apisix.plugins.ai-providers.task14-legacy-log-probe"
+            local original_provider = package.loaded[module_name]
+            local original_request = transport.request
+            local original_log_info = core.log.info
+            local original_inc = exporter.inc_llm_active_connections
+            local original_dec = exporter.dec_llm_active_connections
+            local logged = {}
+            local transported
+
+            package.loaded[module_name] = provider_base.new({
+                capabilities = {
+                    ["openai-chat"] = {
+                        path = "/v1/chat/completions",
+                        host = "legacy-llm.example.com",
+                    },
+                },
+            })
+            transport.request = function(params)
+                transported = core.table.deepcopy(params)
+                return nil, "timeout"
+            end
+            core.log.info = function(...)
+                for index = 1, select("#", ...) do
+                    logged[#logged + 1] = tostring(select(index, ...))
+                end
+            end
+            exporter.inc_llm_active_connections = function() end
+            exporter.dec_llm_active_connections = function() end
+
+            local ctx = {
+                ai_client_protocol = "openai-chat",
+                picked_ai_instance = {
+                    name = "legacy-log-probe",
+                    provider = "task14-legacy-log-probe",
+                    auth = {
+                        header = {["X-Custom-Token"] = "legacy-auth-value"},
+                    },
+                    override = {
+                        endpoint = "https://legacy-llm.example.com/v1/chat/completions",
+                    },
+                },
+                var = {
+                    uri = "/v1/chat/completions",
+                    request_type = "ai_chat",
+                },
+            }
+            ngx.ctx.api_ctx = ctx
+
+            local ok, err = xpcall(function()
+                local code = base.before_proxy({ssl_verify = true}, ctx)
+                assert(type(code) == "number")
+            end, debug.traceback)
+            package.loaded[module_name] = original_provider
+            transport.request = original_request
+            core.log.info = original_log_info
+            exporter.inc_llm_active_connections = original_inc
+            exporter.dec_llm_active_connections = original_dec
+            assert(ok, err)
+
+            assert(transported.headers["x-ai-session-id"] == "legacy-session-value")
+            assert(transported.headers["x-custom-token"] == "legacy-auth-value")
+            assert(transported.headers["x-forwarded-probe"] == "legacy-forwarded-value")
+            local output = table.concat(logged):lower()
+            for _, expected in ipairs({
+                "x-ai-session-id",
+                "legacy-session-value",
+                "x-custom-token",
+                "legacy-auth-value",
+                "x-forwarded-probe",
+                "legacy-forwarded-value",
+            }) do
+                assert(output:find(expected, 1, true), output)
+            end
+            ngx.say("legacy-request-log-headers-retained")
+        }
+    }
+--- request
+POST /t
+{"model":"test","messages":[{"role":"user","content":"legacy-body"}]}
+--- more_headers
+Content-Type: application/json
+X-AI-Session-Id: legacy-session-value
+X-Forwarded-Probe: legacy-forwarded-value
+--- response_body
+legacy-request-log-headers-retained

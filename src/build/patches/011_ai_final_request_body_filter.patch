@@ -73,7 +73,7 @@ index dfa15ff36..066d6a7d2 100644
 +
      -- AWS SigV4 signing (must be last — signs the finalized body)
 diff --git a/apisix/plugins/ai-proxy/base.lua b/apisix/plugins/ai-proxy/base.lua
-index d2b6e67a..3e279855 100644
+index d2b6e67a..d76b2bf1 100644
 --- a/apisix/plugins/ai-proxy/base.lua
 +++ b/apisix/plugins/ai-proxy/base.lua
 @@ -123,2 +123,5 @@ function _M.before_proxy(conf, ctx, on_error)
@@ -98,12 +98,29 @@ index d2b6e67a..3e279855 100644
 +                    return code or 500, build_err, true
 +                end
                  local body = {error_msg = build_err}
-@@ -345,3 +353,3 @@ function _M.before_proxy(conf, ctx, on_error)
+@@ -219,4 +227,15 @@ function _M.before_proxy(conf, ctx, on_error)
+
++            local log_params = params
++            if ctx.ai_final_request_body_filter then
++                log_params = {
++                    method = params.method,
++                    scheme = params.scheme,
++                    host = params.host,
++                    port = params.port,
++                    path = params.path,
++                    ssl_server_name = params.ssl_server_name,
++                }
++            end
+             core.log.info("sending request to LLM server: ",
+-                          core.json.delay_encode(log_sanitize.redact_params(params), true))
++                          core.json.delay_encode(log_sanitize.redact_params(log_params), true))
+
+@@ -345,3 +364,3 @@ function _M.before_proxy(conf, ctx, on_error)
          ctx.llm_active_connections_tracked = true
 -        local ok, code_or_err, body = pcall(do_request)
 +        local ok, code_or_err, body, non_retryable = pcall(do_request)
          if not ok then
-@@ -350,3 +358,3 @@ function _M.before_proxy(conf, ctx, on_error)
+@@ -350,3 +369,3 @@ function _M.before_proxy(conf, ctx, on_error)
          end
 -        if code_or_err and on_error then
 +        if code_or_err and on_error and not non_retryable then
