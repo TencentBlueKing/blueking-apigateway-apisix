@@ -1581,6 +1581,341 @@ describe(
         )
 
         context(
+            "stream adapter safety", function()
+                local namespace = "__BK_REDACT_da584df57bd5459098e08f92a89f9494_"
+                local token = namespace .. "1__"
+
+                local function frame(event_type, value)
+                    local event = ""
+                    if event_type then
+                        event = "event: " .. event_type .. "\n"
+                    end
+                    return event .. "data: " .. assert(core.json.encode(value)) .. "\n\n"
+                end
+
+                local function response_frame(event_type, overrides)
+                    local value = {
+                        type = event_type,
+                        item_id = "msg_1",
+                        output_index = 0,
+                    }
+                    for key, item in pairs(overrides or {}) do
+                        value[key] = item
+                    end
+                    return frame(event_type, value)
+                end
+
+                local function decoded_events(output)
+                    local events = require("apisix.plugins.ai-transport.sse").decode(output)
+                    for _, event in ipairs(events) do
+                        event.value = assert(core.json.decode(event.data))
+                    end
+                    return events
+                end
+
+                it(
+                    "does not retain complete logical fields", function()
+                        local processor = assert(sse_restorer.new(
+                            "openai-chat", {[token] = "secret"}, namespace
+                        ))
+
+                        for index = 1, 10000 do
+                            local output = processor:feed(frame(nil, {
+                                choices = {{
+                                    index = index,
+                                    delta = {content = "ordinary text"},
+                                }},
+                            }), false)
+                            assert.is_string(output)
+                        end
+
+                        assert.is_nil(next(processor.stream.states))
+                        assert.is_nil(next(processor.keys))
+                        assert.is_same({}, processor.key_order)
+                    end
+                )
+
+                it(
+                    "rejects more than 1024 active logical fields", function()
+                        local processor = assert(sse_restorer.new(
+                            "openai-chat", {[token] = "secret"}, namespace
+                        ))
+                        local prefix = token:sub(1, -2)
+
+                        for index = 1, 1024 do
+                            local output = processor:feed(frame(nil, {
+                                choices = {{
+                                    index = index,
+                                    delta = {content = prefix},
+                                }},
+                            }), false)
+                            assert.is_string(output)
+                        end
+
+                        local ok = pcall(processor.feed, processor, frame(nil, {
+                            choices = {{
+                                index = 1025,
+                                delta = {content = prefix},
+                            }},
+                        }), false)
+
+                        assert.is_false(ok)
+                    end
+                )
+
+                it(
+                    "rejects more than 64 KiB of aggregate pending bytes", function()
+                        local huge_token = namespace .. string.rep("1", 65536) .. "__"
+                        local stream = restorer.new_stream(
+                            {[huge_token] = "secret"}, namespace
+                        )
+
+                        local output, _, err = stream:feed(
+                            "field", huge_token:sub(1, -2), "text", false
+                        )
+
+                        assert.is_nil(output)
+                        assert.is_equal("stream pending byte limit exceeded", err)
+                        assert.is_nil(next(stream.states))
+                    end
+                )
+
+                it(
+                    "keeps interleaved response content parts independent", function()
+                        local token2 = namespace .. "2__"
+                        local processor = assert(sse_restorer.new(
+                            "openai-responses",
+                            {[token] = "first", [token2] = "second"},
+                            namespace
+                        ))
+                        local split1 = math.floor(#token / 2)
+                        local split2 = math.floor(#token2 / 2)
+                        local output = {}
+                        local inputs = {
+                            response_frame("response.output_text.delta", {
+                                content_index = 0,
+                                delta = token:sub(1, split1),
+                            }),
+                            response_frame("response.output_text.delta", {
+                                content_index = 1,
+                                delta = token2:sub(1, split2),
+                            }),
+                            response_frame("response.output_text.delta", {
+                                content_index = 0,
+                                delta = token:sub(split1 + 1),
+                            }),
+                            response_frame("response.output_text.delta", {
+                                content_index = 1,
+                                delta = token2:sub(split2 + 1),
+                            }),
+                        }
+                        for _, input in ipairs(inputs) do
+                            output[#output + 1] = processor:feed(input, false)
+                        end
+
+                        local text = {[0] = "", [1] = ""}
+                        for _, event in ipairs(decoded_events(table.concat(output))) do
+                            local value = event.value
+                            text[value.content_index] = text[value.content_index] .. value.delta
+                        end
+
+                        assert.is_equal("first", text[0])
+                        assert.is_equal("second", text[1])
+                        assert.is_nil(next(processor.stream.states))
+                        assert.is_nil(next(processor.keys))
+                        assert.is_same({}, processor.key_order)
+                    end
+                )
+
+                it(
+                    "flushes only the matching response content part before done",
+                    function()
+                        local processor = assert(sse_restorer.new(
+                            "openai-responses", {[token] = "secret"}, namespace
+                        ))
+                        local prefix = token:sub(1, -2)
+                        assert.is_string(processor:feed(response_frame(
+                            "response.output_text.delta",
+                            {content_index = 0, delta = prefix}
+                        ), false))
+                        assert.is_string(processor:feed(response_frame(
+                            "response.output_text.delta",
+                            {content_index = 1, delta = prefix}
+                        ), false))
+
+                        local output = processor:feed(response_frame(
+                            "response.output_text.done",
+                            {content_index = 0, text = token}
+                        ), false)
+                        local events = decoded_events(output)
+
+                        assert.is_equal(2, #events)
+                        assert.is_equal("response.output_text.delta", events[1].value.type)
+                        assert.is_equal(0, events[1].value.content_index)
+                        assert.is_equal(prefix, events[1].value.delta)
+                        assert.is_equal("response.output_text.done", events[2].value.type)
+                        assert.is_equal(0, events[2].value.content_index)
+                        assert.is_equal("secret", events[2].value.text)
+                        assert.is_not_nil(next(processor.stream.states))
+
+                        local remaining = decoded_events(processor:feed(
+                            response_frame("response.output_text.done", {
+                                content_index = 1,
+                                text = token,
+                            }),
+                            false
+                        ))
+                        assert.is_equal(2, #remaining)
+                        assert.is_equal(1, remaining[1].value.content_index)
+                        assert.is_equal(prefix, remaining[1].value.delta)
+                        assert.is_equal("secret", remaining[2].value.text)
+                        assert.is_nil(next(processor.stream.states))
+                    end
+                )
+
+                it(
+                    "keeps reasoning summary parts independent through done events",
+                    function()
+                        local token2 = namespace .. "2__"
+                        local processor = assert(sse_restorer.new(
+                            "openai-responses",
+                            {[token] = "first", [token2] = "second"},
+                            namespace
+                        ))
+                        local split1 = math.floor(#token / 2)
+                        local split2 = math.floor(#token2 / 2)
+                        local output = {}
+                        local inputs = {
+                            response_frame("response.reasoning_summary_text.delta", {
+                                summary_index = 0,
+                                delta = token:sub(1, split1),
+                            }),
+                            response_frame("response.reasoning_summary_text.delta", {
+                                summary_index = 1,
+                                delta = token2:sub(1, split2),
+                            }),
+                            response_frame("response.reasoning_summary_text.delta", {
+                                summary_index = 0,
+                                delta = token:sub(split1 + 1),
+                            }),
+                            response_frame("response.reasoning_summary_text.done", {
+                                summary_index = 0,
+                                text = token,
+                            }),
+                            response_frame("response.reasoning_summary_text.delta", {
+                                summary_index = 1,
+                                delta = token2:sub(split2 + 1),
+                            }),
+                            response_frame("response.reasoning_summary_text.done", {
+                                summary_index = 1,
+                                text = token2,
+                            }),
+                        }
+                        for _, input in ipairs(inputs) do
+                            output[#output + 1] = processor:feed(input, false)
+                        end
+
+                        local delta_text = {[0] = "", [1] = ""}
+                        local done_text = {}
+                        for _, event in ipairs(decoded_events(table.concat(output))) do
+                            local value = event.value
+                            if value.type == "response.reasoning_summary_text.delta" then
+                                delta_text[value.summary_index] =
+                                    delta_text[value.summary_index] .. value.delta
+                            elseif value.type == "response.reasoning_summary_text.done" then
+                                done_text[value.summary_index] = value.text
+                            end
+                        end
+
+                        assert.is_equal("first", delta_text[0])
+                        assert.is_equal("second", delta_text[1])
+                        assert.is_equal("first", done_text[0])
+                        assert.is_equal("second", done_text[1])
+                    end
+                )
+
+                it(
+                    "flushes function arguments before their done event", function()
+                        local processor = assert(sse_restorer.new(
+                            "openai-responses", {[token] = "secret"}, namespace
+                        ))
+                        local prefix = token:sub(1, -2)
+                        assert.is_string(processor:feed(response_frame(
+                            "response.function_call_arguments.delta",
+                            {item_id = "call_1", delta = prefix}
+                        ), false))
+
+                        local events = decoded_events(processor:feed(response_frame(
+                            "response.function_call_arguments.done",
+                            {item_id = "call_1", arguments = token}
+                        ), false))
+
+                        assert.is_equal(2, #events)
+                        assert.is_equal(
+                            "response.function_call_arguments.delta",
+                            events[1].value.type
+                        )
+                        assert.is_equal(prefix, events[1].value.delta)
+                        assert.is_equal(
+                            "response.function_call_arguments.done",
+                            events[2].value.type
+                        )
+                        assert.is_equal("secret", events[2].value.arguments)
+                    end
+                )
+
+                it(
+                    "preserves response frames with non-numeric part indices", function()
+                        local processor = assert(sse_restorer.new(
+                            "openai-responses", {[token] = "secret"}, namespace
+                        ))
+                        local invalid = response_frame(
+                            "response.output_text.delta",
+                            {content_index = "0", delta = token}
+                        )
+
+                        local output = processor:feed(invalid, false)
+
+                        assert.is_equal(invalid, output)
+                        assert.is_nil(output:find("secret", 1, true))
+                    end
+                )
+
+                it(
+                    "restores all supported OpenAI Chat delta fields", function()
+                        local processor = assert(sse_restorer.new(
+                            "openai-chat", {[token] = "secret"}, namespace
+                        ))
+                        local input = frame(nil, {
+                            choices = {{
+                                index = 0,
+                                delta = {
+                                    reasoning_content = token,
+                                    refusal = token,
+                                    function_call = {arguments = token},
+                                    tool_calls = {{
+                                        index = 0,
+                                        ["function"] = {arguments = token},
+                                    }},
+                                },
+                            }},
+                        })
+
+                        local events = decoded_events(processor:feed(input, false))
+                        local delta = events[1].value.choices[1].delta
+
+                        assert.is_equal("secret", delta.reasoning_content)
+                        assert.is_equal("secret", delta.refusal)
+                        assert.is_equal("secret", delta.function_call.arguments)
+                        assert.is_equal(
+                            "secret", delta.tool_calls[1]["function"].arguments
+                        )
+                    end
+                )
+            end
+        )
+
+        context(
             "stream response restoration", function()
                 it(
                     "restores split SSE placeholders and clears state only at EOF",
@@ -1770,6 +2105,64 @@ describe(
                             ", request_id: ",
                             request_id
                         )
+                    end
+                )
+
+                it(
+                    "preserves masked prefixes exactly once when active state overflows",
+                    function()
+                        local request_id = "e7c1ca39-a99e-4934-af01-babb28956d47"
+                        local namespace =
+                            "__BK_REDACT_e7c1ca39a99e4934af01babb28956d47_"
+                        local token = namespace .. "1__"
+                        local prefix = token:sub(1, -2)
+                        local ctx = request_context({
+                            var = {request_type = "ai_stream"},
+                            _ai_redaction_request_id = request_id,
+                            _ai_redaction_namespace = namespace,
+                            _ai_redaction_mapping = {[token] = "sensitive-original"},
+                        })
+                        local function chat_frame(index)
+                            return "data: " .. assert(core.json.encode({
+                                choices = {{
+                                    index = index,
+                                    delta = {content = prefix},
+                                }},
+                            })) .. "\n\n"
+                        end
+
+                        local first = chat_frame(0)
+                        local code1, output1 = plugin.lua_body_filter(
+                            config(), ctx, {}, first, false
+                        )
+                        local overflow = {}
+                        for index = 1, 1024 do
+                            overflow[index] = chat_frame(index)
+                        end
+                        local raw_overflow = table.concat(overflow)
+                        local code2, output2 = plugin.lua_body_filter(
+                            config(), ctx, {}, raw_overflow, false
+                        )
+
+                        local combined = output1 .. output2
+                        local occurrences = 0
+                        local position = 1
+                        while true do
+                            local found = combined:find(prefix, position, true)
+                            if not found then
+                                break
+                            end
+                            occurrences = occurrences + 1
+                            position = found + #prefix
+                        end
+                        assert.is_nil(code1)
+                        assert.is_nil(code2)
+                        assert.is_equal(1025, occurrences)
+                        assert.is_nil(combined:find("sensitive-original", 1, true))
+                        assert.is_true(ctx._ai_redaction_stream_passthrough)
+                        assert.is_nil(ctx._ai_redaction_mapping)
+                        assert.is_nil(ctx._ai_redaction_sse_restorer)
+                        assert.stub(core.log.error).was_called(1)
                     end
                 )
             end

@@ -30,6 +30,8 @@ local type = type
 
 local _M = {}
 local MAX_JSON_DEPTH = 128
+local MAX_STREAM_KEYS = 1024
+local MAX_STREAM_PENDING_BYTES = 64 * 1024
 local INVALID_JSON_ERROR = "invalid JSON"
 local JSON_DEPTH_ERROR = "JSON nesting depth limit exceeded"
 local JSON_LITERALS = {"true", "false", "null"}
@@ -825,14 +827,36 @@ end
 
 
 function StreamRestorer:feed(key, text, mode, final)
-    local state = self.states[key] or {pending = ""}
-    self.states[key] = state
-    local candidate = state.pending .. (text or "")
+    local state = self.states[key]
+    local previous = state and state.pending or ""
+    local candidate = previous .. (text or "")
     local output, pending, count = restore_incremental(self, candidate, mode, final)
-    state.pending = pending
-    if final then
-        self.states[key] = nil
+
+    if final or pending == "" then
+        if state then
+            self.states[key] = nil
+            self.active_count = self.active_count - 1
+            self.pending_bytes = self.pending_bytes - #previous
+        end
+        return output, count
     end
+
+    if not state and self.active_count >= MAX_STREAM_KEYS then
+        return nil, nil, "stream active key limit exceeded"
+    end
+
+    local pending_bytes = self.pending_bytes - #previous + #pending
+    if pending_bytes > MAX_STREAM_PENDING_BYTES then
+        return nil, nil, "stream pending byte limit exceeded"
+    end
+
+    if not state then
+        state = {}
+        self.states[key] = state
+        self.active_count = self.active_count + 1
+    end
+    state.pending = pending
+    self.pending_bytes = pending_bytes
 
     return output, count
 end
@@ -872,6 +896,8 @@ function _M.new_stream(mapping, namespace)
             token_prefix_trie = token_prefix_trie,
             has_tokens = has_tokens,
             states = {},
+            active_count = 0,
+            pending_bytes = 0,
         },
         StreamRestorer
     )

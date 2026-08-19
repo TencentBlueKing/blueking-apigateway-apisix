@@ -189,23 +189,67 @@ add_block_preprocessor(sub {
                          core.json.encode({
                              type = "response.output_text.delta",
                              item_id = "msg_1",
+                             output_index = 0,
+                             content_index = 0,
                              delta = token:sub(1, split_at),
                          }) .. "\n\n", 23)
                     emit("event: response.output_text.delta\ndata: " ..
                          core.json.encode({
                              type = "response.output_text.delta",
                              item_id = "msg_1",
-                             delta = token:sub(split_at + 1),
+                             output_index = 0,
+                             content_index = 1,
+                             delta = token:sub(1, split_at),
                          }) .. "\n\n", 29)
+                    emit("event: response.output_text.delta\ndata: " ..
+                         core.json.encode({
+                             type = "response.output_text.delta",
+                             item_id = "msg_1",
+                             output_index = 0,
+                             content_index = 0,
+                             delta = token:sub(split_at + 1),
+                         }) .. "\n\n", 31)
+                    emit("event: response.output_text.delta\ndata: " ..
+                         core.json.encode({
+                             type = "response.output_text.delta",
+                             item_id = "msg_1",
+                             output_index = 0,
+                             content_index = 1,
+                             delta = token:sub(split_at + 1),
+                         }) .. "\n\n", 33)
                     emit("event: response.function_call_arguments.delta\ndata: " ..
                          core.json.encode({
                              type = "response.function_call_arguments.delta",
                              item_id = "call_1",
+                             output_index = 1,
                              delta = "{\"phone\":\"" .. token .. "\"}",
                          }) .. "\n\n", 41)
                     emit("event: response.completed\ndata: " ..
                          core.json.encode({type = "response.completed"}) ..
                          "\n\n", 19)
+                }
+            }
+
+            location /chat-overflow {
+                content_by_lua_block {
+                    local core = require("apisix.core")
+
+                    ngx.req.read_body()
+                    local request = assert(core.json.decode(ngx.req.get_body_data()))
+                    local token = assert(request.messages[1].content:match(
+                        "(__BK_REDACT_[0-9a-f]+_%d+__)"
+                    ))
+                    local prefix = token:sub(1, #token - 1)
+                    ngx.header.content_type = "text/event-stream"
+                    for index = 0, 1024 do
+                        ngx.print("data: " .. core.json.encode({
+                            choices = {{
+                                index = index,
+                                delta = {content = prefix},
+                            }},
+                        }) .. "\n\n")
+                        ngx.flush(true)
+                    end
                 }
             }
 
@@ -694,6 +738,17 @@ state-cleared
                         ),
                     },
                 },
+                {
+                    id = 10,
+                    value = {
+                        uri = "/redact-stream-overflow",
+                        plugins = stream_plugins(
+                            "openai",
+                            "http://127.0.0.1:6726/chat-overflow",
+                            "gpt-4o"
+                        ),
+                    },
+                },
             }
 
             for _, route in ipairs(routes) do
@@ -804,8 +859,8 @@ __BK_REDACT_
             assert(not response.body:find("__BK_REDACT_", 1, true))
 
             local events = sse.decode(response.body)
-            local text = ""
-            for index = 1, 2 do
+            local text = {[0] = "", [1] = ""}
+            for index = 1, 4 do
                 assert(
                     events[index].type == "response.output_text.delta",
                     "unexpected text event type at " .. index
@@ -813,29 +868,36 @@ __BK_REDACT_
                 local data = assert(core.json.decode(events[index].data))
                 assert(data.type == "response.output_text.delta", "data type changed")
                 assert(data.item_id == "msg_1", "item ID changed")
-                text = text .. data.delta
+                assert(data.output_index == 0, "output index changed")
+                assert(
+                    data.content_index == 0 or data.content_index == 1,
+                    "content index changed"
+                )
+                text[data.content_index] = text[data.content_index] .. data.delta
             end
-            local arguments_event = events[3]
+            local arguments_event = events[5]
             assert(
                 arguments_event.type == "response.function_call_arguments.delta",
                 "function event type changed"
             )
             local arguments_data = assert(core.json.decode(arguments_event.data))
             assert(arguments_data.item_id == "call_1", "function item ID changed")
+            assert(arguments_data.output_index == 1, "function output index changed")
             assert(
                 assert(core.json.decode(arguments_data.delta)).phone == phone,
                 "function arguments were not restored"
             )
-            assert(text == phone, "response text was not restored")
-            assert(events[4].type == "response.completed", "terminal event changed")
+            assert(text[0] == phone, "first response part was not restored")
+            assert(text[1] == phone, "second response part was not restored")
+            assert(events[6].type == "response.completed", "terminal event changed")
             assert(
-                assert(core.json.decode(events[4].data)).type == "response.completed",
+                assert(core.json.decode(events[6].data)).type == "response.completed",
                 "terminal data changed"
             )
             local cleanup = ngx.shared["plugin-limit-conn"]:get(
                 "cleanup-" .. request_id
             )
-            assert(cleanup == "2:0", "unexpected cleanup counts: " .. tostring(cleanup))
+            assert(cleanup == "3:0", "unexpected cleanup counts: " .. tostring(cleanup))
             ngx.say("openai-responses-restored")
         }
     }
@@ -1176,3 +1238,51 @@ unsupported-streams-rejected
 13000130000
 12900129000
 __BK_REDACT_
+
+
+
+=== TEST 10: streaming state overflow latches masked passthrough
+--- config
+    location /t {
+        content_by_lua_block {
+            local core = require("apisix.core")
+            local http = require("resty.http")
+            local state = ngx.shared["plugin-limit-conn"]
+            local request_id = "21739770-bcc7-44c4-94ee-d3932c16d80b"
+            local phone = "12800128000"
+            local response = assert(http.new():request_uri(
+                "http://127.0.0.1:" .. ngx.var.server_port ..
+                "/redact-stream-overflow", {
+                    method = "POST",
+                    keepalive = false,
+                    headers = {
+                        ["Content-Type"] = "application/json",
+                        ["X-Request-ID"] = request_id,
+                    },
+                    body = assert(core.json.encode({
+                        model = "gpt-4o",
+                        stream = true,
+                        messages = {{role = "user", content = "phone: " .. phone}},
+                    })),
+                }
+            ))
+            assert(response.status == 200, "overflow request failed")
+            assert(not response.body:find(phone, 1, true), "original leaked")
+            local namespace = state:get("namespace-" .. request_id)
+            assert(namespace, "missing request namespace")
+            assert(
+                response.body:find(namespace .. "1_", 1, true),
+                "masked prefix was not preserved"
+            )
+            local cleanup = state:get("cleanup-" .. request_id)
+            assert(cleanup, "overflow state was not cleared")
+            assert(cleanup ~= "0:1025", "overflow was deferred until EOF")
+            ngx.say("stream-overflow-masked")
+        }
+    }
+--- response_body
+stream-overflow-masked
+--- error_log
+failed to restore masked SSE response
+--- no_error_log
+12800128000

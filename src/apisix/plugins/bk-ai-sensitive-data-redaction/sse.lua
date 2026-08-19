@@ -19,9 +19,13 @@
 local core = require("apisix.core")
 local restorer = require("apisix.plugins.bk-ai-sensitive-data-redaction.restorer")
 local sse_codec = require("apisix.plugins.ai-transport.sse")
+local error = error
 local ipairs = ipairs
+local pairs = pairs
+local pcall = pcall
 local setmetatable = setmetatable
 local table_concat = table.concat
+local table_remove = table.remove
 local tostring = tostring
 local type = type
 
@@ -36,11 +40,42 @@ local CHAT_TEXT_FIELDS = {
 }
 
 local RESPONSE_MODES = {
-    ["response.output_text.delta"] = {field = "delta", mode = "text"},
-    ["response.reasoning_summary_text.delta"] = {field = "delta", mode = "text"},
+    ["response.output_text.delta"] = {
+        field = "delta",
+        mode = "text",
+        family = "output_text",
+        part_index = "content_index",
+    },
+    ["response.output_text.done"] = {
+        field = "text",
+        mode = "text",
+        family = "output_text",
+        part_index = "content_index",
+        done = true,
+    },
+    ["response.reasoning_summary_text.delta"] = {
+        field = "delta",
+        mode = "text",
+        family = "reasoning_summary_text",
+        part_index = "summary_index",
+    },
+    ["response.reasoning_summary_text.done"] = {
+        field = "text",
+        mode = "text",
+        family = "reasoning_summary_text",
+        part_index = "summary_index",
+        done = true,
+    },
     ["response.function_call_arguments.delta"] = {
         field = "delta",
         mode = "json_fragment",
+        family = "function_call_arguments",
+    },
+    ["response.function_call_arguments.done"] = {
+        field = "arguments",
+        mode = "json_fragment",
+        family = "function_call_arguments",
+        done = true,
     },
 }
 
@@ -112,6 +147,12 @@ local function make_response_final_event(meta, text)
     end
     if meta.output_index ~= nil then
         data.output_index = meta.output_index
+    end
+    if meta.content_index ~= nil then
+        data.content_index = meta.content_index
+    end
+    if meta.summary_index ~= nil then
+        data.summary_index = meta.summary_index
     end
 
     return {
@@ -244,6 +285,8 @@ local function is_valid_response_value(event, value)
     return type(value[field_config.field]) == "string"
            and is_optional_string(value.item_id)
            and is_optional_index(value.output_index)
+           and is_optional_index(value.content_index)
+           and is_optional_index(value.summary_index)
 end
 
 
@@ -271,13 +314,56 @@ local Processor = {}
 Processor.__index = Processor
 
 
-function Processor:restore_field(key, meta, value, mode)
-    local output, count = self.stream:feed(key, value, mode, false)
-    if self.keys[key] == nil then
-        self.key_order[#self.key_order + 1] = key
+local function remove_key(processor, key)
+    if processor.keys[key] == nil then
+        return
     end
-    self.keys[key] = meta
+
+    processor.keys[key] = nil
+    for index, ordered_key in ipairs(processor.key_order) do
+        if ordered_key == key then
+            table_remove(processor.key_order, index)
+            return
+        end
+    end
+end
+
+
+function Processor:restore_field(key, meta, value, mode)
+    local output, count, stream_err = self.stream:feed(key, value, mode, false)
+    if stream_err then
+        error(stream_err, 0)
+    end
+
+    if self.stream.states[key] then
+        if self.keys[key] == nil then
+            self.key_order[#self.key_order + 1] = key
+        end
+        self.keys[key] = meta
+    else
+        remove_key(self, key)
+    end
+
     return output, count
+end
+
+
+function Processor:finalize_key(key)
+    local meta = self.keys[key]
+    if not meta then
+        return "", 0, 0
+    end
+
+    local pending, count, stream_err = self.stream:feed(key, "", meta.mode, true)
+    if stream_err then
+        error(stream_err, 0)
+    end
+    remove_key(self, key)
+    if pending == "" then
+        return "", count, 0
+    end
+
+    return sse_codec.encode(make_final_event(meta, pending)), count, 1
 end
 
 
@@ -287,7 +373,10 @@ function Processor:finalize()
     local unresolved_count = 0
     for _, key in ipairs(self.key_order) do
         local meta = self.keys[key]
-        local pending, count = self.stream:feed(key, "", meta.mode, true)
+        local pending, count, stream_err = self.stream:feed(key, "", meta.mode, true)
+        if stream_err then
+            error(stream_err, 0)
+        end
         restored_count = restored_count + count
         if pending ~= "" then
             output[#output + 1] = sse_codec.encode(make_final_event(meta, pending))
@@ -297,6 +386,8 @@ function Processor:finalize()
 
     self.keys = {}
     self.key_order = {}
+    self.stream.active_count = 0
+    self.stream.pending_bytes = 0
     return table_concat(output), restored_count, unresolved_count
 end
 
@@ -313,9 +404,11 @@ function Processor:fail_closed(buffered)
             )
             unresolved_count = unresolved_count + 1
         end
-        self.stream.states[key] = nil
     end
 
+    self.stream.states = {}
+    self.stream.active_count = 0
+    self.stream.pending_bytes = 0
     self.keys = {}
     self.key_order = {}
     self.remainder = ""
@@ -423,42 +516,81 @@ function Processor:process_chat_event(event, value)
 end
 
 
+local function response_key_part(value)
+    if type(value) == "string" then
+        return "s" .. #value .. ":" .. value
+    end
+    if type(value) == "number" then
+        return "n" .. tostring(value)
+    end
+    return "-"
+end
+
+
+local function response_key(field_config, value)
+    local part_index
+    if field_config.part_index then
+        part_index = value[field_config.part_index]
+    end
+    return "response:" .. field_config.family .. ":" ..
+           response_key_part(value.item_id) .. ":" ..
+           response_key_part(value.output_index) .. ":" ..
+           response_key_part(part_index)
+end
+
+
 function Processor:process_response_event(event, value)
     if not is_valid_response_value(event, value) then
-        return false, 0
+        return false, 0, "", 0
     end
 
     local data_type = value.type or event.type
     local field_config = RESPONSE_MODES[data_type]
     if not field_config or type(value[field_config.field]) ~= "string" then
-        return false, 0
+        return false, 0, "", 0
     end
 
-    local logical_id = value.item_id
-    if logical_id == nil then
-        logical_id = value.output_index
+    local key = response_key(field_config, value)
+    local prefix = ""
+    local prefix_count = 0
+    local unresolved_count = 0
+    if field_config.done then
+        prefix, prefix_count, unresolved_count = self:finalize_key(key)
     end
-    local key = data_type .. ":" .. tostring(logical_id or "") .. ":" .. field_config.field
-    local restored, count = self:restore_field(
-        key,
-        {
-            event_type = event.type,
-            protocol_name = self.protocol_name,
-            data_type = data_type,
-            field = field_config.field,
-            mode = field_config.mode,
-            item_id = value.item_id,
-            output_index = value.output_index,
-        },
-        value[field_config.field],
-        field_config.mode
-    )
+
+    local meta = {
+        event_type = event.type,
+        protocol_name = self.protocol_name,
+        data_type = data_type,
+        field = field_config.field,
+        mode = field_config.mode,
+        item_id = value.item_id,
+        output_index = value.output_index,
+        content_index = value.content_index,
+        summary_index = value.summary_index,
+    }
+    local restored
+    local count
+    if field_config.done then
+        local stream_err
+        restored, count, stream_err = self.stream:feed(
+            key, value[field_config.field], field_config.mode, true
+        )
+        if stream_err then
+            error(stream_err, 0)
+        end
+    else
+        restored, count = self:restore_field(
+            key, meta, value[field_config.field], field_config.mode
+        )
+    end
+    count = count + prefix_count
     if restored == value[field_config.field] then
-        return false, count
+        return false, count, prefix, unresolved_count
     end
 
     value[field_config.field] = restored
-    return true, count
+    return true, count, prefix, unresolved_count
 end
 
 
@@ -529,25 +661,28 @@ function Processor:process_frame(frame)
 
     local changed
     local restored_count
+    local prefix = ""
+    local unresolved_count = 0
     if self.protocol_name == "openai-chat" then
         changed, restored_count = self:process_chat_event(event, value)
 
     elseif self.protocol_name == "openai-responses" then
-        changed, restored_count = self:process_response_event(event, value)
+        changed, restored_count, prefix, unresolved_count =
+            self:process_response_event(event, value)
 
     else
         changed, restored_count = self:process_anthropic_event(event, value)
     end
     if not changed then
-        return frame, restored_count, 0
+        return prefix .. frame, restored_count, unresolved_count
     end
 
     event.data = core.json.encode(value)
-    return sse_codec.encode(event), restored_count, 0
+    return prefix .. sse_codec.encode(event), restored_count, unresolved_count
 end
 
 
-function Processor:feed(chunk, eof)
+local function feed_unsafe(self, chunk, eof)
     local buffer = self.remainder .. (chunk or "")
     local output = {}
     local restored_count = 0
@@ -589,6 +724,52 @@ function Processor:feed(chunk, eof)
     end
 
     return table_concat(output), restored_count, unresolved_count
+end
+
+
+local function snapshot_processor(processor)
+    local states = {}
+    for key, state in pairs(processor.stream.states) do
+        states[key] = {pending = state.pending}
+    end
+
+    local keys = {}
+    for key, meta in pairs(processor.keys) do
+        keys[key] = meta
+    end
+
+    local key_order = {}
+    for index, key in ipairs(processor.key_order) do
+        key_order[index] = key
+    end
+
+    return {
+        remainder = processor.remainder,
+        states = states,
+        active_count = processor.stream.active_count,
+        pending_bytes = processor.stream.pending_bytes,
+        keys = keys,
+        key_order = key_order,
+    }
+end
+
+
+function Processor:feed(chunk, eof)
+    local snapshot = snapshot_processor(self)
+    local ok, output, restored_count, unresolved_count = pcall(
+        feed_unsafe, self, chunk, eof
+    )
+    if ok then
+        return output, restored_count, unresolved_count
+    end
+
+    self.remainder = snapshot.remainder
+    self.stream.states = snapshot.states
+    self.stream.active_count = snapshot.active_count
+    self.stream.pending_bytes = snapshot.pending_bytes
+    self.keys = snapshot.keys
+    self.key_order = snapshot.key_order
+    error(output, 0)
 end
 
 
