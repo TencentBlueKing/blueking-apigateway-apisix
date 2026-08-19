@@ -753,6 +753,41 @@ describe(
                 )
 
                 it(
+                    "passes structurally invalid Chat data through and restores the next frame",
+                    function()
+                        local processor = assert(sse.new(
+                            "openai-chat", {[token] = "13800138000"}, namespace
+                        ))
+                        local malformed_data =
+                            '{"choices":[1],"masked":"' .. token .. '"}'
+                        local malformed = "data: " .. malformed_data .. "\n\n"
+                        local valid = "data: " .. core.json.encode({
+                            choices = {
+                                {
+                                    index = 0,
+                                    delta = {content = token},
+                                },
+                            },
+                        }) .. "\n\n"
+
+                        local ok, output, restored_count, unresolved_count =
+                            pcall(processor.feed, processor, malformed .. valid, false)
+
+                        assert.is_true(ok)
+                        local events = sse_codec.decode(output)
+                        assert.is_equal(malformed_data, events[1].data)
+                        assert.is_truthy(events[1].data:find(token, 1, true))
+                        assert.is_falsy(events[1].data:find("13800138000", 1, true))
+                        local restored = core.json.decode(events[2].data)
+                        assert.is_equal(
+                            "13800138000", restored.choices[1].delta.content
+                        )
+                        assert.is_equal(1, restored_count)
+                        assert.is_equal(0, unresolved_count)
+                    end
+                )
+
+                it(
                     "bounds incomplete frame buffering at one MiB", function()
                         local limit = 1024 * 1024
                         local at_limit = string.rep("x", limit)

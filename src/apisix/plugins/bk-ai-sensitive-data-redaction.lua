@@ -490,6 +490,26 @@ local function clear_sensitive_state(ctx)
 end
 
 
+local function ensure_stream_counts(ctx)
+    if type(ctx._ai_redaction_restored_count) ~= "number" then
+        ctx._ai_redaction_restored_count = 0
+    end
+    if type(ctx._ai_redaction_unresolved_count) ~= "number" then
+        ctx._ai_redaction_unresolved_count = 0
+    end
+end
+
+
+local function latch_stream_passthrough(ctx)
+    if ctx._ai_redaction_stream_passthrough then
+        return
+    end
+
+    ctx._ai_redaction_stream_passthrough = true
+    clear_sensitive_state(ctx)
+end
+
+
 function _M.access(conf, ctx)
     if not ctx.picked_ai_instance or not ctx.ai_client_protocol then
         return 500,
@@ -578,28 +598,67 @@ end
 
 function _M.lua_body_filter(_, ctx, _, body, eof)
     if ctx.var.request_type == "ai_stream" then
+        local chunk = body or ""
+        ensure_stream_counts(ctx)
+        if ctx._ai_redaction_stream_passthrough then
+            return nil, chunk
+        end
+
         if not ctx._ai_redaction_sse_restorer then
-            local processor, err = sse_restorer.new(
+            local ok, processor = pcall(
+                sse_restorer.new,
                 ctx.ai_client_protocol,
                 ctx._ai_redaction_mapping,
                 ctx._ai_redaction_namespace
             )
-            if not processor then
+            if not ok or type(processor) ~= "table"
+                    or type(processor.feed) ~= "function" then
                 core.log.error(
-                    "failed to create SSE restorer: ", err,
+                    "failed to create SSE restorer",
                     ", request_id: ", ctx._ai_redaction_request_id
                 )
-                return
+                latch_stream_passthrough(ctx)
+                return nil, chunk
             end
             ctx._ai_redaction_sse_restorer = processor
         end
 
-        local output, restored_count, unresolved_count =
-            ctx._ai_redaction_sse_restorer:feed(body or "", eof == true)
+        local processor = ctx._ai_redaction_sse_restorer
+        local buffered = type(processor.remainder) == "string"
+                         and processor.remainder or ""
+        local ok, output, restored_count, unresolved_count = pcall(
+            processor.feed, processor, chunk, eof == true
+        )
+        if not ok or type(output) ~= "string"
+                or type(restored_count) ~= "number"
+                or type(unresolved_count) ~= "number" then
+            local prefix = buffered
+            local fallback = processor.fail_closed
+            if type(fallback) == "function" then
+                local fallback_ok, fallback_output, fallback_unresolved = pcall(
+                    fallback, processor, buffered
+                )
+                if fallback_ok and type(fallback_output) == "string" then
+                    prefix = fallback_output
+                    if type(fallback_unresolved) == "number" then
+                        ctx._ai_redaction_unresolved_count =
+                            ctx._ai_redaction_unresolved_count + fallback_unresolved
+                    end
+                end
+            end
+
+            core.log.error(
+                "failed to restore masked SSE response",
+                ", request_id: ", ctx._ai_redaction_request_id
+            )
+            latch_stream_passthrough(ctx)
+            return nil, prefix .. chunk
+        end
+
         ctx._ai_redaction_restored_count =
-            (ctx._ai_redaction_restored_count or 0) + restored_count
+            ctx._ai_redaction_restored_count + restored_count
         ctx._ai_redaction_unresolved_count =
-            (ctx._ai_redaction_unresolved_count or 0) + unresolved_count
+            ctx._ai_redaction_unresolved_count + unresolved_count
 
         if eof then
             clear_sensitive_state(ctx)

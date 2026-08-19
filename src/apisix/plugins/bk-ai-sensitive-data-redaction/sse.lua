@@ -149,6 +149,108 @@ local function make_final_event(meta, text)
 end
 
 
+local function is_optional_index(value)
+    return value == nil or type(value) == "number"
+end
+
+
+local function is_optional_string(value)
+    return value == nil or type(value) == "string"
+end
+
+
+local function is_valid_chat_value(value)
+    if value.choices == nil then
+        return true
+    end
+    if type(value.choices) ~= "table" then
+        return false
+    end
+
+    for _, choice in ipairs(value.choices) do
+        if type(choice) ~= "table" or not is_optional_index(choice.index) then
+            return false
+        end
+
+        local delta = choice.delta
+        if delta ~= nil then
+            if type(delta) ~= "table" then
+                return false
+            end
+            for _, field in ipairs(CHAT_TEXT_FIELDS) do
+                if not is_optional_string(delta[field]) then
+                    return false
+                end
+            end
+
+            local function_call = delta.function_call
+            if function_call ~= nil then
+                if type(function_call) ~= "table"
+                        or not is_optional_string(function_call.arguments) then
+                    return false
+                end
+            end
+
+            local tool_calls = delta.tool_calls
+            if tool_calls ~= nil then
+                if type(tool_calls) ~= "table" then
+                    return false
+                end
+                for _, tool_call in ipairs(tool_calls) do
+                    if type(tool_call) ~= "table"
+                            or not is_optional_index(tool_call.index) then
+                        return false
+                    end
+                    local func = tool_call["function"]
+                    if func ~= nil and (type(func) ~= "table"
+                            or not is_optional_string(func.arguments)) then
+                        return false
+                    end
+                end
+            end
+        end
+    end
+
+    return true
+end
+
+
+local function is_valid_response_value(event, value)
+    if not is_optional_string(value.type) then
+        return false
+    end
+
+    local field_config = RESPONSE_MODES[value.type or event.type]
+    if not field_config then
+        return true
+    end
+
+    return type(value[field_config.field]) == "string"
+           and is_optional_string(value.item_id)
+           and is_optional_index(value.output_index)
+end
+
+
+local function is_valid_anthropic_value(value)
+    if not is_optional_string(value.type) or not is_optional_index(value.index) then
+        return false
+    end
+    if value.delta == nil then
+        return true
+    end
+    if type(value.delta) ~= "table" or not is_optional_string(value.delta.type) then
+        return false
+    end
+
+    local field_config = ANTHROPIC_MODES[value.delta.type]
+    if not field_config then
+        return true
+    end
+
+    return type(value.delta[field_config.field]) == "string"
+end
+
+
 local Processor = {}
 Processor.__index = Processor
 
@@ -183,10 +285,33 @@ function Processor:finalize()
 end
 
 
+function Processor:fail_closed(buffered)
+    local output = {}
+    local unresolved_count = 0
+    for _, key in ipairs(self.key_order) do
+        local state = self.stream.states[key]
+        if type(state) == "table" and type(state.pending) == "string"
+                and state.pending ~= "" then
+            output[#output + 1] = sse_codec.encode(
+                make_final_event(self.keys[key], state.pending)
+            )
+            unresolved_count = unresolved_count + 1
+        end
+        self.stream.states[key] = nil
+    end
+
+    self.keys = {}
+    self.key_order = {}
+    self.remainder = ""
+    output[#output + 1] = buffered or ""
+    return table_concat(output), unresolved_count
+end
+
+
 function Processor:process_chat_event(event, value)
     local changed = false
     local restored_count = 0
-    if type(value.choices) ~= "table" then
+    if not is_valid_chat_value(value) or type(value.choices) ~= "table" then
         return false, 0
     end
 
@@ -283,6 +408,10 @@ end
 
 
 function Processor:process_response_event(event, value)
+    if not is_valid_response_value(event, value) then
+        return false, 0
+    end
+
     local data_type = value.type or event.type
     local field_config = RESPONSE_MODES[data_type]
     if not field_config or type(value[field_config.field]) ~= "string" then
@@ -318,6 +447,10 @@ end
 
 
 function Processor:process_anthropic_event(event, value)
+    if not is_valid_anthropic_value(value) then
+        return false, 0
+    end
+
     local delta = value.delta
     if type(delta) ~= "table" then
         return false, 0

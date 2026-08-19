@@ -19,6 +19,7 @@
 local core = require("apisix.core")
 local http = require("resty.http")
 local plugin = require("apisix.plugins.bk-ai-sensitive-data-redaction")
+local sse_restorer = require("apisix.plugins.bk-ai-sensitive-data-redaction.sse")
 
 
 describe(
@@ -1111,6 +1112,129 @@ describe(
                         assert.is_nil(ctx._ai_redaction_sse_restorer)
                         assert.is_equal(1, ctx._ai_redaction_restored_count)
                         assert.is_equal(0, ctx._ai_redaction_unresolved_count)
+                    end
+                )
+            end
+        )
+
+        context(
+            "stream failure fallback", function()
+                before_each(
+                    function()
+                        stub(core.log, "error")
+                    end
+                )
+
+                after_each(
+                    function()
+                        core.log.error:revert()
+                    end
+                )
+
+                it(
+                    "latches masked passthrough when processor construction fails",
+                    function()
+                        local request_id = "cfb5b639-d51b-42d6-b62c-f1083007376a"
+                        local namespace =
+                            "__BK_REDACT_cfb5b639d51b42d6b62cf1083007376a_"
+                        local token = namespace .. "1__"
+                        local frame = "data: {\"masked\":\"" .. token .. "\"}\n\n"
+                        local ctx = request_context({
+                            var = {request_type = "ai_stream"},
+                            _ai_redaction_request_id = request_id,
+                            _ai_redaction_session_id =
+                                "24395b38-bf3f-426c-a632-10df20ec69c8",
+                            _ai_redaction_namespace = namespace,
+                            _ai_redaction_mapping = nil,
+                        })
+
+                        local code1, output1 = plugin.lua_body_filter(
+                            config(), ctx, {}, frame, false
+                        )
+                        local code2, output2 = plugin.lua_body_filter(
+                            config(), ctx, {}, frame, true
+                        )
+
+                        assert.is_nil(code1)
+                        assert.is_nil(code2)
+                        assert.is_equal(frame, output1)
+                        assert.is_equal(frame, output2)
+                        assert.is_falsy(output1:find("13800138000", 1, true))
+                        assert.is_true(ctx._ai_redaction_stream_passthrough)
+                        assert.is_equal(0, ctx._ai_redaction_restored_count)
+                        assert.is_equal(0, ctx._ai_redaction_unresolved_count)
+                        assert.is_nil(ctx._ai_redaction_session_id)
+                        assert.is_nil(ctx._ai_redaction_namespace)
+                        assert.is_nil(ctx._ai_redaction_mapping)
+                        assert.is_nil(ctx._ai_redaction_sse_restorer)
+                        assert.stub(core.log.error).was_called(1)
+                        assert.stub(core.log.error).was_called_with(
+                            "failed to create SSE restorer",
+                            ", request_id: ",
+                            request_id
+                        )
+                    end
+                )
+
+                it(
+                    "preserves buffered masked bytes and latches after feed failure",
+                    function()
+                        local request_id = "157240cf-4f4b-412d-8240-9f904123aa0d"
+                        local namespace =
+                            "__BK_REDACT_157240cf4f4b412d82409f904123aa0d_"
+                        local token = namespace .. "1__"
+                        local processor = assert(sse_restorer.new(
+                            "openai-chat", {[token] = "13800138000"}, namespace
+                        ))
+                        local buffered = "data: {\"choices\":["
+                        assert.is_equal("", processor:feed(buffered, false))
+                        local feed_count = 0
+                        processor.feed = function()
+                            feed_count = feed_count + 1
+                            error("unexpected feed failure with sensitive values")
+                        end
+                        local ctx = request_context({
+                            var = {request_type = "ai_stream"},
+                            _ai_redaction_request_id = request_id,
+                            _ai_redaction_session_id =
+                                "24395b38-bf3f-426c-a632-10df20ec69c8",
+                            _ai_redaction_namespace = namespace,
+                            _ai_redaction_mapping = {[token] = "13800138000"},
+                            _ai_redaction_sse_restorer = processor,
+                            _ai_redaction_restored_count = 3,
+                            _ai_redaction_unresolved_count = 4,
+                        })
+                        local remainder = "1]}\n\n"
+                        local valid = "data: {\"choices\":[{\"delta\":{\"content\":\"" ..
+                                      token .. "\"}}]}\n\n"
+
+                        local code1, output1 = plugin.lua_body_filter(
+                            config(), ctx, {}, remainder, false
+                        )
+                        local code2, output2 = plugin.lua_body_filter(
+                            config(), ctx, {}, valid, true
+                        )
+
+                        assert.is_nil(code1)
+                        assert.is_nil(code2)
+                        assert.is_equal(buffered .. remainder, output1)
+                        assert.is_equal(valid, output2)
+                        assert.is_falsy(output1:find("13800138000", 1, true))
+                        assert.is_falsy(output2:find("13800138000", 1, true))
+                        assert.is_equal(1, feed_count)
+                        assert.is_true(ctx._ai_redaction_stream_passthrough)
+                        assert.is_equal(3, ctx._ai_redaction_restored_count)
+                        assert.is_equal(4, ctx._ai_redaction_unresolved_count)
+                        assert.is_nil(ctx._ai_redaction_session_id)
+                        assert.is_nil(ctx._ai_redaction_namespace)
+                        assert.is_nil(ctx._ai_redaction_mapping)
+                        assert.is_nil(ctx._ai_redaction_sse_restorer)
+                        assert.stub(core.log.error).was_called(1)
+                        assert.stub(core.log.error).was_called_with(
+                            "failed to restore masked SSE response",
+                            ", request_id: ",
+                            request_id
+                        )
                     end
                 )
             end

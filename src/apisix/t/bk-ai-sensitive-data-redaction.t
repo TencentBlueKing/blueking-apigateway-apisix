@@ -93,6 +93,40 @@ add_block_preprocessor(sub {
                     local token = assert(content:match(
                         "(__BK_REDACT_[0-9a-f]+_%d+__)"
                     ))
+                    local overlap_role
+                    if content:find("overlap-first", 1, true) then
+                        overlap_role = "first"
+                    elseif content:find("overlap-second", 1, true) then
+                        overlap_role = "second"
+                    end
+                    local state = ngx.shared["plugin-limit-conn"]
+                    if overlap_role then
+                        state:incr("ai-redaction-overlap-arrived", 1, 0)
+                        if overlap_role == "second" then
+                            state:set("ai-redaction-overlap-second-waiting", 1)
+                        end
+
+                        local deadline = ngx.now() + 3
+                        while state:get("ai-redaction-overlap-arrived") < 2
+                                or (overlap_role == "first" and
+                                    state:get(
+                                        "ai-redaction-overlap-second-waiting"
+                                    ) ~= 1) do
+                            assert(ngx.now() < deadline, "overlap arrival timed out")
+                            ngx.sleep(0.001)
+                        end
+                        if overlap_role == "second" then
+                            while state:get(
+                                    "ai-redaction-overlap-release-second"
+                                  ) ~= 1 do
+                                assert(
+                                    ngx.now() < deadline,
+                                    "overlap release timed out"
+                                )
+                                ngx.sleep(0.001)
+                            end
+                        end
+                    end
                     local split_at = math.floor(#token / 2)
                     local function emit(frame, transport_split)
                         ngx.print(frame:sub(1, transport_split))
@@ -128,6 +162,12 @@ add_block_preprocessor(sub {
                     }) .. "\n\n", 37)
                     ngx.print("data: [DONE]\n\n")
                     ngx.flush(true)
+                    if overlap_role then
+                        state:set(
+                            "ai-redaction-overlap-" .. overlap_role .. "-finished",
+                            1
+                        )
+                    end
                 }
             }
 
@@ -897,8 +937,19 @@ __BK_REDACT_
             local phone_2 = "13500135000"
             local phone_3 = "13400134000"
             local before_calls = state:get("ai-redaction-call-count") or 0
+            state:delete("ai-redaction-overlap-arrived")
+            state:delete("ai-redaction-overlap-second-waiting")
+            state:delete("ai-redaction-overlap-release-second")
+            state:delete("ai-redaction-overlap-first-finished")
+            state:delete("ai-redaction-overlap-second-finished")
+            state:delete("cleanup-" .. request_id_1)
+            state:delete("cleanup-" .. request_id_2)
 
-            local function invoke(request_id, phone)
+            local function invoke(request_id, phone, overlap_role)
+                local content = phone
+                if overlap_role then
+                    content = overlap_role .. " " .. content
+                end
                 return assert(http.new():request_uri(
                     "http://127.0.0.1:" .. ngx.var.server_port ..
                     "/redact-stream", {
@@ -912,17 +963,36 @@ __BK_REDACT_
                         body = assert(core.json.encode({
                             model = "gpt-4o",
                             stream = true,
-                            messages = {{role = "user", content = phone}},
+                            messages = {{role = "user", content = content}},
                         })),
                     }
                 ))
             end
 
-            local thread1 = ngx.thread.spawn(invoke, request_id_1, phone_1)
-            local thread2 = ngx.thread.spawn(invoke, request_id_2, phone_2)
+            local thread1 = ngx.thread.spawn(
+                invoke, request_id_1, phone_1, "overlap-first"
+            )
+            local thread2 = ngx.thread.spawn(
+                invoke, request_id_2, phone_2, "overlap-second"
+            )
             local ok1, response1 = ngx.thread.wait(thread1)
+            assert(ok1)
+            assert(state:get("ai-redaction-overlap-arrived") == 2)
+            assert(state:get("ai-redaction-overlap-second-waiting") == 1)
+            assert(state:get("ai-redaction-overlap-first-finished") == 1)
+            assert(state:get("ai-redaction-overlap-second-finished") == nil)
+            assert(state:get("session-" .. request_id_1) == session_id)
+            assert(state:get("session-" .. request_id_2) == session_id)
+            assert(
+                state:get("namespace-" .. request_id_1) ~=
+                state:get("namespace-" .. request_id_2)
+            )
+            assert(state:get("cleanup-" .. request_id_1) == "2:0")
+            assert(state:get("cleanup-" .. request_id_2) == nil)
+            state:set("ai-redaction-overlap-release-second", 1)
             local ok2, response2 = ngx.thread.wait(thread2)
-            assert(ok1 and ok2)
+            assert(ok2)
+            assert(state:get("ai-redaction-overlap-second-finished") == 1)
             assert(response1.status == 200, "first concurrent request failed")
             assert(response2.status == 200, "second concurrent request failed")
             assert(response1.body:find(phone_1, 1, true))
