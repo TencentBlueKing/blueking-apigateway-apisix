@@ -70,6 +70,7 @@ local FORBIDDEN_AUTH_HEADERS = {
 --   27 + 6*max_request_body_bytes + 6*max_mapping_bytes + 33*max_mapping_entries
 -- The hard ceiling keeps a misconfigured limit from permitting an unbounded worker buffer.
 local MAX_RESPONSE_WIRE_BYTES = 64 * 1024 * 1024
+local MAX_RESPONSE_READ_BYTES = 8192
 local RESPONSE_ENVELOPE_BYTES = 27
 local JSON_ESCAPE_MULTIPLIER = 6
 local MAPPING_ENTRY_STRUCTURE_BYTES = 33
@@ -325,7 +326,11 @@ local function read_bounded_response(res, max_bytes)
     local chunks = {}
     local total = 0
     while true do
-        local chunk, read_err = res.body_reader()
+        local remaining = max_bytes - total
+        -- Read one byte past the remaining allowance to detect overflow without
+        -- letting lua-resty-http allocate an entire declared chunk or body.
+        local read_size = math_min(MAX_RESPONSE_READ_BYTES, remaining + 1)
+        local chunk, read_err = res.body_reader(read_size)
         if read_err then
             return nil, "redaction service read failed: " .. read_err
         end

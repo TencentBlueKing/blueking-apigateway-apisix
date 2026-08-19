@@ -120,6 +120,7 @@ describe(
                     request_count = 0,
                     read_count = 0,
                     body_reader_count = 0,
+                    body_reader_sizes = {},
                     read_body_count = 0,
                     keepalive_count = 0,
                     close_count = 0,
@@ -165,24 +166,34 @@ describe(
 
                                 observed.payload = assert(core.json.decode(options.body))
                                 local raw = behavior.response_builder(observed.payload)
-                                local chunks = behavior.response_chunks or {raw}
-                                local chunk_index = 0
+                                local response_body = behavior.response_body or raw
+                                local response_offset = 1
                                 return {
                                     status = behavior.response_status,
                                     headers = behavior.response_headers,
-                                    body_reader = function()
+                                    body_reader = function(max_bytes)
                                         observed.body_reader_count =
                                             observed.body_reader_count + 1
+                                        observed.body_reader_sizes[
+                                            #observed.body_reader_sizes + 1
+                                        ] = max_bytes or false
                                         if behavior.read_error then
                                             observed.read_count = observed.read_count + 1
                                             return nil, behavior.read_error
                                         end
 
-                                        chunk_index = chunk_index + 1
-                                        local chunk = chunks[chunk_index]
-                                        if chunk then
-                                            observed.read_count = observed.read_count + 1
+                                        if response_offset > #response_body then
+                                            return nil
                                         end
+
+                                        local remaining = #response_body - response_offset + 1
+                                        local read_size = math.min(max_bytes or remaining, remaining)
+                                        local chunk = response_body:sub(
+                                            response_offset,
+                                            response_offset + read_size - 1
+                                        )
+                                        response_offset = response_offset + #chunk
+                                        observed.read_count = observed.read_count + 1
                                         return chunk
                                     end,
                                     read_body = function()
@@ -808,25 +819,28 @@ describe(
                 )
 
                 it(
-                    "closes a chunked response when its accumulated body exceeds the cap",
+                    "bounds reader allocations when one wire chunk exceeds the cap",
                     function()
                         local ctx = request_context()
-                        -- The same 1413-byte derived cap is crossed by the second chunk.
-                        behavior.response_chunks = {
-                            string.rep("a", 1000),
-                            string.rep("b", 414),
-                        }
+                        -- Wire cap = 27 + 6*1400 body bytes + 6*1 mapping byte
+                        --            + 33*1 mapping entry = 8466 bytes.
+                        behavior.response_body = string.rep("a", 8467)
 
                         local code, err = plugin.access(config({
-                            max_request_body_bytes = 200,
-                            max_mapping_bytes = 20,
-                            max_mapping_entries = 2,
+                            max_request_body_bytes = 1400,
+                            max_mapping_bytes = 1,
+                            max_mapping_entries = 1,
                         }), ctx)
 
                         assert.is_equal(502, code)
                         assert.is_same({
                             message = "redaction service response size limit exceeded",
                         }, err)
+                        assert.is_same({8192, 275}, observed.body_reader_sizes)
+                        for _, read_size in ipairs(observed.body_reader_sizes) do
+                            assert.is_true(read_size > 0)
+                            assert.is_true(read_size <= 8192)
+                        end
                         assert.is_equal(2, observed.read_count)
                         assert.is_equal(2, observed.body_reader_count)
                         assert.is_equal(0, observed.read_body_count)
