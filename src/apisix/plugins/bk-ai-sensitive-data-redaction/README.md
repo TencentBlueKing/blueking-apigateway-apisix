@@ -291,12 +291,20 @@ and counted as unresolved.
 
 All mappings, namespaces, session IDs, and SSE buffers live only in the current
 request context. The plugin does not use an Nginx shared dictionary, etcd,
-Redis, files, or another cross-request store. While the final-body filter is
-active, body-bearing provider option and override values are not logged, and
-request-payload logging receives only the contract-verified masked body. This
-plugin path logs no original body, mapping, session, authentication, provider-
-option, or override value. Operational restoration/connection failures may be
-logged with the non-secret `request_id` for correlation.
+Redis, files, or another cross-request store. On entry to the plugin's access
+phase, request-payload logging is set to `{}` and remains empty through plugin
+validation, lower-priority access, provider routing, and request-build failures.
+Only a contract-verified masked body replaces it. While the final-body filter is
+active, body-bearing model options, LLM/request-body overrides, and
+authentication values are suppressed from the relevant AI-proxy logs; the
+original body, mapping, and session ID are not logged by this path.
+
+This is not a blanket promise that every provider option or override-derived
+value is absent from logs. Standard AI-proxy transport logs may retain
+endpoint-derived non-body metadata such as `scheme`, `host`, `port`, `path`, and
+`ssl_server_name`. Operators must treat endpoint metadata as log-visible and
+restrict log access accordingly. Operational restoration/connection failures
+may also be logged with the non-secret `request_id` for correlation.
 
 The implementation maintains request-context-only numeric counters
 `ctx._ai_redaction_restored_count` and
@@ -570,11 +578,18 @@ chunk 保持 passthrough。如果上游遵守协议，这会保留占位符；�
 事件或 EOF 到达时，待处理的不完整占位符会原样输出，并计入 unresolved 数量。
 
 所有 mapping、命名空间、session ID 和 SSE buffer 只存在于当前请求上下文中。
-插件不使用 Nginx shared dictionary、etcd、Redis、文件或其他跨请求存储。最终
-body filter 生效时，不记录包含 body 的 provider option/override 值，请求 payload
-日志只接收通过协议校验的脱敏 body。该插件路径不会记录原始 body、mapping、session、
-认证、provider option 或 override 值；还原/连接相关的运行错误可能携带非秘密的
-`request_id` 用于关联。
+插件不使用 Nginx shared dictionary、etcd、Redis、文件或其他跨请求存储。进入本
+插件 access 阶段时，请求 payload 日志即被设置为 `{}`；在插件校验、较低优先级
+access、provider 路由和请求构建失败期间均保持为空，只有通过协议校验的脱敏 body
+会替换它。最终 body filter 生效时，相关 AI-proxy 日志会抑制包含 body 的 model
+options、LLM/request-body override 和认证值；该路径不会记录原始 body、mapping 或
+session ID。
+
+这不代表日志中绝不会出现任何 provider option 或由 override 派生的值。标准
+AI-proxy 传输日志仍可能保留 endpoint 派生的非 body 元数据，例如 `scheme`、`host`、
+`port`、`path` 和 `ssl_server_name`。运维方必须把 endpoint 元数据视为日志可见信息，
+并相应限制日志访问权限。还原/连接相关的运行错误也可能携带非秘密的 `request_id`
+用于关联。
 
 当前实现只在请求上下文内维护数值计数器
 `ctx._ai_redaction_restored_count` 和
