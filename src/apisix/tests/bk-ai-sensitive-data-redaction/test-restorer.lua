@@ -18,6 +18,8 @@
 
 local core = require("apisix.core")
 local restorer = require("apisix.plugins.bk-ai-sensitive-data-redaction.restorer")
+local sse = require("apisix.plugins.bk-ai-sensitive-data-redaction.sse")
+local sse_codec = require("apisix.plugins.ai-transport.sse")
 
 describe(
     "bk-ai-sensitive-data-redaction restorer", function()
@@ -348,6 +350,278 @@ describe(
                         assert.is_equal("", first)
                         assert.is_equal(prefix, final_out)
                         assert.is_equal(0, count)
+                    end
+                )
+            end
+        )
+
+        context(
+            "SSE restoration", function()
+                it(
+                    "restores an OpenAI Chat placeholder split across events", function()
+                        local processor = assert(sse.new(
+                            "openai-chat", {[token] = "13800138000"}, namespace
+                        ))
+                        local event1 =
+                            "data: {\"choices\":[{\"index\":0,\"delta\":{\"content\":\"phone " ..
+                            token:sub(1, 30) .. "\"}}]}\n\n"
+                        local event2 =
+                            "data: {\"choices\":[{\"index\":0,\"delta\":{\"content\":\"" ..
+                            token:sub(31) .. "\"}}]}\n\n"
+
+                        local out1 = processor:feed(event1 .. event2:sub(1, 20), false)
+                        local out2 = processor:feed(
+                            event2:sub(21) .. "data: [DONE]\n\n", false
+                        )
+
+                        assert.is_truthy(out1:find("phone ", 1, true))
+                        assert.is_falsy(out1:find("13800138000", 1, true))
+                        assert.is_truthy(out2:find("13800138000", 1, true))
+                        assert.is_truthy(out2:find("data: [DONE]", 1, true))
+                    end
+                )
+
+                it(
+                    "preserves keepalive comments byte-for-byte", function()
+                        local processor = assert(sse.new("openai-chat", {}, namespace))
+
+                        local output = processor:feed(": keepalive\n\n", false)
+
+                        assert.is_equal(": keepalive\n\n", output)
+                    end
+                )
+
+                it(
+                    "preserves unmodified CRLF frames byte-for-byte", function()
+                        local processor = assert(sse.new(
+                            "openai-chat", {[token] = "13800138000"}, namespace
+                        ))
+                        local frame =
+                            "data: {\"choices\":[{\"index\":0," ..
+                            "\"delta\":{\"content\":\"hello\"}}]}\r\n\r\n"
+
+                        local output = processor:feed(frame, false)
+
+                        assert.is_equal(frame, output)
+                    end
+                )
+
+                it(
+                    "restores OpenAI Chat tool arguments as JSON fragments", function()
+                        local original = "a\"b"
+                        local processor = assert(sse.new(
+                            "openai-chat", {[token] = original}, namespace
+                        ))
+                        local first_arguments = "{\"phone\":\"" .. token:sub(1, 30)
+                        local second_arguments = token:sub(31) .. "\"}"
+                        local event1 = "data: " .. core.json.encode({
+                            choices = {
+                                {
+                                    index = 0,
+                                    delta = {
+                                        tool_calls = {
+                                            {
+                                                index = 3,
+                                                ["function"] = {arguments = first_arguments},
+                                            },
+                                        },
+                                    },
+                                },
+                            },
+                        }) .. "\n\n"
+                        local event2 = "data: " .. core.json.encode({
+                            choices = {
+                                {
+                                    index = 0,
+                                    delta = {
+                                        tool_calls = {
+                                            {
+                                                index = 3,
+                                                ["function"] = {arguments = second_arguments},
+                                            },
+                                        },
+                                    },
+                                },
+                            },
+                        }) .. "\n\n"
+
+                        local output = processor:feed(event1 .. event2, false)
+                        local events = sse_codec.decode(output)
+                        local first = core.json.decode(events[1].data)
+                        local second = core.json.decode(events[2].data)
+                        local arguments =
+                            first.choices[1].delta.tool_calls[1]["function"].arguments ..
+                            second.choices[1].delta.tool_calls[1]["function"].arguments
+
+                        assert.is_equal(original, core.json.decode(arguments).phone)
+                    end
+                )
+
+                it(
+                    "restores OpenAI Responses text and function arguments", function()
+                        local original = "a\"b"
+                        local processor = assert(sse.new(
+                            "openai-responses", {[token] = original}, namespace
+                        ))
+                        local text_event =
+                            "event: response.output_text.delta\n" ..
+                            "data: " .. core.json.encode({
+                                type = "response.output_text.delta",
+                                item_id = "msg_1",
+                                delta = token,
+                            }) .. "\n\n"
+                        local arguments_event =
+                            "event: response.function_call_arguments.delta\n" ..
+                            "data: " .. core.json.encode({
+                                type = "response.function_call_arguments.delta",
+                                item_id = "call_1",
+                                delta = "{\"phone\":\"" .. token .. "\"}",
+                            }) .. "\n\n"
+
+                        local output = processor:feed(text_event .. arguments_event, false)
+                        local events = sse_codec.decode(output)
+                        local text_data = core.json.decode(events[1].data)
+                        local arguments_data = core.json.decode(events[2].data)
+
+                        assert.is_equal(original, text_data.delta)
+                        assert.is_equal(original, core.json.decode(arguments_data.delta).phone)
+                    end
+                )
+
+                it(
+                    "restores Anthropic text and input JSON deltas", function()
+                        local original = "a\"b"
+                        local processor = assert(sse.new(
+                            "anthropic-messages", {[token] = original}, namespace
+                        ))
+                        local text_event =
+                            "event: content_block_delta\n" ..
+                            "data: " .. core.json.encode({
+                                type = "content_block_delta",
+                                index = 0,
+                                delta = {type = "text_delta", text = token},
+                            }) .. "\n\n"
+                        local input_event =
+                            "event: content_block_delta\n" ..
+                            "data: " .. core.json.encode({
+                                type = "content_block_delta",
+                                index = 1,
+                                delta = {
+                                    type = "input_json_delta",
+                                    partial_json = "{\"phone\":\"" .. token .. "\"}",
+                                },
+                            }) .. "\n\n"
+
+                        local output = processor:feed(text_event .. input_event, false)
+                        local events = sse_codec.decode(output)
+                        local text_data = core.json.decode(events[1].data)
+                        local input_data = core.json.decode(events[2].data)
+
+                        assert.is_equal(original, text_data.delta.text)
+                        assert.is_equal(
+                            original, core.json.decode(input_data.delta.partial_json).phone
+                        )
+                    end
+                )
+
+                it(
+                    "flushes unresolved OpenAI Responses text before a terminal event", function()
+                        local processor = assert(sse.new(
+                            "openai-responses", {[token] = "13800138000"}, namespace
+                        ))
+                        local prefix = token:sub(1, 30)
+                        local delta_event =
+                            "event: response.output_text.delta\n" ..
+                            "data: " .. core.json.encode({
+                                type = "response.output_text.delta",
+                                item_id = "msg_1",
+                                delta = prefix,
+                            }) .. "\n\n"
+                        local terminal_event =
+                            "event: response.completed\n" ..
+                            "data: {\"type\":\"response.completed\"}\n\n"
+
+                        local first = processor:feed(delta_event, false)
+                        local output, restored_count, unresolved_count =
+                            processor:feed(terminal_event, false)
+                        local events = sse_codec.decode(output)
+                        local flushed = core.json.decode(events[1].data)
+
+                        assert.is_falsy(first:find(prefix, 1, true))
+                        assert.is_equal(prefix, flushed.delta)
+                        assert.is_equal("response.output_text.delta", flushed.type)
+                        assert.is_equal("msg_1", flushed.item_id)
+                        assert.is_equal("response.completed", events[2].type)
+                        assert.is_equal(0, restored_count)
+                        assert.is_equal(1, unresolved_count)
+                    end
+                )
+
+                it(
+                    "flushes pending logical outputs in their arrival order", function()
+                        local processor = assert(sse.new(
+                            "openai-chat", {[token] = "13800138000"}, namespace
+                        ))
+                        local frames = {}
+                        for index = 0, 5 do
+                            frames[#frames + 1] = "data: " .. core.json.encode({
+                                choices = {
+                                    {
+                                        index = index,
+                                        delta = {content = token:sub(1, 30)},
+                                    },
+                                },
+                            }) .. "\n\n"
+                        end
+                        processor:feed(table.concat(frames), false)
+
+                        local output = processor:feed("data: [DONE]\n\n", false)
+                        local events = sse_codec.decode(output)
+
+                        for index = 0, 5 do
+                            local data = core.json.decode(events[index + 1].data)
+                            assert.is_equal(index, data.choices[1].index)
+                        end
+                        assert.is_equal("[DONE]", events[7].data)
+                    end
+                )
+
+                it(
+                    "processes a final unterminated frame at transport EOF", function()
+                        local processor = assert(sse.new(
+                            "anthropic-messages", {[token] = "13800138000"}, namespace
+                        ))
+                        local event =
+                            "event: content_block_delta\n" ..
+                            "data: " .. core.json.encode({
+                                type = "content_block_delta",
+                                index = 0,
+                                delta = {type = "text_delta", text = token},
+                            })
+
+                        local output, restored_count, unresolved_count =
+                            processor:feed(event, true)
+                        local data = core.json.decode(sse_codec.decode(output)[1].data)
+
+                        assert.is_equal("13800138000", data.delta.text)
+                        assert.is_equal(1, restored_count)
+                        assert.is_equal(0, unresolved_count)
+                    end
+                )
+
+                it(
+                    "returns exact errors for unsupported streaming protocols", function()
+                        local processor, err = sse.new("bedrock-converse", {}, namespace)
+                        local unknown, unknown_err = sse.new("passthrough", {}, namespace)
+
+                        assert.is_nil(processor)
+                        assert.is_equal(
+                            "raw AWS EventStream restoration is not supported", err
+                        )
+                        assert.is_nil(unknown)
+                        assert.is_equal(
+                            "streaming protocol passthrough is not supported", unknown_err
+                        )
                     end
                 )
             end
