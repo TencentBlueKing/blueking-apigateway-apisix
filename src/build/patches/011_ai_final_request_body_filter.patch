@@ -73,15 +73,19 @@ index dfa15ff36..066d6a7d2 100644
 +
      -- AWS SigV4 signing (must be last — signs the finalized body)
 diff --git a/apisix/plugins/ai-proxy/base.lua b/apisix/plugins/ai-proxy/base.lua
-index d2b6e67a..c908c138 100644
+index d2b6e67a..3e279855 100644
 --- a/apisix/plugins/ai-proxy/base.lua
 +++ b/apisix/plugins/ai-proxy/base.lua
-@@ -205,8 +205,15 @@ function _M.before_proxy(conf, ctx, on_error)
+@@ -123,2 +123,5 @@ function _M.before_proxy(conf, ctx, on_error)
+     while true do
++        if ctx.ai_final_request_body_filter then
++            ctx.var.llm_request_body = {}
++        end
+         local ai_instance = ctx.picked_ai_instance
+@@ -205,8 +208,13 @@ function _M.before_proxy(conf, ctx, on_error)
              ctx.llm_request_start_time = ngx.now()
 -            ctx.var.llm_request_body = request_body
-+            if ctx.ai_final_request_body_filter then
-+                ctx.var.llm_request_body = {}
-+            else
++            if not ctx.ai_final_request_body_filter then
 +                ctx.var.llm_request_body = request_body
 +            end
 
@@ -94,12 +98,12 @@ index d2b6e67a..c908c138 100644
 +                    return code or 500, build_err, true
 +                end
                  local body = {error_msg = build_err}
-@@ -345,3 +352,3 @@ function _M.before_proxy(conf, ctx, on_error)
+@@ -345,3 +353,3 @@ function _M.before_proxy(conf, ctx, on_error)
          ctx.llm_active_connections_tracked = true
 -        local ok, code_or_err, body = pcall(do_request)
 +        local ok, code_or_err, body, non_retryable = pcall(do_request)
          if not ok then
-@@ -350,3 +357,3 @@ function _M.before_proxy(conf, ctx, on_error)
+@@ -350,3 +358,3 @@ function _M.before_proxy(conf, ctx, on_error)
          end
 -        if code_or_err and on_error then
 +        if code_or_err and on_error and not non_retryable then

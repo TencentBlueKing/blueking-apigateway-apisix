@@ -1278,3 +1278,100 @@ POST /t
 Content-Type: application/json
 --- response_body
 legacy-original-payload-retained
+
+
+
+=== TEST 18: provider routing failure clears pre-existing finalized-filter payload view
+--- config
+    location /t {
+        content_by_lua_block {
+            local core = require("apisix.core")
+            local ai_proxy = require("apisix.plugins.ai-proxy")
+            local base = require("apisix.plugins.ai-proxy.base")
+            local logged = {}
+            local original_log_info = core.log.info
+            local original_log_error = core.log.error
+            local callback_calls = 0
+            local ctx = {
+                ai_client_protocol = "openai-chat",
+                ai_final_request_body_filter = function(body)
+                    callback_calls = callback_calls + 1
+                    return body
+                end,
+                picked_ai_instance = {
+                    name = "routing-mismatch",
+                    provider = "bedrock",
+                    provider_conf = {region = "us-east-1"},
+                    auth = {},
+                    override = {
+                        request_body = {
+                            ["bedrock-converse"] = {
+                                metadata = {secret = "routing-override-secret"},
+                            },
+                        },
+                    },
+                },
+                var = {
+                    uri = "/v1/chat/completions",
+                    request_type = "ai_chat",
+                    llm_request_body = {
+                        messages = {{
+                            role = "user",
+                            content = "rewrite-residue-secret",
+                        }},
+                    },
+                },
+            }
+
+            local function capture(...)
+                for index = 1, select("#", ...) do
+                    local value = select(index, ...)
+                    if type(value) == "string" then
+                        logged[#logged + 1] = value
+                    else
+                        local ok, encoded = pcall(core.json.encode, value)
+                        logged[#logged + 1] = ok and encoded or tostring(value)
+                    end
+                end
+            end
+
+            core.log.info = capture
+            core.log.error = capture
+            ngx.ctx.api_ctx = ctx
+            local ok, err = xpcall(function()
+                local code, body = base.before_proxy({}, ctx)
+                assert(code == 400)
+                assert(type(body) == "string")
+                assert(body:find("does not support openai-chat", 1, true))
+                assert(callback_calls == 0)
+
+                ai_proxy.log({logging = {summaries = false, payloads = true}}, ctx)
+            end, debug.traceback)
+            core.log.info = original_log_info
+            core.log.error = original_log_error
+            assert(ok, err)
+
+            local payload = assert(core.json.encode(ctx.llm_request))
+            local output = table.concat(logged)
+            for _, secret in ipairs({
+                "routing-client-secret",
+                "rewrite-residue-secret",
+                "routing-override-secret",
+            }) do
+                assert(not payload:find(secret, 1, true), payload)
+                assert(not output:find(secret, 1, true), output)
+            end
+            ngx.say("routing-failure-payload-safe")
+        }
+    }
+--- request
+POST /t
+{"messages":[{"role":"user","content":"routing-client-secret"}]}
+--- more_headers
+Content-Type: application/json
+--- response_body
+routing-failure-payload-safe
+--- no_error_log
+routing-client-secret
+rewrite-residue-secret
+routing-override-secret
