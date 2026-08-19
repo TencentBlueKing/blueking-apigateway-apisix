@@ -4,9 +4,13 @@
 
 ### Overview and ordering
 
-`bk-ai-sensitive-data-redaction` sends the final AI JSON request to a redaction
-service, installs the service-returned body as the LLM request after contract
-validation, and restores exact known placeholders in the client response. The
+`bk-ai-sensitive-data-redaction` sends the finalized provider-specific AI JSON
+request to a redaction service, installs the service-returned body as the LLM
+request after contract validation, and restores exact known placeholders in the
+client response. Its access phase only validates configuration and request
+metadata and registers a request-local final-body filter; it performs no
+third-party I/O. The filter runs after protocol conversion, provider options,
+overrides, and model removal, immediately before signing and transport. The
 redaction service receives the original request values. The plugin relies on
 that trusted service to identify and replace every sensitive value; it cannot
 prove that the returned body is completely redacted.
@@ -21,7 +25,7 @@ to a route that also uses `ai-proxy` or `ai-proxy-multi`.
 
 | Field | Type | Required | Default | Validation and behavior |
 | --- | --- | --- | --- | --- |
-| `endpoint` | string | yes | none | Absolute `http://` or `https://` URL with a non-empty host. Control characters and whitespace are rejected. |
+| `endpoint` | string | yes | none | Absolute `http://` or `https://` URL with a non-empty host. Control characters and whitespace are rejected. This is trusted administrator configuration; no SSRF or private-address deny list is applied. |
 | `auth_header` | string | no | `Authorization` | Non-empty valid HTTP header name. `connection`, `content-length`, `content-type`, `host`, `keep-alive`, `proxy-authenticate`, `proxy-authorization`, `te`, `trailer`, `trailers`, `transfer-encoding`, and `upgrade` are forbidden, case-insensitively. |
 | `auth_value` | string | no | none | Non-empty credential placed in `auth_header`. It is in `encrypt_fields` and may be a resolvable APISIX secret reference. The runtime value must contain no control bytes. No authentication header is sent when omitted. |
 | `session_id_header` | string | no | `X-AI-Session-Id` | Non-empty valid HTTP header name used to read the optional session UUID. |
@@ -112,32 +116,35 @@ hyphens, lowercase its 32 hexadecimal digits, and wrap them as
 `__BK_REDACT_da584df57bd5459098e08f92a89f9494_`.
 
 `session_id` is optional. A non-empty value from `session_id_header` must have
-the same canonical UUID shape or the request is rejected with HTTP 400. It is
-forwarded only for third-party/Agent conversation correlation. It is never an
-APISIX storage key and never selects a mapping. Reusing one session ID across
-multiple turns does not persist or reuse replacements: every HTTP request has
-an independent mapping and stream state stored only in its current request
-context, while its placeholders are namespaced by the unique `request_id`.
-There is no request-ID-keyed mapping lookup table. Conversation history sent on
-a later turn is redacted again.
+the same canonical UUID shape or the request is rejected with HTTP 400. If the
+header occurs multiple times, its first value is used. It is forwarded only for
+third-party/Agent conversation correlation. It is never an APISIX storage key
+and never selects or persists a mapping. Reusing one session ID across multiple
+turns does not persist or reuse replacements: every HTTP request has independent
+stream state, while its placeholders are namespaced by the unique `request_id`.
+There is no request-ID- or session-ID-keyed mapping lookup table. Conversation
+history sent on a later turn is redacted again.
 
-After request validation, APISIX makes one `POST` to the configured endpoint
-with `Content-Type: application/json` (or makes one such attempt if connection
-or request I/O fails). It adds `auth_header: auth_value` only when `auth_value`
-is configured. `session_id` is omitted when the caller did not supply it.
+For each finalized provider attempt, APISIX makes one `POST` to the configured
+endpoint with `Content-Type: application/json`. It does not retry a failed
+redaction-service connection or request. An `ai-proxy-multi` fallback attempt
+finalizes and redacts its own provider body; before every attempt the previous
+attempt's mapping is cleared, and only the successful final attempt's mapping
+can restore that attempt's response. A redaction failure is non-retryable: it
+prevents the current LLM call and does not fall back to another LLM provider.
+APISIX adds `auth_header: auth_value` only when `auth_value` is configured, and
+omits `session_id` when the caller did not supply it.
+
+`body` is a raw JSON string inside the JSON envelope, not a nested object. This
+keeps the provider serializer's exact numeric lexemes, including large integers,
+`-0`, and exponent spellings, across the redaction-service round trip.
 
 ```json
 {
   "request_id": "da584df5-7bd5-4590-98e0-8f92a89f9494",
   "session_id": "24395b38-bf3f-426c-a632-10df20ec69c8",
   "placeholder_namespace": "__BK_REDACT_da584df57bd5459098e08f92a89f9494_",
-  "body": {
-    "model": "gpt-4o",
-    "stream": true,
-    "messages": [
-      {"role": "user", "content": "phone: 13800138000"}
-    ]
-  }
+  "body": "{\"model\":\"gpt-4o\",\"stream\":true,\"messages\":[{\"role\":\"user\",\"content\":\"phone: 13800138000\"}]}"
 }
 ```
 
@@ -145,16 +152,7 @@ The service must return HTTP 200 with one JSON object in this form:
 
 ```json
 {
-  "body": {
-    "model": "gpt-4o",
-    "stream": true,
-    "messages": [
-      {
-        "role": "user",
-        "content": "phone: __BK_REDACT_da584df57bd5459098e08f92a89f9494_1__"
-      }
-    ]
-  },
+  "body": "{\"model\":\"gpt-4o\",\"stream\":true,\"messages\":[{\"role\":\"user\",\"content\":\"phone: __BK_REDACT_da584df57bd5459098e08f92a89f9494_1__\"}]}",
   "replacements": [
     {
       "placeholder": "__BK_REDACT_da584df57bd5459098e08f92a89f9494_1__",
@@ -166,20 +164,24 @@ The service must return HTTP 200 with one JSON object in this form:
 
 Before changing the LLM request, the plugin verifies all of these conditions:
 
-- the top-level response and `body` are JSON objects, not arrays;
-- `body` is detected as the same AI client protocol as the original body;
+- the top-level response is a JSON object and `body` is a raw JSON string that
+  decodes to an object;
+- the decoded `body` is detected as the same AI target protocol as the finalized
+  provider body;
 - `model` and `stream` are unchanged;
 - `replacements` is a JSON array with at most `max_mapping_entries` entries;
 - every entry is an object containing string `placeholder` and `original`
   values;
 - every placeholder is unique and exactly matches
   `^<placeholder_namespace>[1-9][0-9]*__$`;
-- every declared placeholder occurs in the compact JSON encoding of the masked
-  body;
+- every declared placeholder occurs in the masked raw JSON string;
 - the sum of placeholder and original string bytes is no greater than
   `max_mapping_bytes`; and
-- the compact encoded masked body is no greater than
-  `max_request_body_bytes`.
+- the masked raw JSON string is no greater than `max_request_body_bytes`;
+- restoring `replacements` reconstructs the finalized provider request: JSON
+  whitespace and equivalent string-escape spellings may differ, but object and
+  array order and shape, literals, numeric lexemes, and all non-redacted semantic
+  string content must match exactly.
 
 These checks establish response shape and mapping consistency, not redaction
 completeness. In particular, an unchanged `body` with an empty `replacements`
@@ -187,14 +189,14 @@ array satisfies the contract. The redaction service is therefore inside the
 security trust boundary: if it misses a sensitive value, that value can be sent
 to the LLM.
 
-The original and masked encoded AI bodies are each limited by
+The finalized original and masked raw AI bodies are each limited by
 `max_request_body_bytes`; an oversized original is HTTP 413, while an oversized
 masked body is a third-party contract failure (HTTP 502). The full outbound
 third-party request envelope has no separate schema limit. The third-party
 response wire body is read with this implementation limit:
 
 ```text
-min(27 + 6 * max_request_body_bytes
+min(29 + 6 * max_request_body_bytes
        + 6 * max_mapping_bytes
        + 33 * max_mapping_entries,
     64 MiB)
@@ -217,19 +219,29 @@ protocols:
 
 - `openai-chat`: `choices[*].delta.content`, `reasoning_content`, `refusal`,
   `function_call.arguments`, and `tool_calls[*].function.arguments`;
-- `openai-responses`: `response.output_text.delta`,
-  `response.reasoning_summary_text.delta`, and
-  `response.function_call_arguments.delta`; and
+- `openai-responses`: the `.delta` and corresponding `.done` events for
+  `response.output_text`, `response.reasoning_summary_text`, and
+  `response.function_call_arguments`; output text is separated by
+  `content_index`, reasoning summaries by `summary_index`, and all families by
+  their item/output identity;
 - `anthropic-messages`: `text_delta.text` and
   `input_json_delta.partial_json` in content-block delta events.
 
 The processor preserves incomplete SSE frames and placeholder prefixes across
 transport chunks. Text fields receive raw originals; JSON-fragment fields
-receive JSON-escaped originals. Comment/keepalive frames, malformed events,
-unknown event shapes, and fields outside the list above pass through unchanged
-without additional restoration. An unterminated SSE remainder is bounded at
-1 MiB; if it grows past that size before EOF, it is emitted unchanged and the
-remainder buffer is reset rather than rejecting the response.
+receive JSON-escaped originals. A field-specific `.done` event first flushes
+only that logical field's pending prefix, then independently restores the
+complete value carried by the done event. Comment/keepalive frames, malformed
+events, unknown event shapes, and fields outside the list above pass through
+unchanged without additional restoration.
+
+Retained streaming state is bounded to a 1 MiB incomplete raw SSE remainder,
+1024 active partial logical fields, 64 KiB of aggregate pending placeholder-
+prefix bytes, and 64 KiB of aggregate dynamic active-key/metadata bytes. A raw
+remainder over 1 MiB is emitted unchanged and reset. If another state bound is
+exceeded, or an unexpected restoration failure occurs, buffered and current
+bytes remain masked, passthrough mode latches for subsequent chunks, and the
+failure path deliberately emits no original value.
 
 Raw client-visible Bedrock `bedrock-converse` AWS EventStream and arbitrary
 passthrough streaming protocols are rejected with HTTP 400 before the redaction
@@ -243,10 +255,13 @@ current capability.
 A protocol terminal event finalizes and flushes pending processor state, but it
 does not clear the request mapping. The mapping and other sensitive state are
 cleared only when the response hook receives `eof=true`, when failure cleanup
-runs, or when the request is disposed. If the client disconnects first, the AI
-streaming loop may stop before its EOF callback; no remaining buffered response
-can be delivered, and the request-local state is reclaimed with the request
-rather than persisted.
+runs, or when the request is disposed. Configured AI-proxy
+`max_response_bytes` and `max_stream_duration_ms` exits run EOF finalization
+before ending a non-disconnected stream, flushing partial masked prefixes and
+clearing request-local sensitive state without fabricating a protocol terminal
+event. If the client disconnects first, downstream writes have already failed,
+so no EOF write is attempted; no remaining buffered response can be delivered,
+and request disposal reclaims the state rather than persisting it.
 
 ### Failure, security, and observability
 
@@ -259,8 +274,8 @@ plugin failures:
 - HTTP 500: the required AI-proxy context is absent, or the runtime
   authentication configuration remains unresolved/unsafe; and
 - HTTP 502: redaction-service connection/request/read failure, non-200 status,
-  malformed or oversized response, changed protocol/model/stream, invalid
-  mapping, or oversized masked body.
+  malformed or oversized response, changed protocol/model/stream or other
+  non-redacted request content, invalid mapping, or oversized masked body.
 
 Response-side restoration does not intentionally fetch or insert an unmasked
 fallback. If complete JSON cannot be decoded or encoded, or the SSE restorer
@@ -276,10 +291,12 @@ and counted as unresolved.
 
 All mappings, namespaces, session IDs, and SSE buffers live only in the current
 request context. The plugin does not use an Nginx shared dictionary, etcd,
-Redis, files, or another cross-request store. Never log request/response bodies,
-original values, placeholders/tokens, mappings, credentials, or `session_id`.
-The implementation logs only operational restoration/connection failures and
-may include the non-secret `request_id` for correlation.
+Redis, files, or another cross-request store. While the final-body filter is
+active, body-bearing provider option and override values are not logged, and
+request-payload logging receives only the contract-verified masked body. This
+plugin path logs no original body, mapping, session, authentication, provider-
+option, or override value. Operational restoration/connection failures may be
+logged with the non-secret `request_id` for correlation.
 
 The implementation maintains request-context-only numeric counters
 `ctx._ai_redaction_restored_count` and
@@ -301,14 +318,20 @@ redaction service to be the sole external raw-data recipient, they must also
 exclude or explicitly trust those services; this plugin cannot enforce that
 route-wide property.
 
+The configured `endpoint` is also inside the administrative trust boundary.
+The plugin applies no SSRF or private-address deny list, so route-configuration
+authority must be restricted to trusted administrators.
+
 ## 中文
 
 ### 概述与执行顺序
 
-`bk-ai-sensitive-data-redaction` 将最终 AI JSON 请求发送给脱敏服务，在协议校验
-通过后把服务返回的 body 设置为 LLM 请求，并在客户端响应中精确还原已知占位符。
-脱敏服务会接收原始请求值。插件信任该服务能够识别并替换全部敏感值，无法证明返回
-body 已完整脱敏。
+`bk-ai-sensitive-data-redaction` 将 provider 定制完成的最终 AI JSON 请求发送给
+脱敏服务，在协议校验通过后把服务返回的 body 设置为 LLM 请求，并在客户端响应中
+精确还原已知占位符。插件的 access 阶段只校验配置和请求元数据，并注册请求局部的
+最终 body filter，不调用第三方服务。该 filter 在协议转换、provider options、
+override 和 model 删除之后执行，紧邻签名与传输之前。脱敏服务会接收原始请求值。
+插件信任该服务能够识别并替换全部敏感值，无法证明返回 body 已完整脱敏。
 
 插件名为 `bk-ai-sensitive-data-redaction`，优先级为 `1039`。APISIX 按优先级
 从高到低执行，因此本插件会在 `ai-proxy-multi`（`1041`）或 `ai-proxy`
@@ -320,7 +343,7 @@ body 已完整脱敏。
 
 | 字段 | 类型 | 必填 | 默认值 | 校验与行为 |
 | --- | --- | --- | --- | --- |
-| `endpoint` | string | 是 | 无 | 带非空主机名的绝对 `http://` 或 `https://` URL；拒绝控制字符和空白字符。 |
+| `endpoint` | string | 是 | 无 | 带非空主机名的绝对 `http://` 或 `https://` URL；拒绝控制字符和空白字符。这是受信任的管理员配置，插件不执行 SSRF 或私网地址拒绝检查。 |
 | `auth_header` | string | 否 | `Authorization` | 非空且合法的 HTTP 请求头名。不区分大小写禁止 `connection`、`content-length`、`content-type`、`host`、`keep-alive`、`proxy-authenticate`、`proxy-authorization`、`te`、`trailer`、`trailers`、`transfer-encoding` 和 `upgrade`。 |
 | `auth_value` | string | 否 | 无 | 写入 `auth_header` 的非空凭据。该字段位于 `encrypt_fields` 中，可使用能被 APISIX 解析的 secret 引用；运行时值不能包含控制字节。省略时不发送认证请求头。 |
 | `session_id_header` | string | 否 | `X-AI-Session-Id` | 用于读取可选会话 UUID 的非空合法 HTTP 请求头名。 |
@@ -407,30 +430,30 @@ request-ID 来源是否错误地在多个请求间复用了同一个 UUID。
 `__BK_REDACT_da584df57bd5459098e08f92a89f9494_`。
 
 `session_id` 可选。`session_id_header` 中的非空值必须符合相同 UUID 格式，否则
-返回 HTTP 400。它只用于第三方服务或 Agent 多轮会话的关联，不会成为 APISIX
-存储键，也不会用于选择 mapping。多轮复用同一个 session ID 不会让 APISIX 持久化
-或复用 replacement：每个 HTTP 请求只在当前请求上下文中存储独立 mapping 和流
-状态，占位符则按唯一 `request_id` 划分命名空间；不存在以 request ID 为键的
-mapping 查询表。后续轮次再次携带的会话历史会重新脱敏。占位符还原始终绑定当前
-HTTP 请求的 `request_id`，而不是 `session_id`。
+返回 HTTP 400；请求头重复出现时使用第一个值。它只用于第三方服务或 Agent 多轮
+会话的关联，不会成为 APISIX 存储键，也不会用于选择或持久化 mapping。多轮复用
+同一个 session ID 不会让 APISIX 持久化或复用 replacement：每个 HTTP 请求具有
+独立的流状态，占位符则按唯一 `request_id` 划分命名空间；不存在以 request ID 或
+session ID 为键的 mapping 查询表。后续轮次再次携带的会话历史会重新脱敏。
 
-请求校验通过后，APISIX 使用 `Content-Type: application/json` 向配置的 endpoint
-发起一次 `POST`（若连接或请求 I/O 失败，则只尝试一次）。只有配置 `auth_value`
-时才会增加 `auth_header: auth_value`。调用方没有提供会话 ID 时会省略
-`session_id`。
+对于每次 provider body 最终定型的尝试，APISIX 都会使用
+`Content-Type: application/json` 向配置的 endpoint 发起一次 `POST`，且不会重试
+失败的脱敏服务连接或请求。`ai-proxy-multi` 的每次 LLM fallback 尝试会分别完成
+provider body 定型和脱敏；每次尝试前都会清除上一次 mapping，只有最终成功尝试的
+mapping 能还原该次响应。脱敏失败不可重试：它会阻止当前 LLM 调用，也不会继续
+fallback 到其他 LLM provider。只有配置 `auth_value` 时才会增加
+`auth_header: auth_value`；调用方没有提供会话 ID 时会省略 `session_id`。
+
+`body` 是 JSON envelope 内的原始 JSON 字符串，而不是嵌套对象。这样能在脱敏服务
+往返过程中保留 provider serializer 产生的精确数值词法形式，包括大整数、`-0`
+和指数写法。
 
 ```json
 {
   "request_id": "da584df5-7bd5-4590-98e0-8f92a89f9494",
   "session_id": "24395b38-bf3f-426c-a632-10df20ec69c8",
   "placeholder_namespace": "__BK_REDACT_da584df57bd5459098e08f92a89f9494_",
-  "body": {
-    "model": "gpt-4o",
-    "stream": true,
-    "messages": [
-      {"role": "user", "content": "phone: 13800138000"}
-    ]
-  }
+  "body": "{\"model\":\"gpt-4o\",\"stream\":true,\"messages\":[{\"role\":\"user\",\"content\":\"phone: 13800138000\"}]}"
 }
 ```
 
@@ -438,16 +461,7 @@ HTTP 请求的 `request_id`，而不是 `session_id`。
 
 ```json
 {
-  "body": {
-    "model": "gpt-4o",
-    "stream": true,
-    "messages": [
-      {
-        "role": "user",
-        "content": "phone: __BK_REDACT_da584df57bd5459098e08f92a89f9494_1__"
-      }
-    ]
-  },
+  "body": "{\"model\":\"gpt-4o\",\"stream\":true,\"messages\":[{\"role\":\"user\",\"content\":\"phone: __BK_REDACT_da584df57bd5459098e08f92a89f9494_1__\"}]}",
   "replacements": [
     {
       "placeholder": "__BK_REDACT_da584df57bd5459098e08f92a89f9494_1__",
@@ -459,28 +473,31 @@ HTTP 请求的 `request_id`，而不是 `session_id`。
 
 修改 LLM 请求前，插件会校验以下全部条件：
 
-- 顶层响应和 `body` 都是 JSON 对象，而不是数组；
-- `body` 被识别为与原始 body 相同的 AI 客户端协议；
+- 顶层响应是 JSON 对象，且 `body` 是能解码为对象的原始 JSON 字符串；
+- 解码后的 `body` 被识别为与最终 provider body 相同的 AI 目标协议；
 - `model` 和 `stream` 未改变；
 - `replacements` 是 JSON 数组，条目数不超过 `max_mapping_entries`；
 - 每个条目都是包含字符串 `placeholder` 和 `original` 的对象；
 - 每个占位符唯一，并严格匹配
   `^<placeholder_namespace>[1-9][0-9]*__$`；
-- 每个声明的占位符都出现在脱敏 body 的紧凑 JSON 编码中；
+- 每个声明的占位符都出现在脱敏后的原始 JSON 字符串中；
 - 占位符与原始值的字符串字节总数不超过 `max_mapping_bytes`；以及
-- 脱敏 body 的紧凑编码不超过 `max_request_body_bytes`。
+- 脱敏后的原始 JSON 字符串不超过 `max_request_body_bytes`；
+- 应用 `replacements` 后能重建最终 provider 请求：允许等价的 JSON 空白和字符串
+  转义写法不同，但对象/数组的顺序与结构、literal、数值词法形式以及所有未脱敏的
+  语义字符串内容必须完全一致。
 
 这些校验只能确认响应结构和 mapping 一致性，不能确认脱敏完整性。例如，未修改的
 `body` 加空 `replacements` 数组也符合协议。因此脱敏服务位于安全信任边界内：如果
 它漏掉敏感值，该值可能被发送给 LLM。
 
-原始和脱敏 AI body 编码后都受 `max_request_body_bytes` 限制；原始 body 超限
-返回 HTTP 413，脱敏 body 超限属于第三方协议错误，返回 HTTP 502。完整的第三方
-出站请求 envelope 没有独立的 schema 限制。第三方响应的 wire body 按以下实现上限
-读取：
+最终原始和脱敏后的 AI 原始 body 都受 `max_request_body_bytes` 限制；原始 body
+超限返回 HTTP 413，脱敏 body 超限属于第三方协议错误，返回 HTTP 502。完整的
+第三方出站请求 envelope 没有独立的 schema 限制。第三方响应的 wire body 按以下
+实现上限读取：
 
 ```text
-min(27 + 6 * max_request_body_bytes
+min(29 + 6 * max_request_body_bytes
        + 6 * max_mapping_bytes
        + 33 * max_mapping_entries,
     64 MiB)
@@ -500,17 +517,24 @@ min(27 + 6 * max_request_body_bytes
 
 - `openai-chat`：`choices[*].delta.content`、`reasoning_content`、`refusal`、
   `function_call.arguments` 和 `tool_calls[*].function.arguments`；
-- `openai-responses`：`response.output_text.delta`、
-  `response.reasoning_summary_text.delta` 和
-  `response.function_call_arguments.delta`；以及
+- `openai-responses`：`response.output_text`、
+  `response.reasoning_summary_text` 和 `response.function_call_arguments` 的
+  `.delta` 及对应 `.done` 事件；output text 按 `content_index` 区分，reasoning
+  summary 按 `summary_index` 区分，所有类别还会按 item/output 身份区分；以及
 - `anthropic-messages`：content-block delta 事件中的 `text_delta.text` 和
   `input_json_delta.partial_json`。
 
 处理器会跨传输 chunk 保留不完整 SSE frame 和占位符前缀。文本字段写入原始值，
-JSON fragment 字段写入经过 JSON 转义的原始值。注释/keepalive frame、格式错误的
-事件、未知事件结构以及上述列表以外的字段均原样透传，不执行额外还原。未终止 SSE
-remainder 的上限为 1 MiB；若它在 EOF 前超过该大小，插件会将其原样输出并重置
-remainder buffer，而不是拒绝响应。
+JSON fragment 字段写入经过 JSON 转义的原始值。字段对应的 `.done` 事件会先只
+flush 该逻辑字段待处理的前缀，再独立还原 done 事件携带的完整值。注释/keepalive
+frame、格式错误的事件、未知事件结构以及上述列表以外的字段均原样透传，不执行
+额外还原。
+
+保留的流状态上限分别为：1 MiB 的不完整原始 SSE remainder、1024 个活跃的局部
+逻辑字段、64 KiB 的占位符待处理前缀总字节数，以及 64 KiB 的动态活跃 key/metadata
+总字节数。原始 remainder 超过 1 MiB 时会原样输出并重置。若触发其他状态上限或
+发生非预期还原失败，已缓冲和当前字节会保持脱敏状态，后续 chunk 锁定为 passthrough；
+失败路径不会主动输出任何原始值。
 
 客户端直接可见的 Bedrock `bedrock-converse` 原始 AWS EventStream 以及任意
 passthrough 流式协议，会在调用脱敏服务和 LLM 之前以 HTTP 400 拒绝。若 Bedrock
@@ -521,8 +545,11 @@ hook 之前生成 OpenAI 或 Anthropic SSE，则该架构可以还原转换后�
 
 协议终止事件只会 finalize 并 flush 待处理的 processor 状态，不会清除请求 mapping。
 只有响应 hook 收到 `eof=true`、执行失败清理，或请求被销毁时，mapping 和其他敏感
-状态才会清除。若客户端提前断开，AI 流式循环可能在执行 EOF 回调前停止；此时剩余
-缓冲响应已无法发送，请求局部状态会随请求回收，而不会被持久化。
+状态才会清除。AI proxy 配置的 `max_response_bytes` 或
+`max_stream_duration_ms` 触发退出时，会在结束未断开的流之前执行 EOF finalization，
+flush 不完整的脱敏占位符前缀并清理请求局部敏感状态，但不会伪造协议终止事件。
+客户端断开是例外：此时下游写入已经失败，因此不会再尝试 EOF 写入；剩余缓冲响应
+无法发送，请求销毁会回收状态而不会持久化。
 
 ### 失败、安全与可观测性
 
@@ -533,7 +560,7 @@ hook 之前生成 OpenAI 或 Anthropic SSE，则该架构可以还原转换后�
 - HTTP 413：原始 body 超过 `max_request_body_bytes`；
 - HTTP 500：缺少必需的 AI proxy 上下文，或运行时认证配置仍未解析/不安全；以及
 - HTTP 502：脱敏服务连接/请求/读取失败、返回非 200、响应格式错误或超限、修改了
-  协议/model/stream、mapping 无效，或脱敏 body 超限。
+  协议/model/stream 或其他未脱敏请求内容、mapping 无效，或脱敏 body 超限。
 
 响应侧还原不会主动获取或插入未脱敏 fallback。完整 JSON 无法解码或编码，或 SSE
 还原器失败时，插件会透传上游字节和已缓冲的占位符数据；SSE 还原器失败后，后续
@@ -543,9 +570,11 @@ chunk 保持 passthrough。如果上游遵守协议，这会保留占位符；�
 事件或 EOF 到达时，待处理的不完整占位符会原样输出，并计入 unresolved 数量。
 
 所有 mapping、命名空间、session ID 和 SSE buffer 只存在于当前请求上下文中。
-插件不使用 Nginx shared dictionary、etcd、Redis、文件或其他跨请求存储。禁止记录
-请求/响应 body、原始值、占位符/token、mapping、凭据或 `session_id`。当前实现只
-记录还原/连接相关的运行错误，并可能携带非秘密的 `request_id` 用于关联。
+插件不使用 Nginx shared dictionary、etcd、Redis、文件或其他跨请求存储。最终
+body filter 生效时，不记录包含 body 的 provider option/override 值，请求 payload
+日志只接收通过协议校验的脱敏 body。该插件路径不会记录原始 body、mapping、session、
+认证、provider option 或 override 值；还原/连接相关的运行错误可能携带非秘密的
+`request_id` 用于关联。
 
 当前实现只在请求上下文内维护数值计数器
 `ctx._ai_redaction_restored_count` 和
@@ -561,3 +590,6 @@ chunk 保持 passthrough。如果上游遵守协议，这会保留占位符；�
 moderation 插件，它们的服务也可能接收或检查原始数据。当运维方要求脱敏服务成为
 唯一接收原始数据的外部组件时，还必须排除或明确信任这些服务；本插件无法强制保证
 整个路由都满足该属性。
+
+配置的 `endpoint` 同样位于管理员信任边界内。插件不执行 SSRF 或私网地址拒绝检查，
+因此必须把路由配置权限限制给受信任的管理员。
