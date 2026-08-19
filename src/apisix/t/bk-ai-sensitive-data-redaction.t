@@ -253,6 +253,28 @@ add_block_preprocessor(sub {
                 }
             }
 
+            location /chat-metadata-overflow {
+                content_by_lua_block {
+                    local core = require("apisix.core")
+
+                    ngx.req.read_body()
+                    local request = assert(core.json.decode(ngx.req.get_body_data()))
+                    local token = assert(request.messages[1].content:match(
+                        "(__BK_REDACT_[0-9a-f]+_%d+__)"
+                    ))
+                    local prefix = token:sub(1, #token - 1)
+                    ngx.header.content_type = "text/event-stream"
+                    ngx.print("event: " .. string.rep("e", 33000) .. "\ndata: " ..
+                              core.json.encode({
+                                  choices = {{
+                                      index = 0,
+                                      delta = {content = prefix},
+                                  }},
+                              }) .. "\n\n")
+                    ngx.flush(true)
+                }
+            }
+
             location /anthropic {
                 content_by_lua_block {
                     local core = require("apisix.core")
@@ -745,6 +767,17 @@ state-cleared
                         plugins = stream_plugins(
                             "openai",
                             "http://127.0.0.1:6726/chat-overflow",
+                            "gpt-4o"
+                        ),
+                    },
+                },
+                {
+                    id = 11,
+                    value = {
+                        uri = "/redact-stream-metadata-overflow",
+                        plugins = stream_plugins(
+                            "openai",
+                            "http://127.0.0.1:6726/chat-metadata-overflow",
                             "gpt-4o"
                         ),
                     },
@@ -1286,3 +1319,49 @@ stream-overflow-masked
 failed to restore masked SSE response
 --- no_error_log
 12800128000
+
+
+
+=== TEST 11: streaming metadata overflow latches masked passthrough
+--- config
+    location /t {
+        content_by_lua_block {
+            local core = require("apisix.core")
+            local http = require("resty.http")
+            local state = ngx.shared["plugin-limit-conn"]
+            local request_id = "61e064bd-398c-4770-83da-f2e2c76ef619"
+            local phone = "12700127000"
+            local response = assert(http.new():request_uri(
+                "http://127.0.0.1:" .. ngx.var.server_port ..
+                "/redact-stream-metadata-overflow", {
+                    method = "POST",
+                    keepalive = false,
+                    headers = {
+                        ["Content-Type"] = "application/json",
+                        ["X-Request-ID"] = request_id,
+                    },
+                    body = assert(core.json.encode({
+                        model = "gpt-4o",
+                        stream = true,
+                        messages = {{role = "user", content = "phone: " .. phone}},
+                    })),
+                }
+            ))
+            assert(response.status == 200, "metadata overflow request failed")
+            assert(not response.body:find(phone, 1, true), "original leaked")
+            local namespace = state:get("namespace-" .. request_id)
+            assert(namespace, "missing request namespace")
+            assert(
+                response.body:find(namespace .. "1_", 1, true),
+                "masked prefix was not preserved"
+            )
+            assert(state:get("cleanup-" .. request_id), "overflow state was not cleared")
+            ngx.say("stream-metadata-overflow-masked")
+        }
+    }
+--- response_body
+stream-metadata-overflow-masked
+--- error_log
+failed to restore masked SSE response
+--- no_error_log
+12700127000

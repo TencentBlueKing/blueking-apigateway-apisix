@@ -1632,8 +1632,77 @@ describe(
                         assert.is_nil(next(processor.stream.states))
                         assert.is_nil(next(processor.keys))
                         assert.is_same({}, processor.key_order)
+                        assert.is_equal(0, processor.metadata_bytes)
+                        assert.is_nil(next(processor.key_metadata_bytes))
                     end
                 )
+
+                it(
+                    "bounds aggregate response item metadata", function()
+                        local processor = assert(sse_restorer.new(
+                            "openai-responses", {[token] = "secret"}, namespace
+                        ))
+                        local prefix = token:sub(1, -2)
+                        local first = response_frame("response.output_text.delta", {
+                            item_id = string.rep("a", 18000),
+                            content_index = 0,
+                            delta = prefix,
+                        })
+                        local second = response_frame("response.output_text.delta", {
+                            item_id = string.rep("b", 18000),
+                            content_index = 0,
+                            delta = prefix,
+                        })
+
+                        assert.is_string(processor:feed(first, false))
+                        local ok = pcall(processor.feed, processor, second, false)
+
+                        assert.is_false(ok)
+                        assert.is_equal(1, processor.stream.active_count)
+                        assert.is_true(processor.metadata_bytes <= 64 * 1024)
+                        processor:fail_closed("")
+                        assert.is_equal(0, processor.metadata_bytes)
+                        assert.is_nil(next(processor.key_metadata_bytes))
+                    end
+                )
+
+                for _, case in ipairs({
+                    {
+                        name = "OpenAI Chat event names",
+                        protocol = "openai-chat",
+                        value = {
+                            choices = {{index = 0, delta = {content = token:sub(1, -2)}}},
+                        },
+                    },
+                    {
+                        name = "Anthropic event names",
+                        protocol = "anthropic-messages",
+                        value = {
+                            type = "content_block_delta",
+                            index = 0,
+                            delta = {
+                                type = "text_delta",
+                                text = token:sub(1, -2),
+                            },
+                        },
+                    },
+                }) do
+                    it(
+                        "bounds long " .. case.name, function()
+                            local processor = assert(sse_restorer.new(
+                                case.protocol, {[token] = "secret"}, namespace
+                            ))
+                            local input = frame(string.rep("e", 33000), case.value)
+
+                            local ok = pcall(processor.feed, processor, input, false)
+
+                            assert.is_false(ok)
+                            assert.is_equal(0, processor.stream.active_count)
+                            assert.is_equal(0, processor.metadata_bytes)
+                            assert.is_nil(next(processor.key_metadata_bytes))
+                        end
+                    )
+                end
 
                 it(
                     "rejects more than 1024 active logical fields", function()
@@ -2162,6 +2231,79 @@ describe(
                         assert.is_true(ctx._ai_redaction_stream_passthrough)
                         assert.is_nil(ctx._ai_redaction_mapping)
                         assert.is_nil(ctx._ai_redaction_sse_restorer)
+                        assert.stub(core.log.error).was_called(1)
+                    end
+                )
+
+                it(
+                    "rolls back and clears metadata overflow without duplicating its chunk",
+                    function()
+                        local request_id = "8a2fa378-5002-4035-88e5-82b637117490"
+                        local namespace =
+                            "__BK_REDACT_8a2fa3785002403588e582b637117490_"
+                        local token = namespace .. "1__"
+                        local prefix = token:sub(1, -2)
+                        local ctx = request_context({
+                            var = {request_type = "ai_stream"},
+                            ai_client_protocol = "openai-responses",
+                            _ai_redaction_request_id = request_id,
+                            _ai_redaction_namespace = namespace,
+                            _ai_redaction_mapping = {[token] = "sensitive-original"},
+                        })
+                        local function response_delta(item_id, delta)
+                            local event_type = "response.output_text.delta"
+                            return "event: " .. event_type .. "\ndata: " ..
+                                   assert(core.json.encode({
+                                       type = event_type,
+                                       item_id = item_id,
+                                       output_index = 0,
+                                       content_index = 0,
+                                       delta = delta,
+                                   })) .. "\n\n"
+                        end
+
+                        local first = response_delta(string.rep("a", 18000), prefix)
+                        local code1, output1 = plugin.lua_body_filter(
+                            config(), ctx, {}, first, false
+                        )
+                        local processor = ctx._ai_redaction_sse_restorer
+                        local complete = response_delta(
+                            string.rep("c", 40000), "ordinary text"
+                        )
+                        local overflowing = response_delta(
+                            string.rep("b", 18000), prefix
+                        )
+                        local current_chunk = complete .. overflowing
+                        local code2, output2 = plugin.lua_body_filter(
+                            config(), ctx, {}, current_chunk, false
+                        )
+
+                        local combined = output1 .. output2
+                        local occurrences = 0
+                        local position = 1
+                        while true do
+                            local found = combined:find(prefix, position, true)
+                            if not found then
+                                break
+                            end
+                            occurrences = occurrences + 1
+                            position = found + #prefix
+                        end
+                        assert.is_nil(code1)
+                        assert.is_nil(code2)
+                        assert.is_equal(current_chunk, output2:sub(-#current_chunk))
+                        assert.is_equal(2, occurrences)
+                        assert.is_nil(combined:find("sensitive-original", 1, true))
+                        assert.is_true(ctx._ai_redaction_stream_passthrough)
+                        assert.is_nil(ctx._ai_redaction_mapping)
+                        assert.is_nil(ctx._ai_redaction_sse_restorer)
+                        assert.is_equal(0, processor.stream.active_count)
+                        assert.is_equal(0, processor.stream.pending_bytes)
+                        assert.is_equal(0, processor.metadata_bytes)
+                        assert.is_nil(next(processor.stream.states))
+                        assert.is_nil(next(processor.keys))
+                        assert.is_nil(next(processor.key_metadata_bytes))
+                        assert.is_same({}, processor.key_order)
                         assert.stub(core.log.error).was_called(1)
                     end
                 )

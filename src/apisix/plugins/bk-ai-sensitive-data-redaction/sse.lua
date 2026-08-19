@@ -32,6 +32,7 @@ local type = type
 local _M = {}
 
 local MAX_REMAINDER = 1024 * 1024
+local MAX_STREAM_METADATA_BYTES = 64 * 1024
 
 local CHAT_TEXT_FIELDS = {
     "content",
@@ -41,12 +42,14 @@ local CHAT_TEXT_FIELDS = {
 
 local RESPONSE_MODES = {
     ["response.output_text.delta"] = {
+        data_type = "response.output_text.delta",
         field = "delta",
         mode = "text",
         family = "output_text",
         part_index = "content_index",
     },
     ["response.output_text.done"] = {
+        data_type = "response.output_text.done",
         field = "text",
         mode = "text",
         family = "output_text",
@@ -54,12 +57,14 @@ local RESPONSE_MODES = {
         done = true,
     },
     ["response.reasoning_summary_text.delta"] = {
+        data_type = "response.reasoning_summary_text.delta",
         field = "delta",
         mode = "text",
         family = "reasoning_summary_text",
         part_index = "summary_index",
     },
     ["response.reasoning_summary_text.done"] = {
+        data_type = "response.reasoning_summary_text.done",
         field = "text",
         mode = "text",
         family = "reasoning_summary_text",
@@ -67,11 +72,13 @@ local RESPONSE_MODES = {
         done = true,
     },
     ["response.function_call_arguments.delta"] = {
+        data_type = "response.function_call_arguments.delta",
         field = "delta",
         mode = "json_fragment",
         family = "function_call_arguments",
     },
     ["response.function_call_arguments.done"] = {
+        data_type = "response.function_call_arguments.done",
         field = "arguments",
         mode = "json_fragment",
         family = "function_call_arguments",
@@ -80,8 +87,12 @@ local RESPONSE_MODES = {
 }
 
 local ANTHROPIC_MODES = {
-    text_delta = {field = "text", mode = "text"},
-    input_json_delta = {field = "partial_json", mode = "json_fragment"},
+    text_delta = {field = "text", mode = "text", delta_type = "text_delta"},
+    input_json_delta = {
+        field = "partial_json",
+        mode = "json_fragment",
+        delta_type = "input_json_delta",
+    },
 }
 
 local TERMINAL_EVENTS = {
@@ -314,11 +325,26 @@ local Processor = {}
 Processor.__index = Processor
 
 
+local function retained_metadata_bytes(key, meta)
+    local bytes = #key
+    if type(meta.event_type) == "string" then
+        bytes = bytes + #meta.event_type
+    end
+    if type(meta.item_id) == "string" then
+        bytes = bytes + #meta.item_id
+    end
+    return bytes
+end
+
+
 local function remove_key(processor, key)
     if processor.keys[key] == nil then
         return
     end
 
+    processor.metadata_bytes =
+        processor.metadata_bytes - processor.key_metadata_bytes[key]
+    processor.key_metadata_bytes[key] = nil
     processor.keys[key] = nil
     for index, ordered_key in ipairs(processor.key_order) do
         if ordered_key == key then
@@ -336,10 +362,19 @@ function Processor:restore_field(key, meta, value, mode)
     end
 
     if self.stream.states[key] then
+        local previous_bytes = self.key_metadata_bytes[key] or 0
+        local metadata_bytes = retained_metadata_bytes(key, meta)
+        local total_bytes = self.metadata_bytes - previous_bytes + metadata_bytes
+        if total_bytes > MAX_STREAM_METADATA_BYTES then
+            error("stream metadata byte limit exceeded", 0)
+        end
+
         if self.keys[key] == nil then
             self.key_order[#self.key_order + 1] = key
         end
         self.keys[key] = meta
+        self.key_metadata_bytes[key] = metadata_bytes
+        self.metadata_bytes = total_bytes
     else
         remove_key(self, key)
     end
@@ -386,6 +421,8 @@ function Processor:finalize()
 
     self.keys = {}
     self.key_order = {}
+    self.key_metadata_bytes = {}
+    self.metadata_bytes = 0
     self.stream.active_count = 0
     self.stream.pending_bytes = 0
     return table_concat(output), restored_count, unresolved_count
@@ -411,6 +448,8 @@ function Processor:fail_closed(buffered)
     self.stream.pending_bytes = 0
     self.keys = {}
     self.key_order = {}
+    self.key_metadata_bytes = {}
+    self.metadata_bytes = 0
     self.remainder = ""
     output[#output + 1] = buffered or ""
     return table_concat(output), unresolved_count
@@ -561,7 +600,7 @@ function Processor:process_response_event(event, value)
     local meta = {
         event_type = event.type,
         protocol_name = self.protocol_name,
-        data_type = data_type,
+        data_type = field_config.data_type,
         field = field_config.field,
         mode = field_config.mode,
         item_id = value.item_id,
@@ -616,7 +655,7 @@ function Processor:process_anthropic_event(event, value)
             event_type = event.type,
             protocol_name = self.protocol_name,
             index = value.index,
-            delta_type = delta.type,
+            delta_type = field_config.delta_type,
             field = field_config.field,
             mode = field_config.mode,
         },
@@ -743,6 +782,11 @@ local function snapshot_processor(processor)
         key_order[index] = key
     end
 
+    local key_metadata_bytes = {}
+    for key, bytes in pairs(processor.key_metadata_bytes) do
+        key_metadata_bytes[key] = bytes
+    end
+
     return {
         remainder = processor.remainder,
         states = states,
@@ -750,6 +794,8 @@ local function snapshot_processor(processor)
         pending_bytes = processor.stream.pending_bytes,
         keys = keys,
         key_order = key_order,
+        key_metadata_bytes = key_metadata_bytes,
+        metadata_bytes = processor.metadata_bytes,
     }
 end
 
@@ -769,6 +815,8 @@ function Processor:feed(chunk, eof)
     self.stream.pending_bytes = snapshot.pending_bytes
     self.keys = snapshot.keys
     self.key_order = snapshot.key_order
+    self.key_metadata_bytes = snapshot.key_metadata_bytes
+    self.metadata_bytes = snapshot.metadata_bytes
     error(output, 0)
 end
 
@@ -790,6 +838,8 @@ function _M.new(protocol_name, mapping, namespace)
             stream = restorer.new_stream(mapping, namespace),
             keys = {},
             key_order = {},
+            key_metadata_bytes = {},
+            metadata_bytes = 0,
         },
         Processor
     )
