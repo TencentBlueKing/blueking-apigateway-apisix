@@ -301,6 +301,74 @@ describe(
                 )
 
                 it(
+                    "clears rewritten payload logs before a lower-priority rejection",
+                    function()
+                        local ctx = request_context({
+                            var = {
+                                llm_request_body = {
+                                    messages = {{
+                                        role = "user",
+                                        content = "rewrite-residue-secret",
+                                    }},
+                                },
+                            },
+                        })
+
+                        register_filter(ctx)
+
+                        assert.is_same({}, ctx.var.llm_request_body)
+                        proxy_base.set_logging(ctx, false, true)
+                        local payload_log = assert(core.json.encode(ctx.llm_request))
+                        assert.is_nil(payload_log:find(
+                            "rewrite-residue-secret", 1, true
+                        ))
+                        assert.is_equal(0, observed.request_count)
+                    end
+                )
+
+                it(
+                    "clears rewritten payload logs before early access failures",
+                    function()
+                        for _, case in ipairs({
+                            {
+                                ctx = request_context({
+                                    picked_ai_instance = false,
+                                    var = {
+                                        llm_request_body = {
+                                            secret = "missing-context-secret",
+                                        },
+                                    },
+                                }),
+                                conf = config(),
+                                status = 500,
+                            },
+                            {
+                                ctx = request_context({
+                                    var = {
+                                        llm_request_body = {
+                                            secret = "oversize-secret",
+                                        },
+                                    },
+                                }),
+                                conf = config({max_request_body_bytes = 1}),
+                                status = 413,
+                            },
+                        }) do
+                            local code = plugin.access(case.conf, case.ctx)
+
+                            assert.is_equal(case.status, code)
+                            assert.is_same({}, case.ctx.var.llm_request_body)
+                            proxy_base.set_logging(case.ctx, false, true)
+                            local payload_log = assert(core.json.encode(
+                                case.ctx.llm_request
+                            ))
+                            assert.is_nil(payload_log:find("-secret", 1, true))
+                        end
+                        assert.is_equal(0, observed.request_count)
+                    end
+                )
+
+                it(
                     "rejects an existing final-body callback instead of replacing it",
                     function()
                         local existing = function(body)

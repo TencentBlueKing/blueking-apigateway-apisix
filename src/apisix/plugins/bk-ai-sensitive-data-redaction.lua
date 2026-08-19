@@ -502,6 +502,8 @@ end
 
 
 function _M.access(conf, ctx)
+    ctx.var.llm_request_body = {}
+
     if not ctx.picked_ai_instance or not ctx.ai_client_protocol then
         return 500,
                "bk-ai-sensitive-data-redaction must be used with ai-proxy or ai-proxy-multi"
