@@ -81,5 +81,21 @@ apisix-dependencies: apisix-core
 apisix-dev-image: edition-ee
 	docker build -f Dockerfile . -t bk-micro-gateway-apisix:development
 
-
-
+.PHONY: apisix-image-smoke
+apisix-image-smoke: edition-ee
+	docker build -f Dockerfile . -t bk-micro-gateway-apisix:apisix-3.18-smoke
+	docker run --rm --entrypoint /bin/bash bk-micro-gateway-apisix:apisix-3.18-smoke -ec '\
+		apisix version | grep -F "3.18.0"; \
+		/usr/local/openresty/bin/openresty -V 2>&1 | grep -F "ngx_http_ffi_client"; \
+		rpm -q libxslt; \
+		saml_path="$$(find /usr/local/apisix -name saml.so -print -quit)"; \
+		test -n "$$saml_path"; \
+		! ldd /usr/local/openresty/nginx/sbin/nginx | grep -F "not found"; \
+		! ldd "$$saml_path" | grep -F "not found"; \
+		grep -F "self.dict:flush_expired()" /usr/local/apisix/deps/share/lua/5.1/prometheus_keys.lua; \
+		luarocks list --tree=/usr/local/apisix/deps | grep -F "nginx-lua-prometheus-api7"; \
+		luarocks list --tree=/usr/local/apisix/deps | grep -F "1.0.0-1"; \
+		/usr/local/apisix/ops/prometheus-expiry-smoke.sh; \
+		apisix init; \
+		apisix test'
+	test "$$(docker image inspect --format '{{ index .Config.Labels "apisix_version" }}' bk-micro-gateway-apisix:apisix-3.18-smoke)" = "3.18.0"

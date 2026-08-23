@@ -1,6 +1,6 @@
 FROM tencentos/tencentos4-minimal:4.4-v20250922
 
-ARG APISIX_VERSION=3.17.0
+ARG APISIX_VERSION=3.18.0
 LABEL apisix_version="${APISIX_VERSION}"
 
 # 1. yum install
@@ -10,7 +10,7 @@ RUN yum clean packages
 # you can add more tools for debug
 # alreay on image: ifconfig nslookup dig ip ss route
 # install openresty & apisix
-RUN yum install -y apisix-${APISIX_VERSION} libxcrypt && \
+RUN yum install -y apisix-${APISIX_VERSION} libxcrypt libxslt && \
     yum install -y tar m4 findutils procps less iproute traceroute telnet lsof net-tools tcpdump mtr vim bind-utils libyaml-devel hostname gawk iputils python3 python3-pip sudo && \
     yum install -y wget unzip patch make
 
@@ -34,11 +34,12 @@ RUN mkdir -p /data/bkgateway/bin && rm -rf /usr/local/apisix/logs/*
 ADD ./src/build/bin/apisix-start.sh ./src/build/bin/sentrylogs-daemonize.sh /data/bkgateway/bin/
 ADD ./src/apisix/plugins/ /usr/local/apisix/apisix/plugins/
 ADD ./src/build/patches /usr/local/apisix/patches
-RUN ls /usr/local/apisix/patches | sort | xargs -I __patch_file__ sh -c 'cat ./patches/__patch_file__ | patch -t -p1'
+RUN ls /usr/local/apisix/patches | sort | xargs -I __patch_file__ \
+    sh -c 'patch --batch --forward --fuzz=0 -p1 < ./patches/__patch_file__'
 
 RUN chmod 755 /data/bkgateway/bin/* && chmod 777 /usr/local/apisix/logs
 
-ADD ./src/ops/nginx-health-check.sh ./src/ops/run-check-pod.sh /usr/local/apisix/ops/
+ADD ./src/ops/nginx-health-check.sh ./src/ops/prometheus-expiry-smoke.sh ./src/ops/run-check-pod.sh /usr/local/apisix/ops/
 RUN chmod 755 /usr/local/apisix/ops/*.sh
 
 # 6. clean up

@@ -1,13 +1,30 @@
 diff --git a/apisix/http/route.lua b/apisix/http/route.lua
-index dbf11abf..2af6a081 100644
+index dbf11abf..ccddbc7d 100644
 --- a/apisix/http/route.lua
 +++ b/apisix/http/route.lua
-@@ -111,7 +111,8 @@ function _M.match_uri(uri_router, api_ctx)
+@@ -19,9 +19,11 @@ local radixtree = require("resty.radixtree")
+ local router = require("apisix.utils.router")
+ local service_fetch = require("apisix.http.service").get
+ local core = require("apisix.core")
++local config_local = require("apisix.core.config_local").local_conf
+ local expr = require("resty.expr.v1")
+ local plugin_checker = require("apisix.plugin").plugin_checker
+ local event = require("apisix.core.event")
++local string_gsub = string.gsub
+ local ipairs = ipairs
+ local type = type
+ local error = error
+@@ -111,7 +113,13 @@ function _M.match_uri(uri_router, api_ctx)
      match_opts.vars = api_ctx.var
      match_opts.matched = core.tablepool.fetch("matched_route_record", 0, 4)
  
 -    local ok = uri_router:dispatch(api_ctx.var.uri, match_opts, api_ctx, match_opts)
 +    local encoded_uri = core.utils.uri_safe_encode(api_ctx.var.uri)
++    local keep_encoded_slash = core.table.try_read_attr(config_local(), "apisix",
++                                                        "match_uri_encoded_slash")
++    if keep_encoded_slash then
++        encoded_uri = string_gsub(encoded_uri, "%%252F", "%%2F")
++    end
 +    local ok = uri_router:dispatch(encoded_uri, match_opts, api_ctx, match_opts)
      core.tablepool.release("route_match_opts", match_opts)
      return ok

@@ -36,6 +36,8 @@ describe(
                     }
                 )
                 metadata = {
+                    key = "/apisix/plugin_metadata/bk-concurrency-limit",
+                    modifiedIndex = 1,
                     value = {
                         conn = 1,
                         burst = 1,
@@ -182,12 +184,6 @@ describe(
 
         context(
             "usage", function()
-
-                before_each(
-                    function()
-                    end
-                )
-
                 it(
                     "should accept the request", function()
                         local result = concurrency_limit.access({}, ctx)
@@ -197,7 +193,7 @@ describe(
 
                 it(
                     "should delay the request", function()
-                        limiter.increase(metadata.value, ctx)
+                        concurrency_limit.access({}, ctx)
                         local result = concurrency_limit.access({}, ctx)
 
                         assert.is_nil(result)
@@ -206,8 +202,8 @@ describe(
 
                 it(
                     "should reject the request", function()
-                        limiter.increase(metadata.value, ctx)
-                        limiter.increase(metadata.value, ctx)
+                        concurrency_limit.access({}, ctx)
+                        concurrency_limit.access({}, ctx)
                         local result = concurrency_limit.access({}, ctx)
 
                         assert.is_equal(429, result)

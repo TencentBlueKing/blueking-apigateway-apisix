@@ -16,6 +16,7 @@
 -- to the current version of the project delivered to anyone in the future.
 --
 
+local core = require("apisix.core")
 local plugin = require("apisix.plugins.bk-traffic-label")
 
 describe(
@@ -34,6 +35,13 @@ describe(
                     },
                     headers = {}
                 }
+                stub(core.request, "set_header")
+            end
+        )
+
+        after_each(
+            function()
+                core.request.set_header:revert()
             end
         )
 
@@ -143,7 +151,8 @@ describe(
                         plugin.check_schema(conf)
 
                         plugin.access(conf, ctx)
-                        assert.is_equal(ctx.headers["X-Test-Header"], "test")
+                        assert.stub(core.request.set_header).was_called_with(
+                            MATCH._, "X-Test-Header", "test")
                     end
                 )
 
@@ -153,7 +162,7 @@ describe(
 
                         ctx.var.uri = "/bar"
                         plugin.access(conf, ctx)
-                        assert.is_nil(ctx.headers["X-Test-Header"])
+                        assert.stub(core.request.set_header).was_not_called()
                     end
                 )
             end
@@ -193,9 +202,13 @@ describe(
                     "multiple-actions with weight", function()
                         plugin.check_schema(conf)
 
-                        math.randomseed(os.time())
+                        stub(math, "random", function()
+                            return 1
+                        end)
                         plugin.access(conf, ctx)
-                        assert.is_true(ctx.headers["X-Test-Header-1"] == "test1" or ctx.headers["X-Test-Header-2"] == "test2")
+                        math.random:revert()
+                        assert.stub(core.request.set_header).was_called_with(
+                            MATCH._, "X-Test-Header-1", "test1")
                     end
                 )
             end
@@ -236,8 +249,8 @@ describe(
                         plugin.check_schema(conf)
 
                         plugin.access(conf, ctx)
-                        assert.is_nil(ctx.headers["X-Test-Header-1"])
-                        assert.is_equal(ctx.headers["X-Test-Header-2"], "test2")
+                        assert.stub(core.request.set_header).was_called_with(
+                            MATCH._, "X-Test-Header-2", "test2")
                     end
                 )
             end
@@ -275,9 +288,7 @@ describe(
                         plugin.check_schema(conf)
 
                         plugin.access(conf, ctx)
-                        assert.is_nil(ctx.headers["X-Test-Header-1"])
-                        assert.is_nil(ctx.headers["X-Test-Header-2"])
-                        -- assert.is_equal(ctx.headers["X-Test-Header-2"], "test2")
+                        assert.stub(core.request.set_header).was_not_called()
                     end
                 )
             end
@@ -324,8 +335,10 @@ describe(
                         plugin.check_schema(conf)
 
                         plugin.access(conf, ctx)
-                        assert.is_equal(ctx.headers["X-Test-Header-1"], "test1")
-                        assert.is_equal(ctx.headers["X-Test-Header-2"], "test2")
+                        assert.stub(core.request.set_header).was_called_with(
+                            MATCH._, "X-Test-Header-1", "test1")
+                        assert.stub(core.request.set_header).was_called_with(
+                            MATCH._, "X-Test-Header-2", "test2")
                     end
                 )
 
@@ -335,8 +348,9 @@ describe(
 
                         ctx.var.uri = "/bar"
                         plugin.access(conf, ctx)
-                        assert.is_nil(ctx.headers["X-Test-Header-1"])
-                        assert.is_equal(ctx.headers["X-Test-Header-2"], "test2")
+                        assert.stub(core.request.set_header).was_called_with(
+                            MATCH._, "X-Test-Header-2", "test2")
+                        assert.stub(core.request.set_header).was_called(1)
                     end
                 )
             end

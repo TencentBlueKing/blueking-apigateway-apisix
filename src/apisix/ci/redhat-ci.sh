@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
 
 # CHANGES:
-# 1. based on APISIX 3.17 redhat-ci.sh
-# 2. use UBI9 repos to match apache/apisix:3.17.0-redhat
+# 1. based on APISIX 3.18 redhat-ci.sh
+# 2. use UBI9 repos to match apache/apisix:3.18.0-redhat
 # 3. remove unused tools in install_dependencies
 
-# reference: https://github.com/apache/apisix/blob/3.17.0/ci/redhat-ci.sh
+# reference: https://github.com/apache/apisix/blob/3.18.0/ci/redhat-ci.sh
 #
 # Licensed to the Apache Software Foundation (ASF) under one or more
 # contributor license agreements.  See the NOTICE file distributed with

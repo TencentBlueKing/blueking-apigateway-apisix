@@ -32,12 +32,17 @@ describe(
                     var = {
                         uri = "/path/value1/value2?hello=hello",
                     },
-                    headers = {
-                        ["X-Bk-Tenant-Id"] = nil,
-                    },
+                    headers = {},
                     conf_id = "conf_id",
                     conf_type = "conf_type"
                 }
+                stub(core.request, "set_header")
+            end
+        )
+
+        after_each(
+            function()
+                core.request.set_header:revert()
             end
         )
 
@@ -52,19 +57,19 @@ describe(
 
                 it(
                     "header set to default", function()
-                        assert.is_equal(ctx.headers["X-Bk-Tenant-Id"], nil)
                         plugin.rewrite(conf, ctx)
-                        assert.is_equal(ctx.headers["X-Bk-Tenant-Id"], "default")
+                        assert.stub(core.request.set_header).was_called_with(
+                            MATCH._, "X-Bk-Tenant-Id", "default")
                         assert.is_equal(ctx.var.bk_tenant_id, "default")
                     end
                 )
 
                 it(
                     "header overwritten to default", function()
-                        ctx.headers["X-Bk-Tenant-Id"] = "other"
-                        assert.is_equal(ctx.headers["X-Bk-Tenant-Id"], "other")
+                        ctx.headers["x-bk-tenant-id"] = "other"
                         plugin.rewrite(conf, ctx)
-                        assert.is_equal(ctx.headers["X-Bk-Tenant-Id"], "default")
+                        assert.stub(core.request.set_header).was_called_with(
+                            MATCH._, "X-Bk-Tenant-Id", "default")
                         assert.is_equal(ctx.var.bk_tenant_id, "default")
                     end
                 )

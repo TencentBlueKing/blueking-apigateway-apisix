@@ -75,6 +75,7 @@ function _M.access(conf, ctx)
         return
     end
 
+    plugin.set_plugins_meta_parent({metadata.value}, metadata)
     local code = limiter.increase(metadata.value, ctx)
     if not code then
         return
@@ -97,6 +98,7 @@ function _M.log(conf, ctx)
         return
     end
 
+    plugin.set_plugins_meta_parent({metadata.value}, metadata)
     -- FIXME: if return 500 in the access phase, the decrease will not be executed
     --        so we need to decrease it
     -- reference: https://github.com/apache/apisix/issues/11868
