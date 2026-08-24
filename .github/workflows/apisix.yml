@@ -3,10 +3,20 @@ name: apisix ci
 on:
   push:
     branches: [ master, release/*, ft_tenant ]
-    paths: ['src/apisix/**']
+    paths:
+      - '.gitmodules'
+      - 'Dockerfile'
+      - 'src/apisix-core'
+      - 'src/apisix/**'
+      - 'src/build/patches/**'
   pull_request:
     branches: [ master, release/*, ft_tenant ]
-    paths: ['src/apisix/**']
+    paths:
+      - '.gitmodules'
+      - 'Dockerfile'
+      - 'src/apisix-core'
+      - 'src/apisix/**'
+      - 'src/build/patches/**'
 
 jobs:
 
@@ -59,6 +69,6 @@ jobs:
       run: |
         echo "start backing up, $(date)"
         mkdir docker-images-backup
-        docker save apisix-test-busted-317 -o docker-images-backup/apisix-test-busted-images.tar
-        docker save apisix-test-nginx-317 -o docker-images-backup/apisix-test-nginx-images.tar
+        docker save apisix-test-busted-318 -o docker-images-backup/apisix-test-busted-images.tar
+        docker save apisix-test-nginx-318 -o docker-images-backup/apisix-test-nginx-images.tar
         echo "docker save done, time: $(date)"

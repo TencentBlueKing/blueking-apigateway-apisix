@@ -75,6 +75,9 @@ function _M.access(conf, ctx)
         return
     end
 
+    -- plugin_metadata bypasses the resource filters that attach _meta.parent to normal
+    -- plugin configs. limit-conn 3.18 needs the metadata resource key to namespace counters.
+    plugin.set_plugins_meta_parent({metadata.value}, metadata)
     local code = limiter.increase(metadata.value, ctx)
     if not code then
         return
@@ -97,6 +100,9 @@ function _M.log(conf, ctx)
         return
     end
 
+    -- Keep the independently fetched metadata snapshot normalized as well. The setter is
+    -- idempotent; decrease currently consumes the counter key saved during access.
+    plugin.set_plugins_meta_parent({metadata.value}, metadata)
     -- FIXME: if return 500 in the access phase, the decrease will not be executed
     --        so we need to decrease it
     -- reference: https://github.com/apache/apisix/issues/11868

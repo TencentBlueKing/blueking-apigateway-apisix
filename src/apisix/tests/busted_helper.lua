@@ -22,6 +22,7 @@ local debugger = require("debugger")
 local match = require("luassert.match")
 local core = require("apisix.core")
 local repl = require("resty.repl")
+local is_apisix_runtime, apisix_request = pcall(require, "resty.apisix.request")
 
 rawset(_G, "repl", repl.start)
 rawset(_G, "debugger", debugger)
@@ -34,6 +35,9 @@ busted.subscribe(
         "end",
     }, function()
         busted_resty.clear()
+        if is_apisix_runtime and apisix_request.is_request_header_set() then
+            apisix_request.clear_request_header()
+        end
         core.table.clear(_NGXVALS)
     end
 )

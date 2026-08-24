@@ -5,6 +5,10 @@ nohup etcd >/tmp/etcd.log 2>&1 &
 
 sleep 1
 
+echo "apply the production patches"
+find /bkgateway/patches -maxdepth 1 -type f -name '*.patch' -print0 | \
+    sort -z | xargs -0 -r -n 1 sh -c 'patch --batch --forward --fuzz=0 -p1 < "$1"' sh
+
 echo "copy the plugins/*"
 # cp --verbose -r /bkgateway/apisix/plugins/* /usr/local/apisix/apisix/plugins/
 cp -r /bkgateway/apisix/plugins/* /usr/local/apisix/apisix/plugins/
