@@ -92,6 +92,73 @@ describe(
                         assert.is_true(result)
                     end
                 )
+
+                it(
+                    "should require policy before matching redis conditions", function()
+                        local schema = concurrency_limit.metadata_schema
+
+                        assert.same({"policy"}, schema["if"].required)
+                        assert.same({"policy"}, schema["else"]["if"].required)
+                    end
+                )
+
+                it(
+                    "should use local policy when metadata omits policy", function()
+                        local conf = {
+                            conn = 1,
+                            burst = 1,
+                            default_conn_delay = 0.01,
+                            key_type = "var",
+                            key = "bk_concurrency_limit_key",
+                        }
+
+                        local result, _ = concurrency_limit.check_schema(
+                            conf, core.schema.TYPE_METADATA
+                        )
+
+                        assert.is_true(result)
+                        assert.is_equal("local", conf.policy)
+                    end
+                )
+
+                it(
+                    "should require redis host for redis policy", function()
+                        local conf = {
+                            conn = 1,
+                            burst = 1,
+                            default_conn_delay = 0.01,
+                            key_type = "var",
+                            key = "bk_concurrency_limit_key",
+                            policy = "redis",
+                        }
+
+                        local result, _ = concurrency_limit.check_schema(
+                            conf, core.schema.TYPE_METADATA
+                        )
+
+                        assert.is_false(result)
+                    end
+                )
+
+                it(
+                    "should accept redis policy with redis host", function()
+                        local conf = {
+                            conn = 1,
+                            burst = 1,
+                            default_conn_delay = 0.01,
+                            key_type = "var",
+                            key = "bk_concurrency_limit_key",
+                            policy = "redis",
+                            redis_host = "redis.example.com",
+                        }
+
+                        local result, _ = concurrency_limit.check_schema(
+                            conf, core.schema.TYPE_METADATA
+                        )
+
+                        assert.is_true(result)
+                    end
+                )
             end
         )
 

@@ -31,6 +31,10 @@ local errorx = require("apisix.plugins.bk-core.errorx")
 local table_concat = table.concat
 
 local metadata_schema = core.table.deepcopy(limit_conn.schema)
+-- APISIX applies defaults before conditional schemas, while external validators do not.
+-- Require policy so omitted values follow the default local policy in both validators.
+metadata_schema["if"].required = {"policy"}
+metadata_schema["else"]["if"].required = {"policy"}
 local plugin_name = "bk-concurrency-limit"
 
 local _M = {
