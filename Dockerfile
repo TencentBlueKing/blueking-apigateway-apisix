@@ -39,7 +39,7 @@ RUN ls /usr/local/apisix/patches | sort | xargs -I __patch_file__ \
 
 RUN chmod 755 /data/bkgateway/bin/* && chmod 777 /usr/local/apisix/logs
 
-ADD ./src/ops/nginx-health-check.sh ./src/ops/prometheus-expiry-smoke.sh ./src/ops/run-check-pod.sh /usr/local/apisix/ops/
+ADD ./src/ops/nginx-health-check.sh ./src/ops/run-check-pod.sh /usr/local/apisix/ops/
 RUN chmod 755 /usr/local/apisix/ops/*.sh
 
 # 6. clean up
