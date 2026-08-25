@@ -1,8 +1,8 @@
 diff --git a/apisix/cli/ngx_tpl.lua b/apisix/cli/ngx_tpl.lua
-index 5dd739b6..fb54967a 100644
+index df264110..b8139bcc 100644
 --- a/apisix/cli/ngx_tpl.lua
 +++ b/apisix/cli/ngx_tpl.lua
-@@ -698,7 +698,7 @@ http {
+@@ -750,7 +750,7 @@ http {
          http3 on;
          {% end %}
          {% for _, item in ipairs(node_listen) do %}
@@ -11,7 +11,7 @@ index 5dd739b6..fb54967a 100644
          {% end %}
          {% if ssl.enable then %}
          {% for _, item in ipairs(ssl.listen) do %}
-@@ -706,7 +706,7 @@ http {
+@@ -758,7 +758,7 @@ http {
          listen {* item.ip *}:{* item.port *} quic default_server {% if enable_reuseport then %} reuseport {% end %};
          listen {* item.ip *}:{* item.port *} ssl default_server;
          {% else %}

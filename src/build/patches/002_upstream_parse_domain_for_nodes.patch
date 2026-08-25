@@ -1,36 +1,11 @@
 diff --git a/apisix/utils/upstream.lua b/apisix/utils/upstream.lua
-index c61c9f71..2549e052 100644
+index ece23776..42730ab5 100644
 --- a/apisix/utils/upstream.lua
 +++ b/apisix/utils/upstream.lua
-@@ -99,10 +99,36 @@ local function parse_domain_for_nodes(nodes)
-                 core.log.error("dns resolver domain: ", host, " error: ", err)
-             end
-         else
--            core.table.insert(new_nodes, node)
-+            -- patch for: https://github.com/apache/apisix/issues/12436
-+            if node.domain then
-+                core.log.error("issue 12436 happened")
-+                local ip, err = core.resolver.parse_domain(node.domain)
-+                if ip then
-+                    local new_node = core.table.clone(node)
-+                    -- only reset the host to ip here
-+                    new_node.host = ip
-+                    core.table.insert(new_nodes, new_node)
-+                end
-+
-+                if err then
-+                    -- add the old ip back
-+                    core.table.insert(new_nodes, node)
-+                end
-+            else
-+                -- add the old ip back
-+                core.table.insert(new_nodes, node)
-+            end
-+
+@@ -111,6 +111,12 @@ local function parse_domain_for_nodes(nodes)
          end
      end
      span:finish(ngx.ctx)
-+    -- patch for: https://github.com/apache/apisix/issues/10093#issuecomment-1738381865
 +    if #new_nodes == 0 then
 +        local err = "no valid ip found"
 +        core.log.error("parse domain for nodes: ", core.json.delay_encode(nodes), " error: ", err)
