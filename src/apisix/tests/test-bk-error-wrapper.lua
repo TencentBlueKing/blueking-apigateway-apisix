@@ -164,6 +164,29 @@ describe(
                 )
 
                 it(
+                    "keeps real ai upstream error response unwrapped", function()
+                        ngx.status = 402
+                        ctx = CTX(
+                            {
+                                upstream_status = 402,
+                                upstream_connect_time = 0.1,
+                                upstream_header_time = 0.1,
+                                upstream_response_length = "91",
+                            }
+                        )
+                        response.set_response_source(ctx, "upstream")
+
+                        plugin.header_filter(nil, ctx)
+
+                        assert.is_nil(ctx.var.bk_apigw_error)
+                        assert.is_equal("0", ctx.var.proxy_error)
+                        assert.is_equal(proxy_phases.FINISH, ctx.var.proxy_phase)
+                        assert.stub(response.clear_header_as_body_modified).was_not_called()
+                        assert.stub(response.set_header).was_not_called()
+                    end
+                )
+
+                it(
                     "upstream returns 5xx", function()
                         ngx.status = 502
                         plugin.header_filter(nil, ctx)

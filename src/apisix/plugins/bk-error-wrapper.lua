@@ -198,6 +198,13 @@ function _M.header_filter(conf, ctx) -- luacheck: no unused
         return
     end
 
+    -- ai-proxy bypasses the NGINX upstream module and populates synthetic upstream variables.
+    -- Trust the response source before using NGINX byte counters to classify transport failures.
+    if ctx.var.upstream_status and core.response.get_response_source(ctx) == "upstream" then
+        ctx.var.proxy_phase = proxy_phases.FINISH
+        return
+    end
+
     local proxy_phase, upstream_error_msg
     if ctx.var.upstream_status then
         proxy_phase, upstream_error_msg = _get_upstream_error_msg(ctx)
