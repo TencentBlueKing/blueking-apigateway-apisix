@@ -101,7 +101,10 @@ local function _get_upstream_error_msg(ctx)
                 end
             else
                 -- upstream_connect_time is ok, connected
-                if upstream_bytes_sent > 0 and upstream_bytes_received == 0 then
+                if upstream_bytes_sent
+                    and upstream_bytes_sent > 0
+                    and upstream_bytes_received == 0
+                then
                     -- 成功建立连接并发送了请求，但收到 0 字节响应
                     -- → upstream 在响应前就 RST 或关闭了连接
                     -- readv() failed (104: Connection reset by peer) while reading upstream
@@ -144,7 +147,10 @@ local function _get_upstream_error_msg(ctx)
                 -- nginx error: upstream timed out (110: Connection timed out) while connecting to upstream
                 return proxy_phases.CONNECTING, "connection timed out while connecting to upstream"
             end
-            if upstream_bytes_sent > 0 and upstream_bytes_received == 0 then
+            if upstream_bytes_sent
+                and upstream_bytes_sent > 0
+                and upstream_bytes_received == 0
+            then
                 -- 连上了、发了请求，但一个字节响应都没收到 → 等 header 超时
                 -- nginx error: upstream timed out (110: Connection timed out)
                 --              while reading response header from upstream
