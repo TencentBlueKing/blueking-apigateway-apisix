@@ -573,6 +573,24 @@ describe(
                 )
 
                 it(
+                    "504 retry sentinel does not crash", function()
+                        ngx.status = 504
+                        local ctx = {
+                            var = {
+                                upstream_connect_time = 0.1,
+                                upstream_bytes_sent = "256, -",
+                                upstream_bytes_received = "0, -",
+                            },
+                        }
+                        local ok, phase, err = pcall(plugin._get_upstream_error_msg, ctx)
+                        assert.is_true(ok)
+                        assert.is_equal(proxy_phases.HEADER_WAITING, phase)
+                        assert.is_equal("cannot read header from upstream.", err)
+
+                    end
+                )
+
+                it(
                     "connection timeout when upstream_bytes_sent is not set", function()
                         ngx.status = 504
                         local ctx = {
@@ -619,6 +637,24 @@ describe(
                         local phase, err = plugin._get_upstream_error_msg(ctx)
                         assert.is_equal(proxy_phases.HEADER_WAITING, phase)
                         assert.is_equal("connection reset by peer OR upstream prematurely closed connection", err)
+
+                    end
+                )
+
+                it(
+                    "502 retry sentinel does not crash", function()
+                        ngx.status = 502
+                        local ctx = {
+                            var = {
+                                upstream_connect_time = 0.1,
+                                upstream_bytes_sent = "256, -",
+                                upstream_bytes_received = "0, -",
+                            },
+                        }
+                        local ok, phase, err = pcall(plugin._get_upstream_error_msg, ctx)
+                        assert.is_true(ok)
+                        assert.is_equal(proxy_phases.HEADER_WAITING, phase)
+                        assert.is_equal("cannot read header from upstream.", err)
 
                     end
                 )
