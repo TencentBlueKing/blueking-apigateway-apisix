@@ -53,11 +53,13 @@ __DATA__
                 scanned = scanned + last - first + 1
                 return KeyIndex.sync_range(self, first, last)
             end
-            assert(dict:expire(writer.key_prefix .. writer.index.expiring, 0.001))
+            local old_slot = writer.index.expiring
+            assert(dict:expire(writer.key_prefix .. old_slot, 0.001))
             ngx.sleep(0.02)
             assert(not writer:add("expiring", "evicted", 60))
+            assert(writer.index.expiring ~= old_slot, "expired metric must move to a new slot")
             assert(not reader:add("history_1000", "evicted"))
-            ngx.say("incremental=", scanned <= 4)
+            ngx.say("incremental=", scanned >= 1 and scanned <= 4)
             ngx.say("keys=", #reader:list())
 
             -- Explicit deletion must still invalidate the other local index.

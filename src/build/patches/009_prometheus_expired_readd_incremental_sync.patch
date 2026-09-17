@@ -11,7 +11,7 @@
          self.keys[i] = nil
        end
        self.expire_keys[i] = nil
-@@ -71,8 +73,20 @@
+@@ -71,8 +73,22 @@
  function KeyIndex:sync()
    local delete_count = self.dict:get(self.delete_count) or 0
    local N = self.dict:get(self.key_count) or 0
@@ -24,9 +24,11 @@
 +    if count then
 +      delete_count = count
 +    end
-+    if err or forcible then
-+      ngx.log(ngx.ERR, "failed to notify key_count reset: ",
-+              err or "shared dictionary eviction; metric data may be incomplete")
++    if not count then
++      ngx.log(ngx.ERR, "failed to notify key_count reset: ", err)
++    elseif forcible then
++      ngx.log(ngx.WARN, "key_count reset notified with shared dictionary eviction; ",
++              "metric data may be incomplete")
 +    end
 +  end
 +  if self.deleted ~= delete_count or N < self.last then
@@ -34,7 +36,7 @@
      self:sync_range(0, N)
      self.deleted = delete_count
    elseif N ~= self.last then
-@@ -99,7 +113,9 @@
+@@ -99,7 +115,9 @@
          end
        end
      elseif self.keys[i] then
@@ -45,7 +47,7 @@
        self.keys[i] = nil
        self.expire_keys[i] = nil
      end
-@@ -156,22 +172,13 @@
+@@ -156,22 +174,13 @@
            local ok, err = self.dict:expire(self.key_prefix .. self.index[key], exptime)
            if not ok then
              if err == "not found" then
