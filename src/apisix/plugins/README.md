@@ -32,6 +32,10 @@
 - bk-real-ip                                # priority: 18809
 - bk-log-context                            # priority: 18800 # 该插件应默认应用于所有路由。该插件需要以较高优先级运行于请求响应及 log 阶段，目的在于：1. 在 body_filter 阶段获取后端返回的纯净 body；2. 在 log 阶段为 log 插件注入相应日志变量
 
+CORS（上下文初始化之后，认证之前）：
+
+- bk-cors                                   # priority: 18750  # 预检直接返回，并为认证错误响应保存 Origin
+
 认证：
 
 - ~~bk-workflow-parameters                    # priority: 18750 (abandonned)~~
@@ -46,7 +50,6 @@
 
 执行 - 请求
 
-- bk-cors                                   # priority: 17900
 - bk-break-recursive-call                   # priority: 17700  # 该插件应默认应用于所有路由
 - bk-request-body-limit                     # priority: 17690
 - bk-auth-validate                          # priority: 17680
