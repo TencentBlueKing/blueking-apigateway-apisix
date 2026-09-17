@@ -1,0 +1,73 @@
+--- a/deps/share/lua/5.1/prometheus_keys.lua
++++ b/deps/share/lua/5.1/prometheus_keys.lua
+@@ -45,7 +45,9 @@
+     local ttl, err = self.dict:ttl(self.key_prefix .. i)
+     if not (ttl and ttl >= 0 or err and err ~= "not found") then
+       if self.keys[i] then
+-        self.index[self.keys[i]] = nil
++        if self.index[self.keys[i]] == i then
++          self.index[self.keys[i]] = nil
++        end
+         self.keys[i] = nil
+       end
+       self.expire_keys[i] = nil
+@@ -71,8 +73,20 @@
+ function KeyIndex:sync()
+   local delete_count = self.dict:get(self.delete_count) or 0
+   local N = self.dict:get(self.key_count) or 0
+-  if self.deleted ~= delete_count then
+-    -- Some other worker deleted something, lets do a full sync.
++  if N < self.last then
++    -- Notify peers even if the counter recovers past their watermark before
++    -- their next sync. Only counter resets, not normal expiry, need this scan.
++    local count, err, forcible = self.dict:incr(self.delete_count, 1, 0)
++    if count then
++      delete_count = count
++    end
++    if err or forcible then
++      ngx.log(ngx.ERR, "failed to notify key_count reset: ",
++              err or "shared dictionary eviction; metric data may be incomplete")
++    end
++  end
++  if self.deleted ~= delete_count or N < self.last then
++    -- Deletions or an evicted/recreated key_count require a full sync.
+     self:sync_range(0, N)
+     self.deleted = delete_count
+   elseif N ~= self.last then
+@@ -99,7 +113,9 @@
+         end
+       end
+     elseif self.keys[i] then
+-      self.index[self.keys[i]] = nil
++      if self.index[self.keys[i]] == i then
++        self.index[self.keys[i]] = nil
++      end
+       self.keys[i] = nil
+       self.expire_keys[i] = nil
+     end
+@@ -156,22 +172,13 @@
+           local ok, err = self.dict:expire(self.key_prefix .. self.index[key], exptime)
+           if not ok then
+             if err == "not found" then
+-              -- The slot already expired in the shared dict. Drop the stale
+-              -- local state and bump delete_count so other workers do a full
+-              -- sync and reclaim the slot; without this the old slot lingers in
+-              -- their local self.keys while the metric is re-added at a new slot,
+-              -- desynchronizing the index and causing duplicate metric emission.
+-              -- The dict slot is already gone (expire returned "not found"), so
+-              -- there is no slot to clear here.
++              -- The slot already expired. Other workers discover its replacement
++              -- through key_count and list() only emits the current slot. Avoid
++              -- broadcasting a full historical scan for a natural expiration.
+               local idx = self.index[key]
+               self.index[key] = nil
+               self.keys[idx] = nil
+               self.expire_keys[idx] = nil
+-              self.deleted = self.deleted + 1
+-              local _, incr_err, forcible = self.dict:incr(self.delete_count, 1, 0)
+-              if incr_err or forcible then
+-                return incr_err or err_msg_lru_eviction
+-              end
+               expired = true
+             else
+               -- Unexpected expire error: the slot may still be live, so leave it
