@@ -18,6 +18,8 @@
 local core = require("apisix.core")
 local bk_core = require("apisix.plugins.bk-core.init")
 local oauth2 = require("apisix.plugins.bk-core.oauth2")
+local api_auth = require("apisix.plugins.bk-define.context-api-bkauth")
+local resource_auth = require("apisix.plugins.bk-define.context-resource-bkauth")
 local plugin = require("apisix.plugins.bk-oauth2-protected-resource")
 
 describe(
@@ -132,6 +134,117 @@ describe(
                         assert.is_equal(401, status)
                     end
                 )
+            end
+        )
+
+        context(
+            "configured user ticket cookies", function()
+                local cookies
+
+                before_each(function()
+                    cookies = {}
+                    ctx.var.bk_resource_auth = resource_auth.new({verified_user_required = true})
+                    stub(bk_core.cookie, "get_value", function(name)
+                        return cookies[name]
+                    end)
+                end)
+
+                after_each(function()
+                    bk_core.cookie.get_value:revert()
+                end)
+
+                for _, case in ipairs({
+                    {cookie = "bk_token", conf = "user_conf", flag = "from_bk_token", user_type = "bkuser"},
+                    {cookie = "bk_ticket", conf = "rtx_conf", flag = "from_bk_ticket", user_type = "rtx"},
+                }) do
+                    context(case.cookie, function()
+                        before_each(function()
+                            ctx.var.bk_api_auth = api_auth.new({
+                                [case.conf] = {user_type = case.user_type, [case.flag] = true},
+                            })
+                            cookies[case.cookie] = "user-ticket"
+                        end)
+
+                        it("should defer configured cookies to legacy authentication", function()
+                            assert.is_nil(plugin.rewrite({}, ctx))
+                            assert.is_false(ctx.var.is_bk_oauth2)
+                        end)
+
+                        it("should reject cookies when user authentication is not required", function()
+                            ctx.var.bk_resource_auth = resource_auth.new({verified_user_required = false})
+                            assert.is_equal(401, plugin.rewrite({}, ctx))
+                        end)
+
+                        it("should reject cookies when their authentication source is disabled", function()
+                            ctx.var.bk_api_auth[case.conf][case.flag] = false
+                            assert.is_equal(401, plugin.rewrite({}, ctx))
+                        end)
+
+                        it("should reject cookies when the user type is not configured", function()
+                            ctx.var.bk_api_auth[case.conf].user_type = ""
+                            assert.is_equal(401, plugin.rewrite({}, ctx))
+                        end)
+
+                        if case.cookie == "bk_ticket" then
+                            it("should retain uin authentication precedence", function()
+                                ctx.var.bk_api_auth = api_auth.new({
+                                    uin_conf = {user_type = "uin", from_uin_skey = true},
+                                    rtx_conf = {user_type = "rtx", from_bk_ticket = true},
+                                })
+                                assert.is_equal(401, plugin.rewrite({}, ctx))
+                            end)
+                        end
+
+                        it("should reject missing cookies", function()
+                            cookies[case.cookie] = nil
+                            assert.is_equal(401, plugin.rewrite({}, ctx))
+                        end)
+
+                        it("should reject empty cookies", function()
+                            cookies[case.cookie] = ""
+                            assert.is_equal(401, plugin.rewrite({}, ctx))
+                        end)
+
+                        it("should reject cookies for a different authentication source", function()
+                            cookies[case.cookie] = nil
+                            cookies[case.cookie == "bk_token" and "bk_ticket" or "bk_token"] = "other-ticket"
+                            assert.is_equal(401, plugin.rewrite({}, ctx))
+                        end)
+
+                        it("should preserve Bearer precedence over cookies", function()
+                            headers["Authorization"] = "Bearer invalid-token"
+                            assert.is_nil(plugin.rewrite({}, ctx))
+                            assert.is_true(ctx.var.is_bk_oauth2)
+                            assert.stub(bk_core.cookie.get_value).was_not_called()
+                        end)
+
+                        for _, authorization in ipairs({"Bearer", "Bearer ", "bEaReR ", "Bearer\ttoken"}) do
+                            it("should reject malformed Bearer without cookie fallback: " .. authorization, function()
+                                headers["Authorization"] = authorization
+                                assert.is_equal(401, plugin.rewrite({}, ctx))
+                                assert.stub(bk_core.cookie.get_value).was_not_called()
+                            end)
+                        end
+
+                        it("should preserve legacy header precedence over Bearer and cookies", function()
+                            headers["X-Bkapi-Authorization"] = '{"bk_app_code":"test"}'
+                            headers["Authorization"] = "Bearer invalid-token"
+                            assert.is_nil(plugin.rewrite({}, ctx))
+                            assert.is_false(ctx.var.is_bk_oauth2)
+                            assert.stub(bk_core.cookie.get_value).was_not_called()
+                        end)
+
+                        it("should retain the challenge without gateway context", function()
+                            ctx.var.bk_api_auth = nil
+                            assert.is_equal(401, plugin.rewrite({}, ctx))
+                        end)
+
+                        it("should retain the challenge without resource context", function()
+                            ctx.var.bk_resource_auth = nil
+                            assert.is_equal(401, plugin.rewrite({}, ctx))
+                        end)
+                    end)
+                end
             end
         )
 
