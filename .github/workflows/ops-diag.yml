@@ -1,9 +1,9 @@
 name: ops diagnostics
 on:
   pull_request:
-    paths: ['src/ops/**', 'src/build/bin/build-diag-manifest.py', 'Dockerfile', '.github/workflows/ops-diag.yml']
+    paths: ['src/ops/**', 'src/build/bin/build-diag-manifest.py', 'Dockerfile', 'Dockerfile.diag', '.github/workflows/ops-diag.yml']
   push:
-    paths: ['src/ops/**', 'src/build/bin/build-diag-manifest.py', 'Dockerfile', '.github/workflows/ops-diag.yml']
+    paths: ['src/ops/**', 'src/build/bin/build-diag-manifest.py', 'Dockerfile', 'Dockerfile.diag', '.github/workflows/ops-diag.yml']
 jobs:
   unittest:
     runs-on: ubuntu-latest

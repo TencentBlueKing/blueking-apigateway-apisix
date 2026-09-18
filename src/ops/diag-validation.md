@@ -15,7 +15,7 @@ deployment, or load test is authorized by this file.
   disposable container refused `perf_event_open` with EPERM. No permission
   escalation was attempted. This does not validate the recorder on a production kernel.
 - External debug packages were not supplied. The build inventory records embedded
-  `.debug_info` for each actual ELF; the optional symbol target exports those exact files.
+  `.debug_info` for each actual ELF; the separate `Dockerfile.diag` exports those exact files.
 
 ## Required before enabling expensive collection
 
@@ -89,3 +89,10 @@ all about 12.03 s / exit 10. Bundles were approximately 331–402 kB and verifie
 CPU was idle in this smoke fixture; no native samples were inferred. The symbol
 export contained 101 matching ELF files and 1,465 Lua files with verified SHA256.
 These counts describe the current local image inputs, not a stable product contract.
+
+After separating the Dockerfiles, `Dockerfile.diag` built successfully from the
+existing local runtime image. Its exported manifest matched the runtime manifest,
+and SHA256 verification passed for all 101 ELF and 1,465 Lua files. The production
+Dockerfile was checked to retain exactly the previous runtime instructions, removing
+only the stage alias and optional export/final stages; it was not rebuilt in this
+follow-up. Workflow YAML and both Dockerfile path filters were also checked.

@@ -1,4 +1,4 @@
-FROM tencentos/tencentos4-minimal:4.4-v20250922 AS apisix-runtime
+FROM tencentos/tencentos4-minimal:4.4-v20250922
 
 ARG APISIX_VERSION=3.18.0
 LABEL apisix_version="${APISIX_VERSION}"
@@ -67,11 +67,3 @@ RUN yum remove -y wget unzip patch make && yum clean all && rm -rf /var/cache/yu
 ENTRYPOINT ["/data/bkgateway/bin/apisix-start.sh"]
 
 STOPSIGNAL SIGQUIT
-
-# Optional export target. It copies exact image binaries/source, never rebuilds symbols.
-FROM apisix-runtime AS diag-symbols
-COPY ./src/build/bin/build-diag-manifest.py /tmp/build-diag-manifest.py
-RUN PYTHONDONTWRITEBYTECODE=1 python3 /tmp/build-diag-manifest.py --symbols-out /diag-symbols && \
-    rm /tmp/build-diag-manifest.py
-
-FROM apisix-runtime AS final

@@ -381,16 +381,22 @@ ELF Build ID/SHA256、Python/perf/RPM/OpenResty/LuaJIT 版本及采集器摘要�
 镜像 digest 由外部运维终端另外记录，不从容器内猜测。
 
 ```bash
-docker build --build-arg DIAG_SOURCE_REVISION=YOUR_VERIFIED_REVISION -t your-apisix:diag .
-docker build --target diag-symbols --build-arg DIAG_SOURCE_REVISION=YOUR_VERIFIED_REVISION \
+docker build --build-arg DIAG_SOURCE_REVISION=YOUR_VERIFIED_REVISION -t your-apisix:production .
+```
+
+生产 Dockerfile 只构建运行镜像。需要离线符号材料时，单独使用 `Dockerfile.diag`，
+通过 `APISIX_IMAGE` 指定上面已构建的生产镜像；发布场景应使用实际部署镜像的 registry digest。
+
+```bash
+docker build -f Dockerfile.diag --build-arg APISIX_IMAGE=your-apisix:production \
   -t your-apisix:diag-symbols .
 SYMBOL_CONTAINER=$(docker create your-apisix:diag-symbols)
 docker cp "$SYMBOL_CONTAINER:/diag-symbols" ./matching-symbol-root
 docker rm "$SYMBOL_CONTAINER"
 ```
 
-两次构建必须复用同一源码/依赖层，并核对生成清单相同；否则不可当作匹配符号。
-默认最终镜像不包含这份重复归档。符号目标导出原 ELF/DSO 和最终 Lua 源码，
+调试归档直接复制指定生产镜像内的文件，按该镜像已有清单校验哈希，不重新构建 APISIX。
+生产镜像不包含这份重复归档。独立调试镜像用于导出原 ELF/DSO 和最终 Lua 源码，
 未获得供应方独立 debug 包时在清单中记录缺失，不用重新编译的“同版本”替代。
 基础快照无需启用部署特权或修改安全策略。
 
