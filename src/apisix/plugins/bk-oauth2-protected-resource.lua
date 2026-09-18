@@ -21,8 +21,8 @@
 -- or legacy BlueKing authentication (X-Bkapi-Authorization) and routes accordingly.
 --
 -- Configured user ticket cookies also use legacy authentication when the resource
--- requires user authentication. Otherwise, missing credentials return 401 with a WWW-Authenticate header
--- containing the resource_metadata URL for OAuth2 discovery.
+-- requires only user authentication. Otherwise, missing credentials return 401
+-- with a WWW-Authenticate header containing the resource_metadata URL for OAuth2 discovery.
 --
 -- This plugin depends on:
 --     * bk-core.config: For hosts.bk-apigateway-host configuration
@@ -86,7 +86,8 @@ end
 local function has_configured_user_ticket_cookie(ctx)
     local resource_auth = ctx.var.bk_resource_auth
     local api_auth = ctx.var.bk_api_auth
-    if not resource_auth or not resource_auth:get_verified_user_required() or not api_auth then
+    if not resource_auth or not resource_auth:get_verified_user_required()
+        or resource_auth:get_verified_app_required() or not api_auth then
         return false
     end
 
