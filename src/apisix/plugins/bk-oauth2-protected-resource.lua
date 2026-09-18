@@ -20,14 +20,16 @@
 -- This plugin detects whether a request uses OAuth2 authentication (Authorization: Bearer)
 -- or legacy BlueKing authentication (X-Bkapi-Authorization) and routes accordingly.
 --
--- When no auth headers are present, it returns 401 with a WWW-Authenticate header
--- containing the resource_metadata URL for OAuth2 discovery.
+-- Configured user ticket cookies also use legacy authentication when the resource
+-- requires only user authentication. Otherwise, missing credentials return 401
+-- with a WWW-Authenticate header containing the resource_metadata URL for OAuth2 discovery.
 --
 -- This plugin depends on:
 --     * bk-core.config: For hosts.bk-apigateway-host configuration
 --
 local pl_types = require("pl.types")
 local core = require("apisix.core")
+local cookie = require("apisix.plugins.bk-core.cookie")
 local oauth2 = require("apisix.plugins.bk-core.oauth2")
 local errorx = require("apisix.plugins.bk-core.errorx")
 local ngx = ngx
@@ -81,6 +83,26 @@ local function parse_bearer_token(authorization)
 end
 
 
+local function has_configured_user_ticket_cookie(ctx)
+    local resource_auth = ctx.var.bk_resource_auth
+    local api_auth = ctx.var.bk_api_auth
+    if not resource_auth or not resource_auth:get_verified_user_required()
+        or resource_auth:get_verified_app_required() or not api_auth then
+        return false
+    end
+
+    local user_conf = api_auth:get_user_conf()
+    if not user_conf:is_empty() and user_conf.from_bk_token
+        and not pl_types.is_empty(cookie.get_value("bk_token")) then
+        return true
+    end
+
+    local rtx_conf = api_auth:get_rtx_conf()
+    return not api_auth:is_user_type_uin() and not rtx_conf:is_empty() and rtx_conf.from_bk_ticket
+        and not pl_types.is_empty(cookie.get_value("bk_ticket"))
+end
+
+
 function _M.rewrite(conf, ctx) -- luacheck: no unused
     -- Check for X-Bkapi-Authorization header first (legacy BlueKing auth)
     -- If present, skip OAuth2 flow and allow legacy flow to handle authentication
@@ -102,7 +124,17 @@ function _M.rewrite(conf, ctx) -- luacheck: no unused
         return
     end
 
-    -- No valid auth headers present
+    -- An explicit but malformed Bearer credential must retain the challenge, not use cookies.
+    local auth_lower = string_lower(authorization or "")
+    local is_bearer_auth = auth_lower == "bearer" or string_match(auth_lower, "^bearer%s")
+
+    -- Only select the legacy flow here; it still verifies the cookie and resource requirements.
+    if not is_bearer_auth and has_configured_user_ticket_cookie(ctx) then
+        ctx.var.is_bk_oauth2 = false
+        return
+    end
+
+    -- No supported authentication credentials present
     -- Return 401 with WWW-Authenticate header for OAuth2 discovery
     core.log.info("bk-oauth2-protected-resource: no valid auth header, returning 401 with WWW-Authenticate")
     local www_auth = oauth2.build_www_authenticate_header(
