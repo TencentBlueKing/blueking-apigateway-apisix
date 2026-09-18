@@ -175,6 +175,17 @@ describe(
                             assert.is_equal(401, plugin.rewrite({}, ctx))
                         end)
 
+                        it("should retain the challenge when app authentication is also required", function()
+                            ctx.var.bk_resource_auth = resource_auth.new({
+                                verified_user_required = true,
+                                verified_app_required = true,
+                            })
+                            local status = plugin.rewrite({}, ctx)
+                            assert.is_equal(401, status)
+                            assert.matches("^Bearer ", ngx.header["WWW-Authenticate"])
+                            assert.matches("resource_metadata=", ngx.header["WWW-Authenticate"])
+                        end)
+
                         it("should reject cookies when their authentication source is disabled", function()
                             ctx.var.bk_api_auth[case.conf][case.flag] = false
                             assert.is_equal(401, plugin.rewrite({}, ctx))

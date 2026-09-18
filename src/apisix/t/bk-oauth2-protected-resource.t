@@ -250,7 +250,10 @@ resource=http%3A%2F%2Fbk-apigateway.bkapi.example.com%2Fapi%2Fbk-apigateway-extr
                                 jwt_private_key = "dGVzdA==", bk_api_auth = auth,
                             },
                             ["bk-resource-context"] = {
-                                bk_resource_auth = {verified_user_required = true},
+                                bk_resource_auth = {
+                                    verified_user_required = true,
+                                    verified_app_required = false,
+                                },
                             },
                             ["bk-oauth2-protected-resource"] = {},
                             ["proxy-rewrite"] = {uri = "/hello"},
@@ -314,3 +317,61 @@ Authorization: Bearer invalid-token
 X-Auth-Flow: oauth2
 --- no_error_log
 [error]
+
+=== TEST 16: require app authentication on cookie entrypoint routes
+--- config
+    location /t {
+        content_by_lua_block {
+            local t = require("lib.test_admin").test
+            local core = require("apisix.core")
+            for _, cookie in ipairs({"bk_token", "bk_ticket"}) do
+                local code, body = t("/apisix/admin/routes/cookie-" .. cookie,
+                    ngx.HTTP_PATCH, core.json.encode({
+                        plugins = {
+                            ["bk-resource-context"] = {
+                                bk_resource_auth = {
+                                    verified_user_required = true,
+                                    verified_app_required = true,
+                                },
+                            },
+                        },
+                    }))
+                if code >= 300 then
+                    ngx.status = code
+                    ngx.say(body)
+                    return
+                end
+            end
+            ngx.say("passed")
+        }
+    }
+--- response_body
+passed
+
+=== TEST 17: bk_token retains OAuth2 challenge when app authentication is required
+--- extra_yaml_config
+bk_gateway:
+  hosts:
+    bk-apigateway-api:
+      tmpl: "http://{api_name}.bkapi.example.com"
+--- request
+GET /cookie-bk_token
+--- more_headers
+Cookie: bk_token=user-ticket
+--- error_code: 401
+--- response_headers_like
+WWW-Authenticate: Bearer .*resource_metadata=.*
+
+=== TEST 18: bk_ticket retains OAuth2 challenge when app authentication is required
+--- extra_yaml_config
+bk_gateway:
+  hosts:
+    bk-apigateway-api:
+      tmpl: "http://{api_name}.bkapi.example.com"
+--- request
+GET /cookie-bk_ticket
+--- more_headers
+Cookie: bk_ticket=user-ticket
+--- error_code: 401
+--- response_headers_like
+WWW-Authenticate: Bearer .*resource_metadata=.*
