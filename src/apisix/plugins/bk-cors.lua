@@ -20,8 +20,8 @@
 --
 -- Handle cross-origin requests using the official cors plugin.
 
--- The cors preflight request should return directly without reporting an error,
--- so its priority should be higher
+-- Run after context initialization but before authentication can reject requests.
+-- This handles preflight and saves Origin for CORS headers on authentication errors.
 local cors = require("apisix.plugins.cors")
 local core = require("apisix.core")
 local re_compile = require("resty.core.regex").re_match_compile
@@ -90,7 +90,7 @@ end
 
 local _M = {
     version = 0.1,
-    priority = 17900,
+    priority = 18750,
     name = plugin_name,
     schema = bk_cors_schema,
     check_schema = check_schema,
