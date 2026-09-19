@@ -257,6 +257,9 @@ current_slot=true
             local writer = KeyIndex.new(dict, "ttl_race_")
             assert(not writer:add("expiring", "evicted", 60))
             assert(not writer:add("anchor", "evicted"))
+            -- Keep add() from syncing away the old mapping before expire()
+            -- exercises the expired-readd branch and its broadcast behavior.
+            writer:sync()
             local old_slot = writer.index.expiring
             local shared_key = writer.key_prefix .. old_slot
             local reader_dict = setmetatable({}, {
@@ -279,6 +282,7 @@ current_slot=true
             reader:sync()
             ngx.say("tracked=", reader.expire_keys[old_slot] == true)
 
+            local last_synced = reader.last
             local scanned = 0
             reader.sync_range = function(self, first, last)
                 scanned = scanned + last - first + 1
@@ -294,7 +298,8 @@ current_slot=true
             ngx.say("mapping_preserved=", reader.index.expiring == current
                     and dict:get(reader.key_prefix .. current) == "expiring")
             ngx.say("keys=", #reader:list())
-            ngx.say("incremental=", scanned >= 1 and scanned <= 4)
+            -- Require exactly the inclusive last..N window, not a full scan.
+            ngx.say("incremental=", scanned == reader.last - last_synced + 1)
             ngx.say("broadcasts=", dict:get(reader.delete_count) or 0)
         }
     }
