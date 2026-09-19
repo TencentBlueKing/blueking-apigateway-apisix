@@ -36,7 +36,15 @@
      self:sync_range(0, N)
      self.deleted = delete_count
    elseif N ~= self.last then
-@@ -99,7 +115,9 @@
+@@ -94,12 +110,15 @@
+-      -- if it is nil and ttl not is 0, set expire_keys map
++      -- Track unknown TTLs too: the slot can disappear between get() and ttl().
++      -- Otherwise it would never be visited by periodic local cleanup.
+       if not self.expire_keys[i] then
+         local ttl, _ = self.dict:ttl(self.key_prefix .. i)
+-        if ttl and ttl ~= 0 then
++        if ttl ~= 0 then
+           self.expire_keys[i] = true
          end
        end
      elseif self.keys[i] then
@@ -47,7 +55,7 @@
        self.keys[i] = nil
        self.expire_keys[i] = nil
      end
-@@ -156,22 +174,13 @@
+@@ -156,22 +175,13 @@
            local ok, err = self.dict:expire(self.key_prefix .. self.index[key], exptime)
            if not ok then
              if err == "not found" then
