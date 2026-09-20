@@ -131,6 +131,7 @@ function _M.rewrite(conf, ctx) -- luacheck: no unused
     -- Only select the legacy flow here; it still verifies the cookie and resource requirements.
     if not is_bearer_auth and has_configured_user_ticket_cookie(ctx) then
         ctx.var.is_bk_oauth2 = false
+        core.log.info("bk-oauth2-protected-resource: user cookie detected, using legacy auth")
         return
     end
 
