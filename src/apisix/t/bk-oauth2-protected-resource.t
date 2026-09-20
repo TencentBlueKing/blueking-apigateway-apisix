@@ -230,3 +230,148 @@ resource=http%3A%2F%2Fbk-apigateway.bkapi.example.com%2Fapi%2Fbk-apigateway%2Fpr
 GET /t
 --- response_body_like
 resource=http%3A%2F%2Fbk-apigateway.bkapi.example.com%2Fapi%2Fbk-apigateway-extra%2Fprod%2Fapi%2Fv2%2Fmcp-servers.*
+
+=== TEST 11: configure cookie authentication entrypoint routes
+--- config
+    location /t {
+        content_by_lua_block {
+            local t = require("lib.test_admin").test
+            local core = require("apisix.core")
+            for _, cookie in ipairs({"bk_token", "bk_ticket"}) do
+                local auth = cookie == "bk_token"
+                    and {user_conf = {user_type = "bkuser", from_bk_token = true}}
+                    or {rtx_conf = {user_type = "rtx", from_bk_ticket = true}}
+                local code, body = t("/apisix/admin/routes/cookie-" .. cookie,
+                    ngx.HTTP_PUT, core.json.encode({
+                        uri = "/cookie-" .. cookie,
+                        plugins = {
+                            ["bk-stage-context"] = {
+                                bk_gateway_name = "test", bk_stage_name = "prod",
+                                jwt_private_key = "dGVzdA==", bk_api_auth = auth,
+                            },
+                            ["bk-resource-context"] = {
+                                bk_resource_auth = {
+                                    verified_user_required = true,
+                                    verified_app_required = false,
+                                },
+                            },
+                            ["bk-oauth2-protected-resource"] = {},
+                            ["proxy-rewrite"] = {uri = "/hello"},
+                            ["serverless-post-function"] = {
+                                phase = "rewrite",
+                                functions = {
+                                    "return function(conf, ctx) ngx.header['X-Auth-Flow'] = ctx.var.is_bk_oauth2 and 'oauth2' or 'legacy' end"
+                                },
+                            },
+                        },
+                        upstream = {
+                            nodes = {["127.0.0.1:1980"] = 1}, type = "roundrobin",
+                        },
+                    }))
+                if code >= 300 then
+                    ngx.status = code
+                    ngx.say(body)
+                    return
+                end
+            end
+            ngx.say("passed")
+        }
+    }
+--- response_body
+passed
+
+=== TEST 12: configured bk_token cookie selects legacy authentication
+--- request
+GET /cookie-bk_token
+--- more_headers
+Cookie: bk_token=user-ticket
+--- response_headers
+X-Auth-Flow: legacy
+--- no_error_log
+[error]
+
+=== TEST 13: configured bk_ticket cookie selects legacy authentication
+--- request
+GET /cookie-bk_ticket
+--- more_headers
+Cookie: bk_ticket=user-ticket
+--- response_headers
+X-Auth-Flow: legacy
+--- no_error_log
+[error]
+
+=== TEST 14: missing cookie retains OAuth2 challenge
+--- request
+GET /cookie-bk_token
+--- error_code: 401
+--- response_headers_like
+WWW-Authenticate: Bearer .*
+
+=== TEST 15: Bearer takes precedence over configured cookie
+--- request
+GET /cookie-bk_token
+--- more_headers
+Cookie: bk_token=user-ticket
+Authorization: Bearer invalid-token
+--- response_headers
+X-Auth-Flow: oauth2
+--- no_error_log
+[error]
+
+=== TEST 16: require app authentication on cookie entrypoint routes
+--- config
+    location /t {
+        content_by_lua_block {
+            local t = require("lib.test_admin").test
+            local core = require("apisix.core")
+            for _, cookie in ipairs({"bk_token", "bk_ticket"}) do
+                local code, body = t("/apisix/admin/routes/cookie-" .. cookie,
+                    ngx.HTTP_PATCH, core.json.encode({
+                        plugins = {
+                            ["bk-resource-context"] = {
+                                bk_resource_auth = {
+                                    verified_user_required = true,
+                                    verified_app_required = true,
+                                },
+                            },
+                        },
+                    }))
+                if code >= 300 then
+                    ngx.status = code
+                    ngx.say(body)
+                    return
+                end
+            end
+            ngx.say("passed")
+        }
+    }
+--- response_body
+passed
+
+=== TEST 17: bk_token retains OAuth2 challenge when app authentication is required
+--- extra_yaml_config
+bk_gateway:
+  hosts:
+    bk-apigateway-api:
+      tmpl: "http://{api_name}.bkapi.example.com"
+--- request
+GET /cookie-bk_token
+--- more_headers
+Cookie: bk_token=user-ticket
+--- error_code: 401
+--- response_headers_like
+WWW-Authenticate: Bearer .*resource_metadata=.*
+
+=== TEST 18: bk_ticket retains OAuth2 challenge when app authentication is required
+--- extra_yaml_config
+bk_gateway:
+  hosts:
+    bk-apigateway-api:
+      tmpl: "http://{api_name}.bkapi.example.com"
+--- request
+GET /cookie-bk_ticket
+--- more_headers
+Cookie: bk_ticket=user-ticket
+--- error_code: 401
+--- response_headers_like
+WWW-Authenticate: Bearer .*resource_metadata=.*
