@@ -36,6 +36,10 @@ CORS（上下文初始化之后，认证之前）：
 
 - bk-cors                                   # priority: 18750  # 预检直接返回，并为认证错误响应保存 Origin
 
+请求体限额（CORS 之后，所有认证之前）：
+
+- bk-request-body-limit                     # priority: 18745  # 在认证读取请求体之前设置限额
+
 认证：
 
 - ~~bk-workflow-parameters                    # priority: 18750 (abandonned)~~
@@ -51,7 +55,6 @@ CORS（上下文初始化之后，认证之前）：
 执行 - 请求
 
 - bk-break-recursive-call                   # priority: 17700  # 该插件应默认应用于所有路由
-- bk-request-body-limit                     # priority: 17690
 - bk-auth-validate                          # priority: 17680
 - bk-user-restriction                       # priority: 17679
 - bk-oauth2-appcode-validate                # priority: 17678  # OAuth2 app code 验证：按路由配置允许 public 和 personal 客户端
