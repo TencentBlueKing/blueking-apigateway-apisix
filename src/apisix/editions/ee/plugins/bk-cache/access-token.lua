@@ -16,6 +16,7 @@
 -- to the current version of the project delivered to anyone in the future.
 --
 local core = require("apisix.core")
+local mask_credential = require("apisix.plugins.bk-core.string").mask_credential
 local access_token_define = require("apisix.plugins.bk-define.access-token")
 local ssm_component = require("apisix.plugins.bk-components.ssm")
 local lru_new = require("resty.lrucache").new
@@ -66,7 +67,7 @@ function _M.get_access_token(access_token)
             result = access_token_fallback_lrucache:get(key)
             if result ~= nil then
                 core.log.error("the ssm down, error: ", err, " use the fallback cache. ",
-                               "key=", key, " result=", core.json.delay_encode(result))
+                               "key=", mask_credential(key), " result=", core.json.delay_encode(result))
                 return result.token, nil
             end
 

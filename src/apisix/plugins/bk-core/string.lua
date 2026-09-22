@@ -18,6 +18,7 @@
 
 local core = require("apisix.core")
 local setmetatable = setmetatable
+local string_sub = string.sub
 
 local _M = {}
 
@@ -35,6 +36,16 @@ function _M.trim_prefix(s, prefix)
     end
 
     return s
+end
+
+
+-- Preserve a short hint for logs without exposing short credentials in full.
+function _M.mask_credential(credential)
+    if #credential <= 12 then
+        return "******"
+    end
+
+    return string_sub(credential, 1, 4) .. "******" .. string_sub(credential, -4)
 end
 
 return _M

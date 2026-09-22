@@ -16,6 +16,7 @@
 -- to the current version of the project delivered to anyone in the future.
 --
 local core = require("apisix.core")
+local mask_credential = require("apisix.plugins.bk-core.string").mask_credential
 local bkauth_component = require("apisix.plugins.bk-components.bkauth")
 local lru_new = require("resty.lrucache").new
 
@@ -63,7 +64,7 @@ function _M.get_oauth2_access_token(access_token)
             result = oauth2_access_token_fallback_lrucache:get(key)
             if result ~= nil then
                 core.log.error("the bkauth down, error: ", err, " use the fallback cache. ",
-                               "key=", key, " result=", core.json.delay_encode(result))
+                               "key=", mask_credential(key), " result=", core.json.delay_encode(result))
                 return result.token, nil
             end
 

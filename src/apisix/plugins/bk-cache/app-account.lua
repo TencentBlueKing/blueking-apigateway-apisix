@@ -16,6 +16,7 @@
 -- to the current version of the project delivered to anyone in the future.
 --
 local core = require("apisix.core")
+local mask_credential = require("apisix.plugins.bk-core.string").mask_credential
 local bkauth_component = require("apisix.plugins.bk-components.bkauth")
 local table_concat = table.concat
 local lru_new = require("resty.lrucache").new
@@ -62,7 +63,8 @@ function _M.verify_app_secret(app_code, app_secret)
             result = verify_app_secret_fallback_lrucache:get(key)
             if result ~= nil then
                 core.log.error("the bkauth down, error: ", err, " use the fallback cache. ",
-                               "key=", key, " result=", core.json.delay_encode(result))
+                               "key=", app_code, ":", mask_credential(app_secret),
+                               " result=", core.json.delay_encode(result))
                 return result, nil
             -- else
             --     core.log.error("the bkauth down, but also miss in fallback cache, error: ", err, " key=", key)
