@@ -16,6 +16,7 @@
 -- to the current version of the project delivered to anyone in the future.
 --
 local core = require("apisix.core")
+local mask_credential = require("apisix.plugins.bk-core.string").mask_credential
 local bklogin_component = require("apisix.plugins.bk-components.bklogin")
 local lru_new = require("resty.lrucache").new
 
@@ -47,7 +48,7 @@ function _M.get_username_by_bk_token(bk_token)
             result = bk_token_fallback_lrucache:get(key)
             if result ~= nil then
                 core.log.error("the bklogin down, error: ", err, " use the fallback cache. ",
-                               "key=", key, " result=", core.json.delay_encode(result))
+                               "key=", mask_credential(key), " result=", core.json.delay_encode(result))
                 return result.username, result.error_message
             end
 
