@@ -50,7 +50,7 @@ describe(
 
                 stub(
                     core.request, "set_header", function(_, name, value)
-                        if name == "Authorization" then
+                        if string.lower(name) == "authorization" then
                             authorization_header = value
                         end
                     end
