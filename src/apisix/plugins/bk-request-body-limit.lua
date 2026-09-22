@@ -46,7 +46,8 @@ local schema = {
 
 local _M = {
     version = 0.1,
-    priority = 17690,
+    -- Run after CORS but before authentication can read the request body.
+    priority = 18745,
     name = plugin_name,
     schema = schema,
 }
