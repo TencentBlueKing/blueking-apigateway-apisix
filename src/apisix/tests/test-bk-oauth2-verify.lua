@@ -48,6 +48,14 @@ describe(
                     end
                 )
 
+                stub(
+                    core.request, "set_header", function(_, name, value)
+                        if name == "Authorization" then
+                            authorization_header = value
+                        end
+                    end
+                )
+
                 ngx.header = {}
                 setmetatable(ngx.header, {
                     __newindex = function(tbl, key, value)
@@ -78,6 +86,7 @@ describe(
         after_each(
             function()
                 core.request.header:revert()
+                core.request.set_header:revert()
                 oauth2_cache.get_oauth2_access_token:revert()
                 bk_core.config.get_bk_apigateway_api_tmpl:revert()
             end
@@ -100,27 +109,31 @@ describe(
                 it(
                     "should skip when is_bk_oauth2 is false", function()
                         ctx.var.is_bk_oauth2 = false
+                        authorization_header = "Bearer backend-token"
 
                         local result = plugin.rewrite({}, ctx)
 
                         assert.is_nil(result)
                         assert.is_nil(ctx.var.bk_app)
+                        assert.is_equal("Bearer backend-token", authorization_header)
                     end
                 )
 
                 it(
                     "should skip when is_bk_oauth2 is nil", function()
                         ctx.var.is_bk_oauth2 = nil
+                        authorization_header = "Basic backend-credentials"
 
                         local result = plugin.rewrite({}, ctx)
 
                         assert.is_nil(result)
                         assert.is_nil(ctx.var.bk_app)
+                        assert.is_equal("Basic backend-credentials", authorization_header)
                     end
                 )
 
                 it(
-                    "should process when is_bk_oauth2 is true", function()
+                    "should authenticate and remove the Bearer Authorization header", function()
                         ctx.var.is_bk_oauth2 = true
                         authorization_header = "Bearer valid-token"
                         cached_result = {
@@ -138,6 +151,8 @@ describe(
                         assert.is_not_nil(ctx.var.bk_user)
                         assert.is_equal("test-app", ctx.var.bk_app_code)
                         assert.is_equal("header", ctx.var.auth_params_location)
+                        assert.stub(oauth2_cache.get_oauth2_access_token).was_called_with("valid-token")
+                        assert.is_nil(authorization_header)
                     end
                 )
 
