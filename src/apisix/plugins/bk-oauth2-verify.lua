@@ -213,8 +213,7 @@ function _M.rewrite(conf, ctx) -- luacheck: no unused
     ctx.var.auth_params_location = "header"
 
     -- The gateway has consumed this credential; do not forward it upstream.
-    -- Lowercase also clears the cached header on older APISIX versions.
-    core.request.set_header(ctx, string_lower(AUTHORIZATION_HEADER), nil)
+    core.request.set_header(ctx, AUTHORIZATION_HEADER, nil)
 end
 
 
