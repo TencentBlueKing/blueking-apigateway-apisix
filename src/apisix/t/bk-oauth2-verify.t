@@ -94,26 +94,18 @@ skipped
 --- response_body
 skipped
 
-=== TEST 4: should set all expected ctx.var after successful verification
+=== TEST 4: should set auth context and remove Authorization after successful verification
 --- config
     location /t {
         content_by_lua_block {
             local plugin = require("apisix.plugins.bk-oauth2-verify")
             local core = require("apisix.core")
             
-            -- Mock core.request.header to return Authorization header
-            local original_header = core.request.header
-            core.request.header = function(ctx, name)
-                if name == "Authorization" then
-                    return "Bearer valid-token"
-                end
-                return nil
-            end
-
             -- Mock the cache to return a valid result
             local oauth2_cache = require("apisix.plugins.bk-cache.oauth2-access-token")
             local original_get = oauth2_cache.get_oauth2_access_token
             oauth2_cache.get_oauth2_access_token = function(token)
+                assert(token == "valid-token")
                 return {
                     active = true,
                     exp = 4102444800,
@@ -132,11 +124,14 @@ skipped
             local result = plugin.rewrite({}, ctx)
             
             -- Restore original functions
-            core.request.header = original_header
             oauth2_cache.get_oauth2_access_token = original_get
 
             -- Check all expected ctx.var are set
             local errors = {}
+
+            if core.request.header(ctx, "Authorization") or ngx.req.get_headers()["Authorization"] then
+                table.insert(errors, "Authorization header was not removed")
+            end
 
             if not ctx.var.bk_app then
                 table.insert(errors, "bk_app is nil")
@@ -177,6 +172,8 @@ skipped
             end
         }
     }
+--- more_headers
+Authorization: Bearer valid-token
 --- response_body
 pass
 
