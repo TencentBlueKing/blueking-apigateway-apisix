@@ -211,6 +211,9 @@ function _M.rewrite(conf, ctx) -- luacheck: no unused
     ctx.var.bk_username = result.bk_username or ""
     ctx.var.audience = result.audience or {}
     ctx.var.auth_params_location = "header"
+
+    -- The gateway has consumed this credential; do not forward it upstream.
+    core.request.set_header(ctx, AUTHORIZATION_HEADER, nil)
 end
 
 
