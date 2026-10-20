@@ -47,8 +47,8 @@ cd src/apisix
 make apisix-test-images
 ```
 
-The GitHub Actions workflow for APISIX uses Python `3.10.16`, installs
-`src/apisix/requirements.txt`, switches to EE with `make edition-ee`, then runs
+The GitHub Actions workflow for APISIX uses the latest available Python `3.12`
+patch release, installs `src/apisix/requirements.txt`, switches to EE with `make edition-ee`, then runs
 `make lint RUN_WITH_IT=""` and `make test RUN_WITH_IT=""` from `src/apisix`.
 
 ## Common Commands

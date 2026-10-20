@@ -107,3 +107,42 @@ request header present
 GET /opentracing
 --- response_headers_like
 X-Bkapi-Request-Id: [a-zA-Z0-9-]{36}
+
+=== TEST 5: error log request ID matches X-Bkapi-Request-ID
+--- config
+    location /t {
+        set $apisix_request_id $request_id;
+        lua_error_log_request_id $apisix_request_id;
+        rewrite_by_lua_block {
+            local core = require("apisix.core")
+            local plugin = require("apisix.plugins.bk-request-id")
+            local ctx = {}
+            core.ctx.set_vars_meta(ctx)
+            ngx.ctx.api_ctx = ctx
+            plugin.rewrite({}, ctx)
+        }
+        content_by_lua_block {
+            local ctx = ngx.ctx.api_ctx
+            assert(ngx.var.apisix_request_id == ctx.var.bk_request_id)
+            ngx.log(ngx.WARN, "bk-request-id log correlation: ", ctx.var.bk_request_id)
+            ngx.say("matched")
+        }
+        header_filter_by_lua_block {
+            local plugin = require("apisix.plugins.bk-request-id")
+            local ctx = ngx.ctx.api_ctx
+            plugin.header_filter({}, ctx)
+            assert(ngx.header["X-Bkapi-Request-ID"] == ngx.var.apisix_request_id)
+        }
+    }
+--- more_headers
+X-Request-ID: client-request-id
+--- response_body
+matched
+--- response_headers_like
+X-Bkapi-Request-Id: [0-9a-f-]{36}
+--- response_headers
+X-Request-Id: client-request-id
+--- error_log eval
+qr/bk-request-id log correlation: ([0-9a-f-]{36}).*request_id: "\1"$/
+--- no_error_log
+[error]

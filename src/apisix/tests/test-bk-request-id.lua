@@ -20,6 +20,7 @@ local core = require("apisix.core")
 local request = require("apisix.core.request")
 local response = require("apisix.core.response")
 local plugin = require("apisix.plugins.bk-request-id")
+local uuid = require("resty.jit-uuid")
 
 describe(
     "bk-request-id", function()
@@ -42,6 +43,68 @@ describe(
 
                         assert.is_equal(#ctx.var.bk_request_id, 36)
                         -- assert.is_equal(request.header(ctx, "X-Bkapi-Request-ID"), ctx.var.bk_rqeuest_id)
+                    end
+                )
+            end
+        )
+
+        context(
+            "apisix_request_id", function()
+                local request_id = "f2dcff5b-2b42-4dbd-b008-8cca4a87a19c"
+
+                before_each(
+                    function()
+                        stub(uuid, "generate_v4", function()
+                            return request_id
+                        end)
+                        stub(request, "set_header")
+                        stub(ngx.req, "get_headers", function()
+                            return {
+                                ["X-Request-ID"] = "client-request-id",
+                            }
+                        end)
+                    end
+                )
+
+                after_each(
+                    function()
+                        uuid.generate_v4:revert()
+                        request.set_header:revert()
+                        ngx.req.get_headers:revert()
+                    end
+                )
+
+                it(
+                    "syncs the error log ID with X-Bkapi-Request-ID", function()
+                        ctx.var.apisix_request_id = "f2dcff5b2b424dbdb0088cca4a87a19c"
+                        local origin_ctx = core.table.deepcopy(ctx)
+
+                        plugin.rewrite({}, ctx)
+
+                        assert.equal(request_id, ctx.var.apisix_request_id)
+                        assert.equal(ctx.var.bk_request_id, ctx.var.apisix_request_id)
+                        assert.stub(request.set_header).was_called_with(origin_ctx, "X-Bkapi-Request-ID", request_id)
+                        assert.equal("client-request-id", ctx.var.x_request_id)
+                    end
+                )
+
+                it(
+                    "syncs an empty error log ID", function()
+                        ctx.var.apisix_request_id = ""
+
+                        plugin.rewrite({}, ctx)
+
+                        assert.equal(request_id, ctx.var.apisix_request_id)
+                    end
+                )
+
+                it(
+                    "does not create an unavailable error log variable", function()
+                        plugin.rewrite({}, ctx)
+
+                        assert.is_nil(ctx.var.apisix_request_id)
+                        assert.equal(request_id, ctx.var.bk_request_id)
+                        assert.equal("client-request-id", ctx.var.x_request_id)
                     end
                 )
             end

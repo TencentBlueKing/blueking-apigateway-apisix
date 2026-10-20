@@ -67,6 +67,10 @@ function _M.rewrite(conf, ctx) -- luacheck: ignore
     core.request.set_header(ctx, BKAPI_REQUEST_ID_HEADER, uuid_val)
     ctx.var.bk_request_id = uuid_val
 
+    if ctx.var.apisix_request_id then
+        ctx.var.apisix_request_id = uuid_val
+    end
+
     local headers = ngx.req.get_headers()
     if headers[X_REQUEST_ID_HEADER] == nil then
         -- remove the '-' in uuid, make it easier to identify the x-bkapi-request-id and x-request-id
