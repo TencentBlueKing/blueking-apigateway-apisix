@@ -1,0 +1,8 @@
+# Use the exact production image (prefer its registry digest) for offline export.
+# This copies existing binaries/source; it never rebuilds or generates symbols.
+ARG APISIX_IMAGE
+FROM ${APISIX_IMAGE}
+
+COPY ./src/build/bin/build-diag-manifest.py /tmp/build-diag-manifest.py
+RUN PYTHONDONTWRITEBYTECODE=1 python3 /tmp/build-diag-manifest.py --symbols-out /diag-symbols && \
+    rm /tmp/build-diag-manifest.py

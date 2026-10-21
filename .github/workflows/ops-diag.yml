@@ -1,0 +1,23 @@
+name: ops diagnostics
+on:
+  pull_request:
+    paths: ['src/ops/**', 'src/build/bin/build-diag-manifest.py', 'Dockerfile', 'Dockerfile.diag', '.github/workflows/ops-diag.yml']
+  push:
+    paths: ['src/ops/**', 'src/build/bin/build-diag-manifest.py', 'Dockerfile', 'Dockerfile.diag', '.github/workflows/ops-diag.yml']
+jobs:
+  unittest:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python: ['3.9', '3.11']
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '${{ matrix.python }}'
+      - name: Standard-library tests
+        run: PYTHONPATH=src/ops python3 -m unittest discover -s src/ops/tests -p 'test_diag_*.py' -v
+      - name: Syntax and entrypoint
+        run: |
+          python3 -m compileall -q src/ops/diag src/ops/analyze-diag.py src/build/bin/build-diag-manifest.py
+          python3 src/ops/apisix-diag --help
