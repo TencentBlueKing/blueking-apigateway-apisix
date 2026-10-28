@@ -67,6 +67,7 @@ CORS（上下文初始化之后，认证之前）：
 - bk-ip-restriction                         # priority: 17662
 - ~~bk-ip-group-restriction                   # priority: 17661 (1.18 removed)~~
 - bk-concurrency-limit                      # priority: 17660 (disabled by default, should fix the bug of bk-concurrency-limit)
+- bk-resource-user-rate-limit               # priority: 17654  # 按 bk_username 的资源限流
 - bk-resource-rate-limit                    # priority: 17653
 - bk-stage-rate-limit                       # priority: 17652
 - ~~bk-global-rate-limit                      # priority: 17651 (1.18 removed)~~
