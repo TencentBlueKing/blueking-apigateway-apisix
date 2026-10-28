@@ -15,9 +15,10 @@
 -- We undertake not to change the open source license (MIT license) applicable
 -- to the current version of the project delivered to anyone in the future.
 --
--- Rate limit each user on a resource, across applications. Authentication plugins
--- populate ctx.var.bk_username before access. Anonymous requests are skipped.
+-- Rate limit verified users on resources requiring user authentication, across apps.
+-- Authentication plugins populate ctx.var.bk_user before access. Other users are skipped.
 -- rates.__default supplies the fallback; rates[username] replaces it for that user.
+-- Later limiters can overwrite quota response headers when their header flag is enabled.
 --
 local core = require("apisix.core")
 local errorx = require("apisix.plugins.bk-core.errorx")
@@ -70,7 +71,17 @@ end
 
 
 function _M.access(conf, ctx)
-    local bk_username = ctx.var.bk_username
+    local resource_auth = ctx.var.bk_resource_auth
+    if resource_auth == nil or not resource_auth:get_verified_user_required() then
+        return
+    end
+
+    local bk_user = ctx.var.bk_user
+    if bk_user == nil or bk_user.verified ~= true then
+        return
+    end
+
+    local bk_username = bk_user.username
     if bk_username == nil or bk_username == "" then
         return
     end

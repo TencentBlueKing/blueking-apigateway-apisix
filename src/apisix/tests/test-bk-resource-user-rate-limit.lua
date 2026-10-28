@@ -19,6 +19,7 @@
 local plugin = require("apisix.plugins.bk-resource-user-rate-limit")
 local ratelimit = require("apisix.plugins.bk-rate-limit.init")
 local core = require("apisix.core")
+local resource_auth = require("apisix.plugins.bk-define.context-resource-bkauth")
 
 
 describe("bk-resource-user-rate-limit", function()
@@ -30,6 +31,8 @@ describe("bk-resource-user-rate-limit", function()
         ctx = {
             var = {
                 bk_username = "alice",
+                bk_user = {username = "alice", verified = true},
+                bk_resource_auth = resource_auth.new({verified_user_required = true}),
                 bk_app_code = "app-one",
                 bk_gateway_name = "gateway",
                 bk_stage_name = "prod",
@@ -95,11 +98,45 @@ describe("bk-resource-user-rate-limit", function()
         end)
 
         it("skips missing and anonymous usernames even when an app is present", function()
-            ctx.var.bk_username = nil
+            ctx.var.bk_user.username = nil
             plugin.access(conf, ctx)
-            ctx.var.bk_username = ""
+            ctx.var.bk_user.username = ""
             plugin.access(conf, ctx)
             assert.stub(ratelimit.rate_limit).was_not_called()
+        end)
+
+        it("skips resources without user authentication, even for verified users", function()
+            ctx.var.bk_resource_auth = resource_auth.new({verified_user_required = false})
+            plugin.access(conf, ctx)
+            ctx.var.bk_resource_auth = nil
+            plugin.access(conf, ctx)
+            assert.stub(ratelimit.rate_limit).was_not_called()
+        end)
+
+        it("skips missing users even when a username is present in context", function()
+            ctx.var.bk_user = nil
+            plugin.access(conf, ctx)
+            assert.stub(ratelimit.rate_limit).was_not_called()
+        end)
+
+        it("skips unverified users when user authentication is required", function()
+            ctx.var.bk_user.verified = false
+            plugin.access(conf, ctx)
+            ctx.var.bk_user.verified = nil
+            plugin.access(conf, ctx)
+            assert.stub(ratelimit.rate_limit).was_not_called()
+        end)
+
+        it("uses the verified user rather than a different context username", function()
+            ctx.var.bk_username = "bob"
+            conf.rates.bob = {}
+            plugin.access(conf, ctx)
+            assert.stub(ratelimit.rate_limit).was_called_with(
+                conf, ctx, plugin.name, "alice:gateway:prod:resource", 100, 60
+            )
+            ctx.var.bk_username = nil
+            plugin.access(conf, ctx)
+            assert.stub(ratelimit.rate_limit).was_called(2)
         end)
 
         it("uses the default rate for each user, without requiring an app", function()
@@ -108,7 +145,7 @@ describe("bk-resource-user-rate-limit", function()
             assert.stub(ratelimit.rate_limit).was_called_with(
                 conf, ctx, plugin.name, "alice:gateway:prod:resource", 100, 60
             )
-            ctx.var.bk_username = "bob"
+            ctx.var.bk_user.username = "bob"
             plugin.access(conf, ctx)
             assert.stub(ratelimit.rate_limit).was_called_with(
                 conf, ctx, plugin.name, "bob:gateway:prod:resource", 100, 60
@@ -135,7 +172,7 @@ describe("bk-resource-user-rate-limit", function()
             conf.rates.alice = {{period = 60, tokens = 10}}
             plugin.access(conf, ctx)
             assert.stub(ratelimit.rate_limit).was_called(1)
-            ctx.var.bk_username = "bob"
+            ctx.var.bk_user.username = "bob"
             plugin.access(conf, ctx)
             assert.stub(ratelimit.rate_limit).was_called(1)
         end)
