@@ -103,37 +103,6 @@ proxy 预处理：17000 ~ 17500
 - bk-debug                                  # priority: 145
 - bk-error-wrapper                          # priority: 0 # 该插件应默认应用于所有路由
 
-## 按用户的资源限流
-
-`bk-resource-user-rate-limit` 使用认证插件写入的 `ctx.var.bk_username`，
-按「用户名 + 网关 + 环境 + 资源名」分别计数。同一用户通过不同应用访问同一资源时共享配额，
-不同用户互不影响。没有用户名或用户名为空的请求跳过此插件。
-它可以与按应用的 `bk-resource-rate-limit` 同时启用，两种配额分别计算。
-
-配置格式与 `bk-resource-rate-limit` 类似，`rates` 的键改为用户名：
-
-```json
-{
-  "bk-resource-user-rate-limit": {
-    "rates": {
-      "__default": [{"period": 60, "tokens": 100}],
-      "alice": [{"period": 1, "tokens": 10}, {"period": 60, "tokens": 300}],
-      "bob": []
-    },
-    "allow_degradation": true,
-    "show_limit_quota_header": true
-  }
-}
-```
-
-- `__default` 是保留键，提供每个用户的默认配额；缺少 `rates` 或 `__default` 时跳过限流。
-- 用户专属规则完全覆盖默认规则；空数组表示该用户不限流。默认规则也可为空数组。
-- `period` 为正整数秒数，`tokens` 为该窗口允许的正整数请求数。配置多个窗口时，每个窗口都需满足。
-- `allow_degradation` 默认为 `true`，Redis 异常时放行；设为 `false` 时拒绝请求，沿用资源限流错误。
-- `show_limit_quota_header` 默认为 `true`，返回 `X-Bkapi-RateLimit-*` 配额响应头，
-  其中 `X-Bkapi-RateLimit-Plugin` 标识当前设置响应头的插件。
-- 复用 `plugin_attr.bk-rate-limit` 的 Redis 配置；超限返回 HTTP 429，错误码为 `1642903`。
-
 ## 插件开发
 
 ### 推荐插件
