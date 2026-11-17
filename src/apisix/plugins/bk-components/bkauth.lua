@@ -265,11 +265,14 @@ function _M.verify_oauth2_access_token(access_token)
     end
 
     -- NOTE: it's cacheable for all conditions
+    -- bk_username keeps the raw `sub` and bk_login_name keeps the raw `username`;
+    -- with client_id they are used to tell a user delegated token from an app token.
     return {
         active = result.active,
         bk_app_code = result.bk_app_code or "",
         bk_login_name = result.username or "",
         bk_username = result.sub or "",
+        client_id = result.client_id or "",
         exp = result.exp or 0,
         audience = result.aud or {},
         error = error,

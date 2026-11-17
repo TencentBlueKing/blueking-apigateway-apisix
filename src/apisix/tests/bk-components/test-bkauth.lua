@@ -452,5 +452,57 @@ describe(
                 )
             end
         )
+
+        context(
+            "verify_oauth2_access_token", function()
+                it(
+                    "should keep raw sub, username and client_id", function()
+                        response = {
+                            status = 200,
+                            body = core.json.encode(
+                                {
+                                    active = true,
+                                    username = "tom",
+                                    sub = "u-sub-1",
+                                    client_id = "real-app",
+                                    bk_app_code = "real-app",
+                                    exp = 4102444800,
+                                    aud = { "gateway:demo/api:test" },
+                                }
+                            ),
+                        }
+
+                        local result, err = bkauth.verify_oauth2_access_token("fake-token")
+                        assert.is_nil(err)
+                        assert.is_same(
+                            {
+                                active = true,
+                                bk_app_code = "real-app",
+                                bk_login_name = "tom",
+                                bk_username = "u-sub-1",
+                                client_id = "real-app",
+                                exp = 4102444800,
+                                audience = { "gateway:demo/api:test" },
+                                error = {},
+                            }, result
+                        )
+                    end
+                )
+
+                it(
+                    "should default missing client_id to empty string", function()
+                        response = {
+                            status = 200,
+                            body = core.json.encode({ active = true, sub = "u-sub-1", bk_app_code = "public" }),
+                        }
+
+                        local result, err = bkauth.verify_oauth2_access_token("fake-token")
+                        assert.is_nil(err)
+                        assert.is_equal("", result.client_id)
+                        assert.is_equal("u-sub-1", result.bk_username)
+                    end
+                )
+            end
+        )
     end
 )
