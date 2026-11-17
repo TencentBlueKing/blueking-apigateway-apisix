@@ -27,6 +27,10 @@
 -- The whitelist configuration is used during the validation to check if the process should
 -- be skipped.
 --
+-- For OAuth2 tokens of real BlueKing apps (ctx.var.is_bk_oauth2 == true), the user exemptions
+-- (the whitelist and skip_user_verification) are ignored, a resource requiring a user always
+-- requires a verified user, so app tokens without a user are rejected.
+--
 -- This plugin depends on:
 --     * bk-resource-context: To determine whether a verified data is necessary.
 --     * bk-auth-verify: Get the verified bk_app and bk_user objects.
@@ -34,6 +38,7 @@
 --
 local core = require("apisix.core")
 local errorx = require("apisix.plugins.bk-core.errorx")
+local oauth2 = require("apisix.plugins.bk-core.oauth2")
 local pl_types = require("pl.types")
 local tostring = tostring
 
@@ -91,8 +96,17 @@ local function validate_app(bk_resource_auth, app)
     return app.valid_error_message
 end
 
-local function validate_user(bk_resource_id, bk_resource_auth, user, app, verified_user_exempted_apps)
-    if (not bk_resource_auth:get_verified_user_required() or
+---Validate the given user object.
+---@param ignore_user_exemption boolean|nil Ignore the whitelist and skip_user_verification.
+---@return string|nil err An error message when invalid.
+local function validate_user(
+    bk_resource_id, bk_resource_auth, user, app, verified_user_exempted_apps, ignore_user_exemption
+)
+    if not bk_resource_auth:get_verified_user_required() then
+        return nil
+    end
+
+    if not ignore_user_exemption and (
         is_app_exempted_from_verified_user(app:get_app_code(), bk_resource_id, verified_user_exempted_apps) or
         bk_resource_auth:get_skip_user_verification()) then
         return nil
@@ -128,9 +142,11 @@ function _M.rewrite(conf, ctx) -- luacheck: no unused
         end
     end
 
+    local ignore_user_exemption = ctx.var.is_bk_oauth2 == true
+        and oauth2.is_real_app_code(ctx.var.bk_app:get_app_code())
     err = validate_user(
         ctx.var.bk_resource_id, ctx.var.bk_resource_auth, ctx.var.bk_user, ctx.var.bk_app,
-        ctx.var.verified_user_exempted_apps
+        ctx.var.verified_user_exempted_apps, ignore_user_exemption
     )
     if err ~= nil then
         if is_server_error(err) then

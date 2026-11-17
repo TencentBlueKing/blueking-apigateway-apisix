@@ -493,6 +493,108 @@ describe(
                     end
                 )
 
+                context(
+                    "OAuth2 real app ignores user exemptions", function()
+                        local function new_ctx(opts)
+                            return {
+                                var = {
+                                    is_bk_oauth2 = opts.is_bk_oauth2,
+                                    bk_resource_id = 100,
+                                    bk_user = opts.user_verified
+                                        and bk_user_define.new_user({ username = "tom", verified = true })
+                                        or bk_user_define.new_anonymous_user("the OAuth2 app token does not carry a user"),
+                                    bk_app = bk_app_define.new_app({ app_code = opts.app_code, verified = true }),
+                                    bk_resource_auth = context_resource_bkauth.new(
+                                        {
+                                            verified_app_required = true,
+                                            verified_user_required = opts.user_required ~= false,
+                                            skip_user_verification = opts.skip_user_verification,
+                                        }
+                                    ),
+                                    verified_user_exempted_apps = opts.exempted and {
+                                        by_gateway = { [opts.app_code] = true },
+                                        by_resource = {},
+                                    } or nil,
+                                },
+                            }
+                        end
+
+                        for _, case in ipairs({
+                            { name = "whitelist", exempted = true },
+                            { name = "skip_user_verification", skip_user_verification = true },
+                        }) do
+                            it(
+                                "rejects an app token exempted by " .. case.name, function()
+                                    local ctx = new_ctx({
+                                        is_bk_oauth2 = true,
+                                        app_code = "real-app",
+                                        exempted = case.exempted,
+                                        skip_user_verification = case.skip_user_verification,
+                                    })
+
+                                    local status = plugin.rewrite({}, ctx)
+                                    assert.is_equal(400, status)
+                                    assert.is_truthy(string.find(
+                                        ctx.var.bk_apigw_error.error.message,
+                                        "the OAuth2 app token does not carry a user", 1, true
+                                    ))
+                                end
+                            )
+
+                            it(
+                                "keeps the " .. case.name .. " exemption for the legacy flow", function()
+                                    local ctx = new_ctx({
+                                        is_bk_oauth2 = false,
+                                        app_code = "real-app",
+                                        exempted = case.exempted,
+                                        skip_user_verification = case.skip_user_verification,
+                                    })
+
+                                    assert.is_nil(plugin.rewrite({}, ctx))
+                                end
+                            )
+
+                            it(
+                                "keeps the " .. case.name .. " exemption for the personal client", function()
+                                    local ctx = new_ctx({
+                                        is_bk_oauth2 = true,
+                                        app_code = "personal",
+                                        exempted = case.exempted,
+                                        skip_user_verification = case.skip_user_verification,
+                                    })
+
+                                    assert.is_nil(plugin.rewrite({}, ctx))
+                                end
+                            )
+                        end
+
+                        it(
+                            "allows a delegated token with a verified user", function()
+                                local ctx = new_ctx({
+                                    is_bk_oauth2 = true,
+                                    app_code = "real-app",
+                                    user_verified = true,
+                                    exempted = true,
+                                })
+
+                                assert.is_nil(plugin.rewrite({}, ctx))
+                            end
+                        )
+
+                        it(
+                            "does not require a user on an app-only resource", function()
+                                local ctx = new_ctx({
+                                    is_bk_oauth2 = true,
+                                    app_code = "real-app",
+                                    user_required = false,
+                                })
+
+                                assert.is_nil(plugin.rewrite({}, ctx))
+                            end
+                        )
+                    end
+                )
+
                 it(
                     "dependencies not provided", function()
                         -- Given an empty context object, the function should still works
