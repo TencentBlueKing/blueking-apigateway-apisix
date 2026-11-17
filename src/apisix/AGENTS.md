@@ -157,7 +157,12 @@ later plugins.
   explicitly changes the auth contract and includes focused tests.
 - OAuth2 flow depends on `ctx.var.is_bk_oauth2` and `ctx.var.audience` across
   `bk-oauth2-protected-resource`, `bk-oauth2-verify`, and
-  `bk-oauth2-audience-validate`.
+  `bk-oauth2-audience-validate`. Only Bearer tokens matching
+  `bk_gateway.bk_oauth2.bearer_token_rules` enter this flow; other Bearer
+  tokens are treated as no OAuth2 credential and passed through.
+- `bk-oauth2-verify` sets `ctx.var.bk_oauth2_token_mode` (`delegated`, `app`,
+  `unknown`); `bk-oauth2-appcode-validate` and `bk-auth-validate` rely on it and
+  on `ctx.var.bk_user` to gate real app tokens. App tokens never carry a user.
 - MCP virtual app codes use `v_mcp_{mcp_service_id}_{app_code}`. Use
   `bk_app:get_real_app_code()` when downstream services expect the real app
   code, such as tenant lookup or signing JWTs.

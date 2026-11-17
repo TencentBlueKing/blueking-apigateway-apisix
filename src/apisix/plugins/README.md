@@ -44,9 +44,9 @@ CORS（上下文初始化之后，认证之前）：
 
 - ~~bk-workflow-parameters                    # priority: 18750 (abandonned)~~
 - ~~bk-auth-parameters                        # priority: 18740 (abandonned)~~
-- bk-oauth2-protected-resource              # priority: 18740  # OAuth2 资源保护：检测 OAuth2 vs 传统认证，返回 WWW-Authenticate 头
+- bk-oauth2-protected-resource              # priority: 18740  # OAuth2 资源保护：只拦截 bkauth Bearer，其他请求走传统认证或返回 WWW-Authenticate 头
 - bk-access-token-source                    # priority: 18735
-- bk-oauth2-verify                          # priority: 18732  # OAuth2 令牌验证：通过 bkauth 验证 OAuth2 访问令牌
+- bk-oauth2-verify                          # priority: 18732  # OAuth2 令牌验证：通过 bkauth 验证 OAuth2 访问令牌，并识别代用户/应用 token
 - bk-auth-verify                            # priority: 18730
 - bk-username-required                      # priority: 18725
 
@@ -57,7 +57,7 @@ CORS（上下文初始化之后，认证之前）：
 - bk-break-recursive-call                   # priority: 17700  # 该插件应默认应用于所有路由
 - bk-auth-validate                          # priority: 17680
 - bk-user-restriction                       # priority: 17679
-- bk-oauth2-appcode-validate                # priority: 17678  # OAuth2 app code 验证：按路由配置允许 public 和 personal 客户端
+- bk-oauth2-appcode-validate                # priority: 17678  # OAuth2 app code 验证：按路由配置允许 public、personal 客户端和真实应用
 - bk-oauth2-audience-validate               # priority: 17677  # OAuth2 audience 验证：验证 MCP 服务器和网关 API 的 audience 声明
 - bk-tenant-validate-exempt                 # priority: 17676  # 如果资源配置了此插件, 则跳过 bk-tenant-validate 校验
 - bk-tenant-verify                          # priority: 17675
