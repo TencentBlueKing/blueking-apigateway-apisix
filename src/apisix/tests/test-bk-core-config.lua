@@ -108,5 +108,35 @@ describe(
                 )
             end
         )
+
+        context(
+            "get_oauth2_bearer_token_rules", function()
+                it(
+                    "should return nil when not configured", function()
+                        stub(
+                            core.config, "local_conf", function()
+                                return { bk_gateway = {} }
+                            end
+                        )
+                        assert.is_nil(bk_core.config.get_oauth2_bearer_token_rules())
+                    end
+                )
+
+                it(
+                    "should return configured rules", function()
+                        local rules = {
+                            { prefix_pattern = "^bk[oprs]_", format_pattern = "^bk[oprs]_[0-9A-Za-z]{36}$" },
+                            { prefix_pattern = "^tai_pat_" },
+                        }
+                        stub(
+                            core.config, "local_conf", function()
+                                return { bk_gateway = { bk_oauth2 = { bearer_token_rules = rules } } }
+                            end
+                        )
+                        assert.is_same(rules, bk_core.config.get_oauth2_bearer_token_rules())
+                    end
+                )
+            end
+        )
     end
 )

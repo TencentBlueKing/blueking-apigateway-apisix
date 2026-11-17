@@ -489,5 +489,119 @@ describe(
                 )
             end
         )
+
+        context(
+            "is_real_app_code", function()
+                it(
+                    "should accept real app codes", function()
+                        assert.is_true(oauth2.is_real_app_code("my-app"))
+                    end
+                )
+
+                it(
+                    "should reject builtin clients and empty values", function()
+                        assert.is_false(oauth2.is_real_app_code("public"))
+                        assert.is_false(oauth2.is_real_app_code("personal"))
+                        assert.is_false(oauth2.is_real_app_code(""))
+                        assert.is_false(oauth2.is_real_app_code(nil))
+                    end
+                )
+            end
+        )
+
+        context(
+            "match_bkauth_bearer_token", function()
+                local rules
+                local valid_bk_token = "bkp_" .. string.rep("a1B2", 9)
+
+                before_each(
+                    function()
+                        rules = {
+                            { prefix_pattern = "^bk[oprs]_", format_pattern = "^bk[oprs]_[0-9A-Za-z]{36}$" },
+                            { prefix_pattern = "^tai_pat_" },
+                        }
+                        stub(
+                            bk_core.config, "get_oauth2_bearer_token_rules", function()
+                                return rules
+                            end
+                        )
+                    end
+                )
+
+                after_each(
+                    function()
+                        bk_core.config.get_oauth2_bearer_token_rules:revert()
+                    end
+                )
+
+                it(
+                    "should treat every token as bkauth token when rules are not configured", function()
+                        rules = nil
+                        local matched, format_ok = oauth2.match_bkauth_bearer_token("anything")
+                        assert.is_true(matched)
+                        assert.is_true(format_ok)
+                    end
+                )
+
+                it(
+                    "should match prefix and full format", function()
+                        for _, prefix in ipairs({ "bko_", "bkp_", "bkr_", "bks_" }) do
+                            local matched, format_ok = oauth2.match_bkauth_bearer_token(
+                                prefix .. string.rep("a1B2", 9))
+                            assert.is_true(matched)
+                            assert.is_true(format_ok)
+                        end
+                    end
+                )
+
+                it(
+                    "should report bad format when prefix matches but format does not", function()
+                        for _, token in ipairs({
+                            "bkp_short",
+                            valid_bk_token .. "x",
+                            "bkp_" .. string.rep("a1B2", 8) .. "a1-2",
+                        }) do
+                            local matched, format_ok = oauth2.match_bkauth_bearer_token(token)
+                            assert.is_true(matched)
+                            assert.is_false(format_ok)
+                        end
+                    end
+                )
+
+                it(
+                    "should accept any suffix when format_pattern is absent", function()
+                        local matched, format_ok = oauth2.match_bkauth_bearer_token("tai_pat_any.thing-123")
+                        assert.is_true(matched)
+                        assert.is_true(format_ok)
+                    end
+                )
+
+                it(
+                    "should not match similar but different prefixes", function()
+                        local tokens = { "bkx_" .. string.rep("a1B2", 9), "bk_abc", "tai_abc", "xbkp_abc" }
+                        for _, token in ipairs(tokens) do
+                            local matched, format_ok = oauth2.match_bkauth_bearer_token(token)
+                            assert.is_false(matched)
+                            assert.is_false(format_ok)
+                        end
+                    end
+                )
+
+                it(
+                    "should skip invalid rules", function()
+                        rules = { "invalid", { format_pattern = "^bkp_" }, { prefix_pattern = "^tai_pat_" } }
+                        assert.is_false(oauth2.match_bkauth_bearer_token("bkp_abc"))
+                        assert.is_true(oauth2.match_bkauth_bearer_token("tai_pat_abc"))
+                    end
+                )
+
+                it(
+                    "should treat an invalid prefix pattern as not matched", function()
+                        rules = { { prefix_pattern = "^bk[" } }
+                        assert.is_false(oauth2.match_bkauth_bearer_token("bkp_abc"))
+                    end
+                )
+            end
+        )
     end
 )

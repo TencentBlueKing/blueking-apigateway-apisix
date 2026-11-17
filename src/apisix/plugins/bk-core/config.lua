@@ -117,6 +117,14 @@ function _M.get_bk_apigateway_api_tmpl()
 end
 
 
+---Get the rules that identify bkauth Bearer tokens for the OAuth2 flow
+---@return table|nil rules A list of {prefix_pattern, format_pattern}, nil when not configured
+function _M.get_oauth2_bearer_token_rules()
+    local conf = core.config.local_conf()
+    return core.table.try_read_attr(conf, "bk_gateway", "bk_oauth2", "bearer_token_rules")
+end
+
+
 function _M.get_jwt_issuer()
     local conf = core.config.local_conf()
     return core.table.try_read_attr(conf, "bk_gateway", "jwt_issuer")

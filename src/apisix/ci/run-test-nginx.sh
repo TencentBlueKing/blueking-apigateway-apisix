@@ -33,6 +33,11 @@ apisix:
   trusted_addresses:
     - "127.0.0.1"
 bk_gateway:
+  bk_oauth2:
+    bearer_token_rules:
+      - prefix_pattern: "^bk[oprs]_"
+        format_pattern: "^bk[oprs]_[0-9A-Za-z]{36}\\\$"
+      - prefix_pattern: "^tai_pat_"
   bkauth:
     authorization_keys:
       - "access_token"

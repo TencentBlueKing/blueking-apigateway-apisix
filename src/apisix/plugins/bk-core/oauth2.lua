@@ -15,10 +15,14 @@
 -- We undertake not to change the open source license (MIT license) applicable
 -- to the current version of the project delivered to anyone in the future.
 --
+local core = require("apisix.core")
 local config = require("apisix.plugins.bk-core.config")
 
 local ngx = ngx
 local ngx_escape_uri = ngx.escape_uri
+local ngx_re_find = ngx.re.find
+local ipairs = ipairs
+local type = type
 local string_match = string.match
 local string_gsub = string.gsub
 local string_format = string.format
@@ -26,6 +30,12 @@ local string_sub = string.sub
 local string_len = string.len
 
 local _M = {}
+
+-- app codes of the builtin OAuth2 clients; other app codes are real BlueKing apps
+local BUILTIN_CLIENT_APP_CODES = {
+    public = true,
+    personal = true,
+}
 
 
 local function strip_subpath_prefix(path, gateway_name)
@@ -117,6 +127,54 @@ function _M.build_www_authenticate_header(ctx, error_code, error_description)
         base_url,
         encoded_resource_url
     )
+end
+
+
+---Check whether the app code belongs to a real BlueKing app instead of a builtin OAuth2 client
+---@param app_code string|nil
+---@return boolean
+function _M.is_real_app_code(app_code)
+    return type(app_code) == "string" and app_code ~= "" and not BUILTIN_CLIENT_APP_CODES[app_code]
+end
+
+
+local function re_match(subject, pattern, field)
+    local from, _, err = ngx_re_find(subject, pattern, "jo")
+    if err then
+        core.log.error("invalid bk_oauth2.bearer_token_rules ", field, "=", pattern,
+                       ", error: ", err)
+        return false
+    end
+
+    return from ~= nil
+end
+
+
+---Match a Bearer token against the bkauth token rules (bk_gateway.bk_oauth2.bearer_token_rules).
+---The first rule whose prefix_pattern matches decides; format_pattern is optional.
+---When the rules are not configured, every Bearer token is treated as a bkauth token,
+---which keeps the behavior before the rules were introduced.
+---@param token string The Bearer token
+---@return boolean matched Whether the token should be verified by bkauth
+---@return boolean format_ok Whether the token matches the full format of the matched rule
+function _M.match_bkauth_bearer_token(token)
+    local rules = config.get_oauth2_bearer_token_rules()
+    if rules == nil then
+        return true, true
+    end
+
+    for _, rule in ipairs(rules) do
+        if type(rule) == "table" and type(rule.prefix_pattern) == "string"
+            and re_match(token, rule.prefix_pattern, "prefix_pattern") then
+            if type(rule.format_pattern) ~= "string" then
+                return true, true
+            end
+
+            return true, re_match(token, rule.format_pattern, "format_pattern")
+        end
+    end
+
+    return false, false
 end
 
 
