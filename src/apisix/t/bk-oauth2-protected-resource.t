@@ -92,24 +92,46 @@ hello world
 --- no_error_log
 [error]
 
-=== TEST 4: request with Authorization Bearer header should set is_bk_oauth2=true
+=== TEST 4: request with a bkauth Bearer token should set is_bk_oauth2=true
 --- request
 GET /hello
 --- more_headers
-Authorization: Bearer test-token-12345
+Authorization: Bearer bkp_a1B2a1B2a1B2a1B2a1B2a1B2a1B2a1B2a1B2
 --- response_body
 hello world
 --- no_error_log
 [error]
 
-=== TEST 5: request without auth headers should return 401 with WWW-Authenticate
+=== TEST 5: malformed bkauth Bearer token should return 401 invalid_token
+--- request
+GET /hello
+--- more_headers
+Authorization: Bearer bkp_short
+--- error_code: 401
+--- response_headers_like
+WWW-Authenticate: Bearer .*
+--- error_log
+malformed bkauth Bearer token, returning 401
+
+=== TEST 6: non-bkauth Bearer token is treated as no credential
+--- request
+GET /hello
+--- more_headers
+Authorization: Bearer bkx_a1B2a1B2a1B2a1B2a1B2a1B2a1B2a1B2a1B2
+--- error_code: 401
+--- response_headers_like
+WWW-Authenticate: Bearer .*
+--- error_log
+non-bkauth Bearer, treated as no credential
+
+=== TEST 7: request without auth headers should return 401 with WWW-Authenticate
 --- request
 GET /hello
 --- error_code: 401
 --- response_headers_like
 WWW-Authenticate: Bearer .*
 
-=== TEST 6: X-Bkapi-Authorization takes precedence over Authorization Bearer
+=== TEST 8: X-Bkapi-Authorization takes precedence over Authorization Bearer
 --- request
 GET /hello
 --- more_headers
@@ -120,7 +142,7 @@ hello world
 --- no_error_log
 [error]
 
-=== TEST 7: non-Bearer Authorization should return 401
+=== TEST 9: non-Bearer Authorization should return 401
 --- request
 GET /hello
 --- more_headers
@@ -129,7 +151,7 @@ Authorization: Basic dXNlcjpwYXNz
 --- response_headers_like
 WWW-Authenticate: Bearer .*
 
-=== TEST 8: should strip /api/{gateway_name} prefix when enabled
+=== TEST 10: should strip /api/{gateway_name} prefix when enabled
 --- config
     location /t {
         content_by_lua_block {
@@ -163,7 +185,7 @@ GET /t
 --- response_body_like
 resource=http%3A%2F%2Fbk-apigateway.bkapi.example.com%2Fprod%2Fapi%2Fv2%2Fmcp-servers%2Fbk-apigateway-prod-debugger%2Fmcp%2F.*
 
-=== TEST 9: should not strip prefix when disabled
+=== TEST 11: should not strip prefix when disabled
 --- config
     location /t {
         content_by_lua_block {
@@ -197,7 +219,7 @@ GET /t
 --- response_body_like
 resource=http%3A%2F%2Fbk-apigateway.bkapi.example.com%2Fapi%2Fbk-apigateway%2Fprod%2Fapi%2Fv2%2Fmcp-servers%2Fbk-apigateway-prod-debugger%2Fmcp%2F.*
 
-=== TEST 10: should not strip partial gateway name prefix
+=== TEST 12: should not strip partial gateway name prefix
 --- config
     location /t {
         content_by_lua_block {
@@ -231,7 +253,7 @@ GET /t
 --- response_body_like
 resource=http%3A%2F%2Fbk-apigateway.bkapi.example.com%2Fapi%2Fbk-apigateway-extra%2Fprod%2Fapi%2Fv2%2Fmcp-servers.*
 
-=== TEST 11: configure cookie authentication entrypoint routes
+=== TEST 13: configure cookie authentication entrypoint routes
 --- config
     location /t {
         content_by_lua_block {
@@ -280,7 +302,7 @@ resource=http%3A%2F%2Fbk-apigateway.bkapi.example.com%2Fapi%2Fbk-apigateway-extr
 --- response_body
 passed
 
-=== TEST 12: configured bk_token cookie selects legacy authentication
+=== TEST 14: configured bk_token cookie selects legacy authentication
 --- request
 GET /cookie-bk_token
 --- more_headers
@@ -290,7 +312,7 @@ X-Auth-Flow: legacy
 --- no_error_log
 [error]
 
-=== TEST 13: configured bk_ticket cookie selects legacy authentication
+=== TEST 15: configured bk_ticket cookie selects legacy authentication
 --- request
 GET /cookie-bk_ticket
 --- more_headers
@@ -300,25 +322,48 @@ X-Auth-Flow: legacy
 --- no_error_log
 [error]
 
-=== TEST 14: missing cookie retains OAuth2 challenge
+=== TEST 16: missing cookie retains OAuth2 challenge
 --- request
 GET /cookie-bk_token
 --- error_code: 401
 --- response_headers_like
 WWW-Authenticate: Bearer .*
 
-=== TEST 15: Bearer takes precedence over configured cookie
+=== TEST 17: bkauth Bearer takes precedence over configured cookie
 --- request
 GET /cookie-bk_token
 --- more_headers
 Cookie: bk_token=user-ticket
-Authorization: Bearer invalid-token
+Authorization: Bearer bkp_a1B2a1B2a1B2a1B2a1B2a1B2a1B2a1B2a1B2
 --- response_headers
 X-Auth-Flow: oauth2
 --- no_error_log
 [error]
 
-=== TEST 16: require app authentication on cookie entrypoint routes
+=== TEST 18: malformed bkauth Bearer does not fall back to configured cookie
+--- request
+GET /cookie-bk_token
+--- more_headers
+Cookie: bk_token=user-ticket
+Authorization: Bearer bkp_short
+--- error_code: 401
+--- response_headers_like
+WWW-Authenticate: Bearer .*
+--- error_log
+malformed bkauth Bearer token, returning 401
+
+=== TEST 19: non-bkauth Bearer does not block configured cookie
+--- request
+GET /cookie-bk_token
+--- more_headers
+Cookie: bk_token=user-ticket
+Authorization: Bearer backend-own-token
+--- response_headers
+X-Auth-Flow: legacy
+--- no_error_log
+[error]
+
+=== TEST 20: require app authentication on cookie entrypoint routes
 --- config
     location /t {
         content_by_lua_block {
@@ -348,7 +393,7 @@ X-Auth-Flow: oauth2
 --- response_body
 passed
 
-=== TEST 17: bk_token retains OAuth2 challenge when app authentication is required
+=== TEST 21: bk_token retains OAuth2 challenge when app authentication is required
 --- extra_yaml_config
 bk_gateway:
   hosts:
@@ -362,7 +407,7 @@ Cookie: bk_token=user-ticket
 --- response_headers_like
 WWW-Authenticate: Bearer .*resource_metadata=.*
 
-=== TEST 18: bk_ticket retains OAuth2 challenge when app authentication is required
+=== TEST 22: bk_ticket retains OAuth2 challenge when app authentication is required
 --- extra_yaml_config
 bk_gateway:
   hosts:
@@ -375,3 +420,74 @@ Cookie: bk_ticket=user-ticket
 --- error_code: 401
 --- response_headers_like
 WWW-Authenticate: Bearer .*resource_metadata=.*
+
+=== TEST 23: configure a route with only the app channel enabled
+--- config
+    location /t {
+        content_by_lua_block {
+            local t = require("lib.test_admin").test
+            local core = require("apisix.core")
+            local code, body = t("/apisix/admin/routes/app-channel-only",
+                ngx.HTTP_PUT, core.json.encode({
+                    uri = "/app-channel-only",
+                    plugins = {
+                        ["bk-oauth2-protected-resource"] = {challenge_on_missing_credential = false},
+                        ["proxy-rewrite"] = {uri = "/hello"},
+                        ["serverless-post-function"] = {
+                            phase = "rewrite",
+                            functions = {
+                                "return function(conf, ctx) ngx.header['X-Auth-Flow'] = ctx.var.is_bk_oauth2 and 'oauth2' or 'legacy' end"
+                            },
+                        },
+                    },
+                    upstream = {
+                        nodes = {["127.0.0.1:1980"] = 1}, type = "roundrobin",
+                    },
+                }))
+            if code >= 300 then
+                ngx.status = code
+            end
+            ngx.say(body)
+        }
+    }
+--- response_body
+passed
+
+=== TEST 24: app channel only, no credential uses legacy authentication
+--- request
+GET /app-channel-only
+--- response_headers
+X-Auth-Flow: legacy
+--- no_error_log
+[error]
+
+=== TEST 25: app channel only, non-bkauth Bearer uses legacy authentication
+--- request
+GET /app-channel-only
+--- more_headers
+Authorization: Bearer backend-own-token
+--- response_headers
+X-Auth-Flow: legacy
+--- no_error_log
+[error]
+
+=== TEST 26: app channel only, bkauth Bearer uses OAuth2 authentication
+--- request
+GET /app-channel-only
+--- more_headers
+Authorization: Bearer tai_pat_anything
+--- response_headers
+X-Auth-Flow: oauth2
+--- no_error_log
+[error]
+
+=== TEST 27: app channel only, malformed bkauth Bearer returns 401
+--- request
+GET /app-channel-only
+--- more_headers
+Authorization: Bearer bko_short
+--- error_code: 401
+--- response_headers_like
+WWW-Authenticate: Bearer .*
+--- error_log
+malformed bkauth Bearer token, returning 401

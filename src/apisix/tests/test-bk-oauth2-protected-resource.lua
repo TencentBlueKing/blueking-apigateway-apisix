@@ -22,6 +22,9 @@ local api_auth = require("apisix.plugins.bk-define.context-api-bkauth")
 local resource_auth = require("apisix.plugins.bk-define.context-resource-bkauth")
 local plugin = require("apisix.plugins.bk-oauth2-protected-resource")
 
+-- matches the bearer_token_rules in tests/conf/config.yaml
+local BKAUTH_TOKEN = "bkp_" .. string.rep("a1B2", 9)
+
 describe(
     "bk-oauth2-protected-resource", function()
         local ctx
@@ -60,9 +63,27 @@ describe(
             "check_schema", function()
                 it(
                     "should accept empty config", function()
-                        local ok, err = plugin.check_schema({})
+                        local conf = {}
+                        local ok, err = plugin.check_schema(conf)
                         assert.is_true(ok)
                         assert.is_nil(err)
+                        assert.is_true(conf.challenge_on_missing_credential)
+                    end
+                )
+
+                it(
+                    "should accept challenge_on_missing_credential", function()
+                        local conf = { challenge_on_missing_credential = false }
+                        local ok = plugin.check_schema(conf)
+                        assert.is_true(ok)
+                        assert.is_false(conf.challenge_on_missing_credential)
+                    end
+                )
+
+                it(
+                    "should reject non-boolean challenge_on_missing_credential", function()
+                        local ok = plugin.check_schema({ challenge_on_missing_credential = "false" })
+                        assert.is_false(ok)
                     end
                 )
             end
@@ -94,8 +115,8 @@ describe(
                 )
 
                 it(
-                    "should set is_bk_oauth2=true when Authorization Bearer header is present", function()
-                        headers["Authorization"] = "Bearer test-token-12345"
+                    "should set is_bk_oauth2=true when a bkauth Bearer token is present", function()
+                        headers["Authorization"] = "Bearer " .. BKAUTH_TOKEN
 
                         local result = plugin.rewrite({}, ctx)
 
@@ -106,13 +127,52 @@ describe(
 
                 it(
                     "should handle Bearer with extra spaces", function()
-                        headers["Authorization"] = "Bearer   token-with-spaces"
+                        headers["Authorization"] = "Bearer   " .. BKAUTH_TOKEN
 
                         plugin.rewrite({}, ctx)
 
                         assert.is_true(ctx.var.is_bk_oauth2)
                     end
                 )
+
+                it(
+                    "should intercept tai_pat_ tokens without a format pattern", function()
+                        headers["Authorization"] = "Bearer tai_pat_anything"
+
+                        assert.is_nil(plugin.rewrite({}, ctx))
+                        assert.is_true(ctx.var.is_bk_oauth2)
+                    end
+                )
+
+                for _, conf in ipairs({ {}, { challenge_on_missing_credential = false } }) do
+                    for _, token in ipairs({ "bkp_short", "bko_" .. string.rep("a", 37), "bks_" .. string.rep("-", 36) }) do
+                        it(
+                            "should reject a malformed bkauth Bearer token without fallback: " .. token, function()
+                                headers["Authorization"] = "Bearer " .. token
+
+                                local status = plugin.rewrite(conf, ctx)
+
+                                assert.is_equal(401, status)
+                                assert.is_nil(ctx.var.is_bk_oauth2)
+                                assert.matches('error="invalid_token"', ngx.header["WWW-Authenticate"])
+                            end
+                        )
+                    end
+                end
+
+                for _, token in ipairs({ "test-token", "bkx_" .. string.rep("a1B2", 9), "bk_abc", "tai_abc" }) do
+                    it(
+                        "should treat a non-bkauth Bearer token as no credential: " .. token, function()
+                            headers["Authorization"] = "Bearer " .. token
+
+                            local status = plugin.rewrite({}, ctx)
+
+                            assert.is_equal(401, status)
+                            assert.is_nil(ctx.var.is_bk_oauth2)
+                            assert.matches('error="invalid_request"', ngx.header["WWW-Authenticate"])
+                        end
+                    )
+                end
 
                 it(
                     "should return 401 when no auth headers are present", function()
@@ -132,6 +192,49 @@ describe(
 
                         -- Should return 401 as it's not a valid OAuth2 or legacy auth
                         assert.is_equal(401, status)
+                    end
+                )
+            end
+        )
+
+        context(
+            "challenge_on_missing_credential=false", function()
+                local conf = { challenge_on_missing_credential = false }
+
+                it(
+                    "should use the legacy flow when no credential is present", function()
+                        assert.is_nil(plugin.rewrite(conf, ctx))
+                        assert.is_false(ctx.var.is_bk_oauth2)
+                    end
+                )
+
+                for _, authorization in ipairs({ "Bearer test-token", "Bearer", "Basic dXNlcjpwYXNz" }) do
+                    it(
+                        "should use the legacy flow for a non-bkauth Authorization: " .. authorization, function()
+                            headers["Authorization"] = authorization
+
+                            assert.is_nil(plugin.rewrite(conf, ctx))
+                            assert.is_false(ctx.var.is_bk_oauth2)
+                        end
+                    )
+                end
+
+                it(
+                    "should still use the OAuth2 flow for a bkauth Bearer token", function()
+                        headers["Authorization"] = "Bearer " .. BKAUTH_TOKEN
+
+                        assert.is_nil(plugin.rewrite(conf, ctx))
+                        assert.is_true(ctx.var.is_bk_oauth2)
+                    end
+                )
+
+                it(
+                    "should keep the legacy header precedence", function()
+                        headers["X-Bkapi-Authorization"] = '{"bk_app_code": "test"}'
+                        headers["Authorization"] = "Bearer " .. BKAUTH_TOKEN
+
+                        assert.is_nil(plugin.rewrite(conf, ctx))
+                        assert.is_false(ctx.var.is_bk_oauth2)
                     end
                 )
             end
@@ -222,24 +325,33 @@ describe(
                             assert.is_equal(401, plugin.rewrite({}, ctx))
                         end)
 
-                        it("should preserve Bearer precedence over cookies", function()
-                            headers["Authorization"] = "Bearer invalid-token"
+                        it("should preserve bkauth Bearer precedence over cookies", function()
+                            headers["Authorization"] = "Bearer " .. BKAUTH_TOKEN
                             assert.is_nil(plugin.rewrite({}, ctx))
                             assert.is_true(ctx.var.is_bk_oauth2)
                             assert.stub(bk_core.cookie.get_value).was_not_called()
                         end)
 
-                        for _, authorization in ipairs({"Bearer", "Bearer ", "bEaReR ", "Bearer\ttoken"}) do
-                            it("should reject malformed Bearer without cookie fallback: " .. authorization, function()
+                        it("should reject malformed bkauth Bearer without cookie fallback", function()
+                            headers["Authorization"] = "Bearer bkp_short"
+                            assert.is_equal(401, plugin.rewrite({}, ctx))
+                            assert.is_nil(ctx.var.is_bk_oauth2)
+                            assert.stub(bk_core.cookie.get_value).was_not_called()
+                        end)
+
+                        local non_bkauth = {"Bearer", "Bearer ", "bEaReR ", "Bearer\ttoken", "Bearer invalid-token"}
+                        for _, authorization in ipairs(non_bkauth) do
+                            it("should defer cookies with a non-bkauth Bearer: " .. authorization, function()
                                 headers["Authorization"] = authorization
-                                assert.is_equal(401, plugin.rewrite({}, ctx))
-                                assert.stub(bk_core.cookie.get_value).was_not_called()
+                                assert.is_nil(plugin.rewrite({}, ctx))
+                                assert.is_false(ctx.var.is_bk_oauth2)
+                                assert.is_equal(authorization, headers["Authorization"])
                             end)
                         end
 
                         it("should preserve legacy header precedence over Bearer and cookies", function()
                             headers["X-Bkapi-Authorization"] = '{"bk_app_code":"test"}'
-                            headers["Authorization"] = "Bearer invalid-token"
+                            headers["Authorization"] = "Bearer " .. BKAUTH_TOKEN
                             assert.is_nil(plugin.rewrite({}, ctx))
                             assert.is_false(ctx.var.is_bk_oauth2)
                             assert.stub(bk_core.cookie.get_value).was_not_called()

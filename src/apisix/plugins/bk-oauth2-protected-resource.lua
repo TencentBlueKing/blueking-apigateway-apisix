@@ -18,14 +18,20 @@
 -- # bk-oauth2-protected-resource
 --
 -- This plugin detects whether a request uses OAuth2 authentication (Authorization: Bearer)
--- or legacy BlueKing authentication (X-Bkapi-Authorization) and routes accordingly.
+-- or legacy BlueKing authentication (X-Bkapi-Authorization) and routes accordingly:
 --
--- Configured user ticket cookies also use legacy authentication when the resource
--- requires only user authentication. Otherwise, missing credentials return 401
--- with a WWW-Authenticate header containing the resource_metadata URL for OAuth2 discovery.
+--     * X-Bkapi-Authorization present: legacy flow
+--     * bkauth Bearer token (matched by bk_gateway.bk_oauth2.bearer_token_rules):
+--       OAuth2 flow; a token matching a prefix but not its format is rejected with 401
+--       without introspection and without falling back to the legacy flow
+--     * otherwise, a non-bkauth Bearer is treated as no OAuth2 credential and kept as is:
+--         - configured user ticket cookies on a user-only resource: legacy flow
+--         - challenge_on_missing_credential=false (only the app channel is enabled): legacy flow
+--         - challenge_on_missing_credential=true (default, personal/public enabled): 401 with
+--           a WWW-Authenticate header containing the resource_metadata URL for OAuth2 discovery
 --
 -- This plugin depends on:
---     * bk-core.config: For hosts.bk-apigateway-host configuration
+--     * bk-core.config: For hosts.bk-apigateway-host and bk_oauth2.bearer_token_rules configuration
 --
 local pl_types = require("pl.types")
 local core = require("apisix.core")
@@ -46,7 +52,14 @@ local BEARER_PREFIX_LEN = #BEARER_PREFIX
 
 local schema = {
     type = "object",
-    properties = {},
+    properties = {
+        -- return 401 with WWW-Authenticate when no credential is present;
+        -- false hands such requests to the legacy flow (only the app channel is enabled)
+        challenge_on_missing_credential = {
+            type = "boolean",
+            default = true,
+        },
+    },
 }
 
 local _M = {
@@ -103,7 +116,7 @@ local function has_configured_user_ticket_cookie(ctx)
 end
 
 
-function _M.rewrite(conf, ctx) -- luacheck: no unused
+function _M.rewrite(conf, ctx)
     -- Check for X-Bkapi-Authorization header first (legacy BlueKing auth)
     -- If present, skip OAuth2 flow and allow legacy flow to handle authentication
     local bkapi_auth = core.request.header(ctx, BKAPI_AUTHORIZATION_HEADER)
@@ -113,25 +126,43 @@ function _M.rewrite(conf, ctx) -- luacheck: no unused
         return
     end
 
-    -- Check for Authorization: Bearer header (OAuth2)
+    -- Check for Authorization: Bearer header (OAuth2), only bkauth tokens are intercepted
     local authorization = core.request.header(ctx, AUTHORIZATION_HEADER)
     local bearer_token = parse_bearer_token(authorization)
 
     if bearer_token then
-        -- OAuth2 flow: set flag for downstream plugins
-        ctx.var.is_bk_oauth2 = true
-        core.log.info("bk-oauth2-protected-resource: Bearer token detected, using OAuth2 flow")
+        local matched, format_ok = oauth2.match_bkauth_bearer_token(bearer_token)
+        if matched and not format_ok then
+            core.log.info("bk-oauth2-protected-resource: malformed bkauth Bearer token, returning 401")
+            local www_auth = oauth2.build_www_authenticate_header(
+                ctx, "invalid_token", "the bkauth bearer token is malformed")
+            ngx.header["WWW-Authenticate"] = www_auth
+
+            local err = errorx.new_general_unauthorized()
+                :with_field("reason", "the bkauth bearer token is malformed")
+            return errorx.exit_with_apigw_err(ctx, err, _M)
+        end
+
+        if matched then
+            -- OAuth2 flow: set flag for downstream plugins
+            ctx.var.is_bk_oauth2 = true
+            core.log.info("bk-oauth2-protected-resource: bkauth Bearer detected, using OAuth2 flow")
+            return
+        end
+
+        core.log.info("bk-oauth2-protected-resource: non-bkauth Bearer, treated as no credential")
+    end
+
+    -- Only select the legacy flow here; it still verifies the cookie and resource requirements.
+    if has_configured_user_ticket_cookie(ctx) then
+        ctx.var.is_bk_oauth2 = false
+        core.log.info("bk-oauth2-protected-resource: user cookie detected, using legacy auth")
         return
     end
 
-    -- An explicit but malformed Bearer credential must retain the challenge, not use cookies.
-    local auth_lower = string_lower(authorization or "")
-    local is_bearer_auth = auth_lower == "bearer" or string_match(auth_lower, "^bearer%s")
-
-    -- Only select the legacy flow here; it still verifies the cookie and resource requirements.
-    if not is_bearer_auth and has_configured_user_ticket_cookie(ctx) then
+    if conf.challenge_on_missing_credential == false then
         ctx.var.is_bk_oauth2 = false
-        core.log.info("bk-oauth2-protected-resource: user cookie detected, using legacy auth")
+        core.log.info("bk-oauth2-protected-resource: no OAuth2 credential, using legacy auth")
         return
     end
 
