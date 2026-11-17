@@ -142,7 +142,7 @@ bk_gateway:
 --- response_body_like eval
 qr/status: 401\ncode_name: UNAUTHORIZED\nmessage: Unauthorized .*OAuth2 token app code is not allowed.*\nhas_gateway: true\nhas_resource: true/
 --- response_headers_like
-WWW-Authenticate: Bearer .*error="invalid_token".*bk_app_code=personal.*support_public=true.*support_personal=false"
+WWW-Authenticate: Bearer .*error="invalid_token".*bk_app_code=personal.*support_public=true.*support_personal=false, support_app=.*"
 
 === TEST 5: personal-only configuration allows personal
 --- config
@@ -198,7 +198,7 @@ bk_gateway:
 --- response_body
 status: 401
 --- response_headers_like
-WWW-Authenticate: Bearer .*error="invalid_token".*support_public=false.*support_personal=true"
+WWW-Authenticate: Bearer .*error="invalid_token".*support_public=false.*support_personal=true, support_app=.*"
 
 === TEST 7: both-enabled configuration allows both app codes
 --- config
@@ -260,7 +260,7 @@ bk_gateway:
 --- response_body
 status: 401
 --- response_headers_like
-WWW-Authenticate: Bearer .*error="invalid_token".*support_public=false.*support_personal=false"
+WWW-Authenticate: Bearer .*error="invalid_token".*support_public=false.*support_personal=false, support_app=.*"
 
 === TEST 9: ordinary app code stays unsupported when both flags are enabled
 --- extra_yaml_config
@@ -292,4 +292,55 @@ bk_gateway:
 --- response_body
 status: 401
 --- response_headers_like
-WWW-Authenticate: Bearer .*error="invalid_token".*bk_app_code=ordinary-app.*support_public=true.*support_personal=true"
+WWW-Authenticate: Bearer .*error="invalid_token".*bk_app_code=ordinary-app.*support_public=true.*support_personal=true, support_app=.*"
+
+=== TEST 10: support_app allows real apps by token mode and resource requirement
+--- extra_yaml_config
+bk_gateway:
+  hosts:
+    bk-apigateway-api:
+      tmpl: "http://{api_name}.bkapi.example.com"
+--- config
+    location /t {
+        content_by_lua_block {
+            local plugin = require("apisix.plugins.bk-oauth2-appcode-validate")
+            local resource_auth = require("apisix.plugins.bk-define.context-resource-bkauth")
+            local conf = {support_public = false, support_personal = false, support_app = true}
+            local function check(user_required, token_mode, verified)
+                local ctx = {
+                    var = {
+                        uri = "/api/test",
+                        bk_gateway_name = "demo",
+                        is_bk_oauth2 = true,
+                        bk_app_code = "real-app",
+                        bk_oauth2_token_mode = token_mode,
+                        bk_user = {username = verified and "tom" or "", verified = verified},
+                        bk_resource_auth = resource_auth.new({
+                            verified_app_required = true,
+                            verified_user_required = user_required,
+                        }),
+                    }
+                }
+                local status = plugin.rewrite(conf, ctx)
+                return tostring(status)
+            end
+
+            local lines = {
+                "user/delegated: " .. check(true, "delegated", true),
+                "user/unverified: " .. check(true, "delegated", false),
+                "app-only/app: " .. check(false, "app", false),
+                "app-only/delegated: " .. check(false, "delegated", true),
+                "user/app: " .. check(true, "app", false),
+            }
+            ngx.status = 200
+            ngx.say(table.concat(lines, "\n"))
+        }
+    }
+--- response_body
+user/delegated: nil
+user/unverified: 401
+app-only/app: nil
+app-only/delegated: 401
+user/app: 401
+--- response_headers_like
+WWW-Authenticate: Bearer .*error="invalid_token".*only OAuth2 delegated tokens are allowed: bk_app_code=real-app.*support_app=true, token_mode=app"

@@ -19,6 +19,7 @@ local core = require("apisix.core")
 local bk_core = require("apisix.plugins.bk-core.init")
 local audience_plugin = require("apisix.plugins.bk-oauth2-audience-validate")
 local plugin = require("apisix.plugins.bk-oauth2-appcode-validate")
+local resource_auth = require("apisix.plugins.bk-define.context-resource-bkauth")
 
 describe(
     "bk-oauth2-appcode-validate", function()
@@ -82,6 +83,13 @@ describe(
                             },
                             plugin.schema.properties.support_personal
                         )
+                        assert.is_same(
+                            {
+                                type = "boolean",
+                                default = false,
+                            },
+                            plugin.schema.properties.support_app
+                        )
                     end
                 )
 
@@ -100,6 +108,7 @@ describe(
                         assert.is_nil(err)
                         assert.is_false(conf.support_public)
                         assert.is_false(conf.support_personal)
+                        assert.is_false(conf.support_app)
                     end
                 )
 
@@ -173,6 +182,8 @@ describe(
                             ", bk_app_code=", "public",
                             ", support_public=", true,
                             ", support_personal=", false,
+                            ", support_app=", false,
+                            ", token_mode=", nil,
                             ", gateway=", "demo",
                             ", resource=", "test-resource"
                         )
@@ -181,6 +192,8 @@ describe(
                             ", bk_app_code=", "public",
                             ", support_public=", true,
                             ", support_personal=", false,
+                            ", support_app=", false,
+                            ", token_mode=", nil,
                             ", gateway=", "demo",
                             ", resource=", "test-resource"
                         )
@@ -278,11 +291,134 @@ describe(
                             ", bk_app_code=", "public",
                             ", support_public=", false,
                             ", support_personal=", true,
+                            ", support_app=", false,
+                            ", token_mode=", nil,
                             ", gateway=", "demo",
                             ", resource=", "test-resource"
                         )
                     end
                 )
+            end
+        )
+
+        context(
+            "real app", function()
+                local function set_token(app_code, token_mode, verified)
+                    ctx.var.bk_app_code = app_code
+                    ctx.var.bk_oauth2_token_mode = token_mode
+                    ctx.var.bk_user = { username = verified and "tom" or "", verified = verified }
+                end
+
+                local function set_user_required(required)
+                    ctx.var.bk_resource_auth = resource_auth.new({
+                        verified_app_required = true,
+                        verified_user_required = required,
+                    })
+                end
+
+                local function assert_rejected(conf, reason)
+                    local status = plugin.rewrite(conf, ctx)
+                    assert.is_equal(401, status)
+                    local message = ctx.var.bk_apigw_error.error.message
+                    assert.is_truthy(string.find(message, 'reason="' .. reason .. '"', 1, true))
+                    assert.is_truthy(string.find(ngx.header["WWW-Authenticate"], reason, 1, true))
+                end
+
+                it(
+                    "rejects a real app when support_app is disabled", function()
+                        set_user_required(true)
+                        set_token("real-app", "delegated", true)
+
+                        local conf = check_conf({ support_public = true, support_personal = true })
+                        assert_rejected(conf, "OAuth2 token app code is not allowed")
+                        local message = ctx.var.bk_apigw_error.error.message
+                        assert.is_truthy(string.find(message, 'support_app="false"', 1, true))
+                        assert.is_truthy(string.find(message, 'token_mode="delegated"', 1, true))
+                    end
+                )
+
+                it(
+                    "allows a delegated token with a verified user on a user-required resource", function()
+                        set_user_required(true)
+                        set_token("real-app", "delegated", true)
+
+                        assert.is_nil(plugin.rewrite(check_conf({ support_app = true }), ctx))
+                    end
+                )
+
+                it(
+                    "requires a user when the resource auth context is absent", function()
+                        set_token("real-app", "app", false)
+
+                        assert_rejected(
+                            check_conf({ support_app = true }),
+                            "the resource requires a user, only OAuth2 delegated tokens are allowed"
+                        )
+                    end
+                )
+
+                for _, token_mode in ipairs({ "app", "unknown" }) do
+                    it(
+                        "rejects a " .. token_mode .. " token on a user-required resource", function()
+                            set_user_required(true)
+                            set_token("real-app", token_mode, token_mode == "unknown")
+
+                            assert_rejected(
+                                check_conf({ support_app = true }),
+                                "the resource requires a user, only OAuth2 delegated tokens are allowed"
+                            )
+                        end
+                    )
+                end
+
+                it(
+                    "rejects a delegated token without a verified user", function()
+                        set_user_required(true)
+                        set_token("real-app", "delegated", false)
+
+                        assert_rejected(
+                            check_conf({ support_app = true }),
+                            "the OAuth2 delegated token does not carry a valid user"
+                        )
+                    end
+                )
+
+                it(
+                    "allows an app token on an app-only resource", function()
+                        set_user_required(false)
+                        set_token("real-app", "app", false)
+
+                        assert.is_nil(plugin.rewrite(check_conf({ support_app = true }), ctx))
+                    end
+                )
+
+                for _, token_mode in ipairs({ "delegated", "unknown" }) do
+                    it(
+                        "rejects a " .. token_mode .. " token on an app-only resource", function()
+                            set_user_required(false)
+                            set_token("real-app", token_mode, true)
+
+                            assert_rejected(
+                                check_conf({ support_app = true }),
+                                "the resource does not require a user, only OAuth2 app tokens are allowed"
+                            )
+                        end
+                    )
+                end
+
+                for _, app_code in ipairs({ "public", "personal" }) do
+                    it(
+                        "does not let support_app allow the builtin client " .. app_code, function()
+                            set_user_required(true)
+                            set_token(app_code, "delegated", true)
+
+                            assert_rejected(
+                                check_conf({ support_app = true }),
+                                "OAuth2 token app code is not allowed"
+                            )
+                        end
+                    )
+                end
             end
         )
     end
