@@ -244,6 +244,36 @@ describe(
                         assert.is_equal(403, status)
                     end
                 )
+
+                -- MCP entries are bk-apigateway resources: gateway-scoped audience passes here and
+                -- mcp-proxy owns the per-MCP-server permission check.
+                it(
+                    "should allow gateway-scoped audience on MCP server paths", function()
+                        ctx.var.is_bk_oauth2 = true
+                        ctx.var.bk_gateway_name = "bk-apigateway"
+                        ctx.var.bk_resource_name = "mcp_server_resources"
+                        ctx.var.uri = "/api/v2/mcp-servers/my-server/resources"
+
+                        for _, aud in ipairs(
+                            {"gateway:*", "gateway:bk-apigateway/api:*", "gateway:bk-apigateway/api:mcp_server_resources"}
+                        ) do
+                            ctx.var.audience = {aud}
+                            assert.is_nil(plugin.rewrite({}, ctx), aud)
+                        end
+                    end
+                )
+
+                it(
+                    "should deny other gateway audience on MCP server paths", function()
+                        ctx.var.is_bk_oauth2 = true
+                        ctx.var.bk_gateway_name = "bk-apigateway"
+                        ctx.var.bk_resource_name = "mcp_server_resources"
+                        ctx.var.uri = "/api/v2/mcp-servers/my-server/resources"
+                        ctx.var.audience = {"gateway:demo/api:*"}
+
+                        assert.is_equal(403, plugin.rewrite({}, ctx))
+                    end
+                )
             end
         )
 
