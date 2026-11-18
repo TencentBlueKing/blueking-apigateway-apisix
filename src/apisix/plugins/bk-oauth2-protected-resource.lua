@@ -42,6 +42,7 @@ local cookie = require("apisix.plugins.bk-core.cookie")
 local oauth2 = require("apisix.plugins.bk-core.oauth2")
 local errorx = require("apisix.plugins.bk-core.errorx")
 local ngx = ngx
+local ipairs = ipairs
 local string_sub = string.sub
 local string_lower = string.lower
 local string_match = string.match
@@ -75,6 +76,20 @@ local _M = {
 
 function _M.check_schema(conf)
     return core.schema.check(schema, conf)
+end
+
+
+-- Report invalid bearer_token_rules once per worker at load time; request handling is unchanged.
+function _M.init()
+    if not oauth2.has_bkauth_bearer_token_rules() then
+        core.log.warn("bk-oauth2-protected-resource: bk_gateway.bk_oauth2.bearer_token_rules is not configured, ",
+                      "every Bearer is treated as a bkauth token on personal/public routes")
+        return
+    end
+
+    for _, problem in ipairs(oauth2.validate_bkauth_bearer_token_rules()) do
+        core.log.error("bk-oauth2-protected-resource: invalid bk_gateway.bk_oauth2.", problem)
+    end
 end
 
 

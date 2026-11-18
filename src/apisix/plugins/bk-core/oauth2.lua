@@ -28,6 +28,7 @@ local string_gsub = string.gsub
 local string_format = string.format
 local string_sub = string.sub
 local string_len = string.len
+local table_insert = table.insert
 
 local _M = {}
 
@@ -165,6 +166,56 @@ local function re_match(subject, pattern, field)
     end
 
     return from ~= nil
+end
+
+
+local function check_pattern(pattern, field, index)
+    if type(pattern) ~= "string" then
+        return "bearer_token_rules[" .. index .. "]." .. field .. " must be a string"
+    end
+
+    local _, _, err = ngx_re_find("", pattern, "jo")
+    if err then
+        return "bearer_token_rules[" .. index .. "]." .. field .. "=" .. pattern .. " is invalid: " .. err
+    end
+
+    return nil
+end
+
+
+---Validate bk_gateway.bk_oauth2.bearer_token_rules without changing how requests are matched.
+---Used at plugin init to report misconfiguration once instead of only at request time.
+---@return table problems A list of problem descriptions, empty when valid or not configured
+function _M.validate_bkauth_bearer_token_rules()
+    local rules = config.get_oauth2_bearer_token_rules()
+    if rules == nil then
+        return {}
+    end
+
+    if type(rules) ~= "table" then
+        return { "bearer_token_rules must be a list" }
+    end
+
+    local problems = {}
+    for index, rule in ipairs(rules) do
+        if type(rule) ~= "table" then
+            table_insert(problems, "bearer_token_rules[" .. index .. "] must be an object")
+        else
+            local problem = check_pattern(rule.prefix_pattern, "prefix_pattern", index)
+            if problem then
+                table_insert(problems, problem)
+            end
+
+            if rule.format_pattern ~= nil then
+                problem = check_pattern(rule.format_pattern, "format_pattern", index)
+                if problem then
+                    table_insert(problems, problem)
+                end
+            end
+        end
+    end
+
+    return problems
 end
 
 

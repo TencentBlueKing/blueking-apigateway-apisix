@@ -197,6 +197,10 @@ Rules and matching (`bk-core/oauth2.lua`):
   (`jo`) when a request reaches that rule; they are not precompiled. An invalid
   `prefix_pattern` logs an error and the rule is skipped; an invalid
   `format_pattern` logs an error and fails closed (401).
+- `bk-oauth2-protected-resource.init()` runs `oauth2.validate_bkauth_bearer_token_rules`
+  once per worker and logs each problem (or warns when the rules are missing).
+  It must not stop startup or change request matching; the request-time error
+  logs above stay as they are.
 - New route fields default to the pre-change behavior (`support_app=false`,
   `challenge_on_missing_credential=true`). Explicit defaults behave the same as
   omitted fields. Old routes on new plugins differ from `master` only for

@@ -90,6 +90,54 @@ describe(
         )
 
         context(
+            "init", function()
+                local rules
+
+                before_each(
+                    function()
+                        stub(bk_core.config, "get_oauth2_bearer_token_rules", function() return rules end)
+                        stub(core.log, "error")
+                        stub(core.log, "warn")
+                    end
+                )
+
+                after_each(
+                    function()
+                        bk_core.config.get_oauth2_bearer_token_rules:revert()
+                        core.log.error:revert()
+                        core.log.warn:revert()
+                    end
+                )
+
+                it(
+                    "should log nothing for valid rules", function()
+                        rules = { { prefix_pattern = "^tai_pat_" } }
+                        plugin.init()
+                        assert.stub(core.log.error).was_not_called()
+                        assert.stub(core.log.warn).was_not_called()
+                    end
+                )
+
+                it(
+                    "should log each invalid rule once", function()
+                        rules = { { prefix_pattern = "^bk[" }, { prefix_pattern = "^bkp_", format_pattern = "(" } }
+                        plugin.init()
+                        assert.stub(core.log.error).was_called(2)
+                    end
+                )
+
+                it(
+                    "should warn when rules are not configured", function()
+                        rules = nil
+                        plugin.init()
+                        assert.stub(core.log.warn).was_called(1)
+                        assert.stub(core.log.error).was_not_called()
+                    end
+                )
+            end
+        )
+
+        context(
             "rewrite phase", function()
                 it(
                     "should set is_bk_oauth2=false when X-Bkapi-Authorization header is present", function()

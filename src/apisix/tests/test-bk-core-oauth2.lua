@@ -633,6 +633,42 @@ describe(
                 )
 
                 it(
+                    "should report no problem for valid or missing rules", function()
+                        assert.are.same({}, oauth2.validate_bkauth_bearer_token_rules())
+                        rules = {}
+                        assert.are.same({}, oauth2.validate_bkauth_bearer_token_rules())
+                        rules = nil
+                        assert.are.same({}, oauth2.validate_bkauth_bearer_token_rules())
+                    end
+                )
+
+                it(
+                    "should report invalid rules without changing matching", function()
+                        rules = {
+                            "invalid",
+                            { format_pattern = "^bkp_" },
+                            { prefix_pattern = "^bk[" },
+                            { prefix_pattern = "^bkp_", format_pattern = "^bkp_[0-9a-z{36}$" },
+                            { prefix_pattern = "^tai_pat_", format_pattern = 1 },
+                        }
+
+                        local problems = oauth2.validate_bkauth_bearer_token_rules()
+
+                        assert.is_equal(5, #problems)
+                        assert.matches("bearer_token_rules%[1%] must be an object", problems[1])
+                        assert.matches("bearer_token_rules%[2%]%.prefix_pattern must be a string", problems[2])
+                        assert.matches("bearer_token_rules%[3%]%.prefix_pattern=%^bk%[ is invalid", problems[3])
+                        assert.matches("bearer_token_rules%[4%]%.format_pattern=.* is invalid", problems[4])
+                        assert.matches("bearer_token_rules%[5%]%.format_pattern must be a string", problems[5])
+
+                        rules = 1
+                        assert.are.same(
+                            { "bearer_token_rules must be a list" }, oauth2.validate_bkauth_bearer_token_rules()
+                        )
+                    end
+                )
+
+                it(
                     "should report whether the rules are configured", function()
                         assert.is_true(oauth2.has_bkauth_bearer_token_rules())
                         rules = {}
