@@ -98,15 +98,7 @@ local function validate_real_app(conf, ctx)
 
     local token_mode = ctx.var.bk_oauth2_token_mode
     if user_required then
-        if token_mode ~= "delegated" then
-            return "the resource requires a user, only OAuth2 delegated tokens are allowed"
-        end
-
-        local user = ctx.var.bk_user
-        if not user or not user.verified then
-            return "the OAuth2 delegated token does not carry a valid user"
-        end
-        return nil
+        return oauth2.get_user_required_token_reject_reason(token_mode, ctx.var.bk_user)
     end
 
     if token_mode ~= "app" then

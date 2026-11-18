@@ -532,11 +532,26 @@ describe(
                                         skip_user_verification = case.skip_user_verification,
                                     })
 
+                                    ctx.var.bk_oauth2_token_mode = "app"
+                                    ctx.var.bk_gateway_name = "demo"
+                                    ctx.var.uri = "/api/test"
+                                    ngx.header["WWW-Authenticate"] = nil
+                                    local bk_core = require("apisix.plugins.bk-core.init")
+                                    stub(
+                                        bk_core.config, "get_bk_apigateway_api_tmpl", function()
+                                            return "https://{api_name}.example.com"
+                                        end
+                                    )
+
                                     local status = plugin.rewrite({}, ctx)
-                                    assert.is_equal(400, status)
+                                    bk_core.config.get_bk_apigateway_api_tmpl:revert()
+                                    assert.is_equal(401, status)
                                     assert.is_truthy(string.find(
                                         ctx.var.bk_apigw_error.error.message,
-                                        "the OAuth2 app token does not carry a user", 1, true
+                                        "the resource requires a user, only OAuth2 delegated tokens are allowed", 1, true
+                                    ))
+                                    assert.is_truthy(string.find(
+                                        ngx.header["WWW-Authenticate"], 'error="invalid_token"', 1, true
                                     ))
                                 end
                             )
@@ -578,6 +593,28 @@ describe(
                                 })
 
                                 assert.is_nil(plugin.rewrite({}, ctx))
+                            end
+                        )
+
+                        it(
+                            "rejects a delegated token without a verified user with 401", function()
+                                local ctx = new_ctx({ is_bk_oauth2 = true, app_code = "real-app" })
+                                ctx.var.bk_oauth2_token_mode = "delegated"
+
+                                local status = plugin.rewrite({}, ctx)
+                                assert.is_equal(401, status)
+                                assert.is_truthy(string.find(
+                                    ctx.var.bk_apigw_error.error.message,
+                                    "the OAuth2 delegated token does not carry a valid user", 1, true
+                                ))
+                            end
+                        )
+
+                        it(
+                            "keeps 400 for a personal client without a user", function()
+                                local ctx = new_ctx({ is_bk_oauth2 = true, app_code = "personal" })
+
+                                assert.is_equal(400, plugin.rewrite({}, ctx))
                             end
                         )
 

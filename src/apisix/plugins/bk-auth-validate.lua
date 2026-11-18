@@ -29,7 +29,9 @@
 --
 -- For OAuth2 tokens of real BlueKing apps (ctx.var.is_bk_oauth2 == true), the user exemptions
 -- (the whitelist and skip_user_verification) are ignored, a resource requiring a user always
--- requires a verified user, so app tokens without a user are rejected.
+-- requires a verified user, so app tokens without a user are rejected with 401 and
+-- WWW-Authenticate, the same contract as bk-oauth2-appcode-validate. Other requests keep
+-- the legacy 400 (invalid args) / 500 responses.
 --
 -- This plugin depends on:
 --     * bk-resource-context: To determine whether a verified data is necessary.
@@ -127,6 +129,30 @@ local function is_server_error(err)
                core.string.has_suffix(err, "please contact the API Gateway developer to handle")
 end
 
+---A real app OAuth2 token without a verified user on a resource requiring a user.
+---Return 401 with the same reason as bk-oauth2-appcode-validate, so the client can tell
+---it needs a delegated token, instead of the legacy 400.
+local function exit_with_oauth2_token_mode_mismatch(ctx)
+    local token_mode = ctx.var.bk_oauth2_token_mode or ""
+    local reason = oauth2.get_user_required_token_reject_reason(token_mode, ctx.var.bk_user)
+        or "the OAuth2 delegated token does not carry a valid user"
+    local app_code = ctx.var.bk_app:get_app_code()
+
+    local err = errorx.new_general_unauthorized():with_fields(
+        {
+            reason = reason,
+            bk_app_code = app_code,
+            token_mode = token_mode,
+            gateway = ctx.var.bk_gateway_name or "",
+            resource = ctx.var.bk_resource_name or "",
+        }
+    )
+    ngx.header["WWW-Authenticate"] = oauth2.build_www_authenticate_header(
+        ctx, "invalid_token", reason .. ": bk_app_code=" .. app_code .. ", token_mode=" .. token_mode
+    )
+    return errorx.exit_with_apigw_err(ctx, err, _M)
+end
+
 function _M.rewrite(conf, ctx) -- luacheck: no unused
     -- Return directly if "bk-resource-auth" is not loaded by checking "bk_resource_auth"
     if ctx.var.bk_resource_auth == nil then
@@ -149,6 +175,10 @@ function _M.rewrite(conf, ctx) -- luacheck: no unused
         ctx.var.verified_user_exempted_apps, ignore_user_exemption
     )
     if err ~= nil then
+        if ignore_user_exemption then
+            return exit_with_oauth2_token_mode_mismatch(ctx)
+        end
+
         if is_server_error(err) then
             return errorx.exit_with_apigw_err(ctx, errorx.new_internal_server_error():with_field("reason", err), _M)
         else
