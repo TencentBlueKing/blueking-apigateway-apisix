@@ -81,14 +81,13 @@ end
 
 -- Report invalid bearer_token_rules once per worker at load time; request handling is unchanged.
 function _M.init()
+    for _, problem in ipairs(oauth2.validate_bkauth_bearer_token_rules()) do
+        core.log.error("bk-oauth2-protected-resource: invalid bk_gateway.bk_oauth2.", problem)
+    end
+
     if not oauth2.has_bkauth_bearer_token_rules() then
         core.log.warn("bk-oauth2-protected-resource: bk_gateway.bk_oauth2.bearer_token_rules is not configured, ",
                       "every Bearer is treated as a bkauth token on personal/public routes")
-        return
-    end
-
-    for _, problem in ipairs(oauth2.validate_bkauth_bearer_token_rules()) do
-        core.log.error("bk-oauth2-protected-resource: invalid bk_gateway.bk_oauth2.", problem)
     end
 end
 

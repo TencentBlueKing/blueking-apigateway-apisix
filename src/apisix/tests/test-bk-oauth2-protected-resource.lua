@@ -127,6 +127,15 @@ describe(
                 )
 
                 it(
+                    "should log an error and warn when rules are not a list", function()
+                        rules = true
+                        plugin.init()
+                        assert.stub(core.log.error).was_called(1)
+                        assert.stub(core.log.warn).was_called(1)
+                    end
+                )
+
+                it(
                     "should warn when rules are not configured", function()
                         rules = nil
                         plugin.init()

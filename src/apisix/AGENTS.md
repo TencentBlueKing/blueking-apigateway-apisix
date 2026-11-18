@@ -192,13 +192,17 @@ Rules and matching (`bk-core/oauth2.lua`):
 - With nil rules, `match_bkauth_bearer_token` returns `true, true` for every
   Bearer. This keeps personal/public routes identical to the behavior before
   the rules existed; step 2 above is what protects app-only routes. An empty
-  list counts as configured and matches nothing.
+  list counts as configured and matches nothing. A value that is not a list
+  (boolean, string, number, map) is treated as nil everywhere, including
+  `has_bkauth_bearer_token_rules`; only `init()` reports it.
 - The first matching `prefix_pattern` decides. Regexes are passed to `ngx.re.find`
   (`jo`) when a request reaches that rule; they are not precompiled. An invalid
-  `prefix_pattern` logs an error and the rule is skipped; an invalid
-  `format_pattern` logs an error and fails closed (401).
+  `prefix_pattern` logs an error and the rule is skipped; a `format_pattern`
+  string that fails to compile logs an error and fails closed (401). A
+  non-string `format_pattern` means no format check (introspection decides).
 - `bk-oauth2-protected-resource.init()` runs `oauth2.validate_bkauth_bearer_token_rules`
-  once per worker and logs each problem (or warns when the rules are missing).
+  once per worker, logs each problem, then warns when no usable rules exist
+  (missing or not a list).
   It must not stop startup or change request matching; the request-time error
   logs above stay as they are.
 - New route fields default to the pre-change behavior (`support_app=false`,

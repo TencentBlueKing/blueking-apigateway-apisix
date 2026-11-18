@@ -17,6 +17,7 @@
 --
 local core = require("apisix.core")
 local config = require("apisix.plugins.bk-core.config")
+local table_isarray = require("table.isarray")
 
 local ngx = ngx
 local ngx_escape_uri = ngx.escape_uri
@@ -31,6 +32,16 @@ local string_len = string.len
 local table_insert = table.insert
 
 local _M = {}
+
+
+---Read bearer_token_rules; anything that is not a list (an empty list counts) is treated as not configured
+local function get_bkauth_bearer_token_rules()
+    local rules = config.get_oauth2_bearer_token_rules()
+    if type(rules) ~= "table" or not table_isarray(rules) then
+        return nil
+    end
+    return rules
+end
 
 -- app codes of the builtin OAuth2 clients; other app codes are real BlueKing apps
 local BUILTIN_CLIENT_APP_CODES = {
@@ -192,8 +203,8 @@ function _M.validate_bkauth_bearer_token_rules()
         return {}
     end
 
-    if type(rules) ~= "table" then
-        return { "bearer_token_rules must be a list" }
+    if type(rules) ~= "table" or not table_isarray(rules) then
+        return { "bearer_token_rules must be a list, treated as not configured" }
     end
 
     local problems = {}
@@ -222,7 +233,7 @@ end
 ---Whether bk_gateway.bk_oauth2.bearer_token_rules is configured (an empty list counts as configured)
 ---@return boolean
 function _M.has_bkauth_bearer_token_rules()
-    return config.get_oauth2_bearer_token_rules() ~= nil
+    return get_bkauth_bearer_token_rules() ~= nil
 end
 
 
@@ -234,7 +245,7 @@ end
 ---@return boolean matched Whether the token should be verified by bkauth
 ---@return boolean format_ok Whether the token matches the full format of the matched rule
 function _M.match_bkauth_bearer_token(token)
-    local rules = config.get_oauth2_bearer_token_rules()
+    local rules = get_bkauth_bearer_token_rules()
     if rules == nil then
         return true, true
     end

@@ -545,6 +545,27 @@ describe(
                 )
 
                 it(
+                    "should treat non-list rules as not configured", function()
+                        for _, value in ipairs({ true, false, "^bkp_", 1, { a = 1 } }) do
+                            rules = value
+                            local matched, format_ok = oauth2.match_bkauth_bearer_token("anything")
+                            assert.is_true(matched)
+                            assert.is_true(format_ok)
+                            assert.is_false(oauth2.has_bkauth_bearer_token_rules())
+                        end
+                    end
+                )
+
+                it(
+                    "should treat a non-string format_pattern as no format check", function()
+                        rules = { { prefix_pattern = "^bkp_", format_pattern = 1 } }
+                        local matched, format_ok = oauth2.match_bkauth_bearer_token("bkp_short")
+                        assert.is_true(matched)
+                        assert.is_true(format_ok)
+                    end
+                )
+
+                it(
                     "should match prefix and full format", function()
                         for _, prefix in ipairs({ "bko_", "bkp_", "bkr_", "bks_" }) do
                             local matched, format_ok = oauth2.match_bkauth_bearer_token(
@@ -661,10 +682,13 @@ describe(
                         assert.matches("bearer_token_rules%[4%]%.format_pattern=.* is invalid", problems[4])
                         assert.matches("bearer_token_rules%[5%]%.format_pattern must be a string", problems[5])
 
-                        rules = 1
-                        assert.are.same(
-                            { "bearer_token_rules must be a list" }, oauth2.validate_bkauth_bearer_token_rules()
-                        )
+                        for _, value in ipairs({ 1, false, "x", { a = 1 } }) do
+                            rules = value
+                            assert.are.same(
+                                { "bearer_token_rules must be a list, treated as not configured" },
+                                oauth2.validate_bkauth_bearer_token_rules()
+                            )
+                        end
                     end
                 )
 
