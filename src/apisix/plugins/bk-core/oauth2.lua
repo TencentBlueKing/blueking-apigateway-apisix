@@ -168,6 +168,13 @@ local function re_match(subject, pattern, field)
 end
 
 
+---Whether bk_gateway.bk_oauth2.bearer_token_rules is configured (an empty list counts as configured)
+---@return boolean
+function _M.has_bkauth_bearer_token_rules()
+    return config.get_oauth2_bearer_token_rules() ~= nil
+end
+
+
 ---Match a Bearer token against the bkauth token rules (bk_gateway.bk_oauth2.bearer_token_rules).
 ---The first rule whose prefix_pattern matches decides; format_pattern is optional.
 ---When the rules are not configured, every Bearer token is treated as a bkauth token,

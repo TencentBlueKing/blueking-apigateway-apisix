@@ -241,6 +241,42 @@ describe(
         )
 
         context(
+            "bearer_token_rules not configured", function()
+                before_each(
+                    function()
+                        stub(bk_core.config, "get_oauth2_bearer_token_rules", function() return nil end)
+                    end
+                )
+
+                after_each(
+                    function()
+                        bk_core.config.get_oauth2_bearer_token_rules:revert()
+                    end
+                )
+
+                for _, token in ipairs({ BKAUTH_TOKEN, "bkp_short", "backend-own-token" }) do
+                    it(
+                        "should use the legacy flow on an app-channel-only route: " .. token, function()
+                            headers["Authorization"] = "Bearer " .. token
+
+                            assert.is_nil(plugin.rewrite({ challenge_on_missing_credential = false }, ctx))
+                            assert.is_false(ctx.var.is_bk_oauth2)
+                        end
+                    )
+                end
+
+                it(
+                    "should keep intercepting every Bearer when personal/public is enabled", function()
+                        headers["Authorization"] = "Bearer backend-own-token"
+
+                        assert.is_nil(plugin.rewrite({ challenge_on_missing_credential = true }, ctx))
+                        assert.is_true(ctx.var.is_bk_oauth2)
+                    end
+                )
+            end
+        )
+
+        context(
             "configured user ticket cookies", function()
                 local cookies
 

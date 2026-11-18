@@ -21,6 +21,9 @@
 -- or legacy BlueKing authentication (X-Bkapi-Authorization) and routes accordingly:
 --
 --     * X-Bkapi-Authorization present: legacy flow
+--     * challenge_on_missing_credential=false (only the app channel is enabled) and
+--       bk_gateway.bk_oauth2.bearer_token_rules not configured: legacy flow for any Bearer,
+--       the app channel is effectively off until the rules are deployed
 --     * bkauth Bearer token (matched by bk_gateway.bk_oauth2.bearer_token_rules):
 --       OAuth2 flow; a token matching a prefix but not its format is rejected with 401
 --       without introspection and without falling back to the legacy flow
@@ -129,6 +132,15 @@ function _M.rewrite(conf, ctx)
     -- Check for Authorization: Bearer header (OAuth2), only bkauth tokens are intercepted
     local authorization = core.request.header(ctx, AUTHORIZATION_HEADER)
     local bearer_token = parse_bearer_token(authorization)
+
+    if bearer_token and conf.challenge_on_missing_credential == false
+        and not oauth2.has_bkauth_bearer_token_rules() then
+        -- Without the rules every Bearer would be a bkauth token; a route that only enables the
+        -- app channel must not intercept backend-own Bearer tokens, so it keeps the legacy flow.
+        ctx.var.is_bk_oauth2 = false
+        core.log.info("bk-oauth2-protected-resource: bearer_token_rules not configured, using legacy auth")
+        return
+    end
 
     if bearer_token then
         local matched, format_ok = oauth2.match_bkauth_bearer_token(bearer_token)

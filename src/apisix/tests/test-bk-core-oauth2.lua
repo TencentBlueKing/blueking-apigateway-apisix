@@ -15,6 +15,7 @@
 -- We undertake not to change the open source license (MIT license) applicable
 -- to the current version of the project delivered to anyone in the future.
 --
+local core = require("apisix.core")
 local bk_core = require("apisix.plugins.bk-core.init")
 local oauth2 = require("apisix.plugins.bk-core.oauth2")
 
@@ -599,6 +600,45 @@ describe(
                     "should treat an invalid prefix pattern as not matched", function()
                         rules = { { prefix_pattern = "^bk[" } }
                         assert.is_false(oauth2.match_bkauth_bearer_token("bkp_abc"))
+                    end
+                )
+
+                it(
+                    "should log an invalid prefix pattern and continue with the next rule", function()
+                        stub(core.log, "error")
+                        rules = { { prefix_pattern = "^bk[" }, { prefix_pattern = "^bkp_" } }
+
+                        local matched, format_ok = oauth2.match_bkauth_bearer_token("bkp_abc")
+
+                        assert.is_true(matched)
+                        assert.is_true(format_ok)
+                        assert.stub(core.log.error).was_called()
+                        core.log.error:revert()
+                    end
+                )
+
+                it(
+                    "should reject the token when the format pattern is invalid", function()
+                        stub(core.log, "error")
+                        rules = { { prefix_pattern = "^bkp_", format_pattern = "^bkp_[0-9a-z{36}$" } }
+
+                        local matched, format_ok = oauth2.match_bkauth_bearer_token(valid_bk_token)
+
+                        -- the prefix decides it is a bkauth token; an invalid format fails closed (401)
+                        assert.is_true(matched)
+                        assert.is_false(format_ok)
+                        assert.stub(core.log.error).was_called()
+                        core.log.error:revert()
+                    end
+                )
+
+                it(
+                    "should report whether the rules are configured", function()
+                        assert.is_true(oauth2.has_bkauth_bearer_token_rules())
+                        rules = {}
+                        assert.is_true(oauth2.has_bkauth_bearer_token_rules())
+                        rules = nil
+                        assert.is_false(oauth2.has_bkauth_bearer_token_rules())
                     end
                 )
             end
