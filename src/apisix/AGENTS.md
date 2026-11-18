@@ -229,6 +229,11 @@ Token mode and validation:
   reason text from `oauth2.get_user_required_token_reject_reason`. Audience
   mismatch stays 403 (`invalid_audience`). The legacy chain and personal/public
   keep their 400/500 responses.
+- MCP server paths on `bk-apigateway` accept both `mcp:<server>` and
+  gateway-scoped audience (`gateway:*`, `gateway:bk-apigateway/api:*`,
+  `gateway:bk-apigateway/api:<resource>`). This is intended: the MCP entry is a
+  `bk-apigateway` resource, and mcp-proxy owns the per-MCP-server permission.
+  Do not narrow it here without a matching bkauth issuance and mcp-proxy change.
 - When changing any plugin in this chain, run `t/bk-oauth2-token-mode-chain.t`.
   It exercises the full chain on a real route with stubbed introspection.
 
