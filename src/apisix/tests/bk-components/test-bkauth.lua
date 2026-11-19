@@ -483,7 +483,7 @@ describe(
                                 client_id = "real-app",
                                 exp = 4102444800,
                                 audience = { "gateway:demo/api:test" },
-                                error = {},
+                                error = { code = "", message = "" },
                             }, result
                         )
                     end
@@ -521,6 +521,45 @@ describe(
                             assert.is_nil(err)
                             assert.is_nil(result.bk_login_name)
                         end
+                    end
+                )
+
+                it(
+                    "should normalize non-string subject, client ID and error fields", function()
+                        local null = require("cjson.safe").null
+                        for _, value in ipairs({ null, false, true, 1, {} }) do
+                            response = {
+                                status = 200,
+                                body = core.json.encode({
+                                    active = false,
+                                    sub = value,
+                                    client_id = value,
+                                    error = { code = value, message = value },
+                                }),
+                            }
+
+                            local result, err = bkauth.verify_oauth2_access_token("fake-token")
+                            assert.is_nil(err)
+                            assert.is_equal("", result.bk_username)
+                            assert.is_equal("", result.client_id)
+                            assert.same({ code = "", message = "" }, result.error)
+                        end
+                    end
+                )
+
+                it(
+                    "should keep string error details and default a null error object", function()
+                        local fields = { active = false, error = { code = "EXPIRED", message = "token expired" } }
+                        response = { status = 200, body = core.json.encode(fields) }
+                        local result, err = bkauth.verify_oauth2_access_token("fake-token")
+                        assert.is_nil(err)
+                        assert.same(fields.error, result.error)
+
+                        fields.error = require("cjson.safe").null
+                        response.body = core.json.encode(fields)
+                        result, err = bkauth.verify_oauth2_access_token("fake-token")
+                        assert.is_nil(err)
+                        assert.same({ code = "", message = "" }, result.error)
                     end
                 )
             end

@@ -137,24 +137,13 @@ local function create_app_from_result(result)
 end
 
 
----Introspection fields may be missing, JSON null (cjson.null is truthy) or of another type
----@param value any
----@return string value The value when it is a string, otherwise ""
-local function string_field(value)
-    if type(value) ~= "string" then
-        return ""
-    end
-    return value
-end
-
-
 ---Detect whether the token carries a user (delegated) or only an app (app)
----@param result table The verification result from bkauth
+---@param result table The verification result normalized by the bkauth adapter
 ---@return string mode One of "delegated", "app", "unknown"
 local function detect_token_mode(result)
-    local sub = string_field(result.bk_username)
-    local client_id = string_field(result.client_id)
-    local username = result.bk_login_name -- string or nil, normalized by the bkauth adapter
+    local sub = result.bk_username
+    local client_id = result.client_id
+    local username = result.bk_login_name
     if sub == "" or client_id == "" or username == nil then
         return OAUTH2_TOKEN_MODE_UNKNOWN
     end
@@ -180,7 +169,7 @@ local function create_user_from_result(result, token_mode)
         return bk_user_define.new_anonymous_user("the OAuth2 app token does not carry a user")
     end
 
-    local username = string_field(result.bk_username)
+    local username = result.bk_username
     return bk_user_define.new_user({
         username = username,
         verified = username ~= "",
@@ -223,9 +212,9 @@ function _M.rewrite(conf, ctx) -- luacheck: no unused
 
     local error_obj = errorx.new_general_unauthorized():with_field("token_hint", masked_token)
     if not result.active then
-        local error_message = string_field(result.error.message)
+        local error_message = result.error.message
         core.log.info("bk-oauth2-verify: inactive token, token_hint=", masked_token,
-                      ", error_code=", string_field(result.error.code),
+                      ", error_code=", result.error.code,
                       ", error_message=", error_message)
 
         local reason = "the access token is inactive"
@@ -249,7 +238,7 @@ function _M.rewrite(conf, ctx) -- luacheck: no unused
 
     local token_mode = detect_token_mode(result)
     core.log.info("bk-oauth2-verify: token verified, app=", result.bk_app_code,
-                  ", user=", string_field(result.bk_username), ", token_mode=", token_mode,
+                  ", user=", result.bk_username, ", token_mode=", token_mode,
                   ", audience_count=", #(result.audience or {}))
 
     -- Create and set app object

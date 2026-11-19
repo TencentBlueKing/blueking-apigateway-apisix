@@ -52,15 +52,17 @@ add_block_preprocessor(sub {
             },
             tai_pat_personal_wrong_audience_no_user = {
                 bk_app_code = "personal",
+                bk_username = "", client_id = "personal",
                 audience = { "gateway:other/api:*" },
             },
             tai_pat_public_no_user = {
                 bk_app_code = "public",
+                bk_username = "", client_id = "public",
                 audience = { "gateway:demo/api:*" },
             },
             bkp_short = {
                 active = false,
-                error = { message = "invalid token format" },
+                error = { code = "", message = "invalid token format" },
             },
             tai_pat_inactive = {
                 active = false,

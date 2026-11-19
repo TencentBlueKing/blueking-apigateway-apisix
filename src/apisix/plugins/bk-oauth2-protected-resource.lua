@@ -161,14 +161,17 @@ function _M.rewrite(conf, ctx)
         return
     end
 
+    -- Dashboard sets challenge_on_missing_credential = support_public or support_personal.
+    -- Each flag requires user authentication on the resource and its client to be enabled.
+    -- When the checks above found no credential, true returns a 401 Bearer discovery challenge.
+    -- False means only the app channel is enabled. Hand the request to legacy auth,
+    -- which can check credentials in the query string or request body.
     if conf.challenge_on_missing_credential == false then
         ctx.var.is_bk_oauth2 = false
         core.log.info("bk-oauth2-protected-resource: no OAuth2 credential, using legacy auth")
         return
     end
 
-    -- No supported authentication credentials present
-    -- Return 401 with WWW-Authenticate header for OAuth2 discovery
     core.log.info("bk-oauth2-protected-resource: no valid auth header, returning 401 with WWW-Authenticate")
     ngx.header["WWW-Authenticate"] = oauth2.build_www_authenticate_header(ctx)
 

@@ -194,7 +194,7 @@ describe(
                         cached_result = {
                             exp = 4102444800,
                             bk_app_code = "test-app",
-                            error = {},
+                            error = { code = "", message = "" },
                         }
 
                         local status = plugin.rewrite({}, ctx)
@@ -292,7 +292,7 @@ describe(
                             { { bk_username = "u1", client_id = "app1", bk_login_name = "" }, "unknown" },
                             { { bk_username = "u1", client_id = "", bk_login_name = "tom" }, "unknown" },
                             { { bk_username = "", client_id = "app1", bk_login_name = "" }, "unknown" },
-                            { {}, "unknown" },
+                            { { bk_username = "app1", client_id = "app1" }, "unknown" },
                         }
                         for _, case in ipairs(cases) do
                             assert.is_equal(case[2], plugin._detect_token_mode(case[1]))
@@ -301,25 +301,9 @@ describe(
                 )
 
                 it(
-                    "should treat invalid sub or client_id and a missing normalized username as unknown", function()
-                        local null = require("cjson.safe").null
-                        local cases = {
-                            { bk_username = "app1", client_id = null, bk_login_name = "" },
-                            { bk_username = null, client_id = null, bk_login_name = "" },
-                            { bk_username = 123, client_id = 123, bk_login_name = "" },
-                            { bk_username = "u1", client_id = { "app1" }, bk_login_name = "tom" },
-                            { bk_username = "app1", client_id = "app1" },
-                        }
-                        for _, case in ipairs(cases) do
-                            assert.is_equal("unknown", plugin._detect_token_mode(case))
-                        end
-                    end
-                )
-
-                it(
-                    "should not mark a null sub as a verified user", function()
+                    "should not mark an empty subject as a verified user", function()
                         local user = plugin._create_user_from_result(
-                            { bk_username = require("cjson.safe").null }, "unknown"
+                            { bk_username = "" }, "unknown"
                         )
 
                         assert.is_false(user.verified)
