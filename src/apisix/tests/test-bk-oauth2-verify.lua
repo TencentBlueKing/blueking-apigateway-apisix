@@ -176,20 +176,34 @@ describe(
                 )
 
                 it(
-                    "should return 401 when token verification fails", function()
+                    "should return 503 without a challenge when introspection fails", function()
                         ctx.var.is_bk_oauth2 = true
-                        authorization_header = "Bearer invalid-token"
-                        cached_result = nil  -- Verification fails
+                        authorization_header = "Bearer example-token"
+
+                        local status = plugin.rewrite({}, ctx)
+
+                        assert.is_equal(503, status)
+                        assert.is_nil(www_authenticate_header)
+                    end
+                )
+
+                it(
+                    "should reject an introspection result without active", function()
+                        ctx.var.is_bk_oauth2 = true
+                        authorization_header = "Bearer example-token"
+                        cached_result = {
+                            exp = 4102444800,
+                            bk_app_code = "test-app",
+                            error = {},
+                        }
 
                         local status = plugin.rewrite({}, ctx)
 
                         assert.is_equal(401, status)
-                        assert.is_truthy(www_authenticate_header)
-                        local expected_prefix = "resource_metadata="
-                            .. '"https://bk-apigateway-api.example.com/prod/api/v2/open/'
-                            .. '.well-known/oauth-protected-resource?resource='
-                        assert.is_true(
-                            string.find(www_authenticate_header, expected_prefix, 1, true) ~= nil
+                        assert.is_nil(ctx.var.bk_app)
+                        assert.matches(
+                            'error="invalid_token", error_description="the access token is inactive"$',
+                            www_authenticate_header
                         )
                     end
                 )

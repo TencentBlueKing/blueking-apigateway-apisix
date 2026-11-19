@@ -72,24 +72,24 @@ describe(
         context(
             "rewrite phase - empty audience", function()
                 it(
-                    "should return 403 when audience is nil", function()
+                    "should return 401 when audience is nil", function()
                         ctx.var.is_bk_oauth2 = true
                         ctx.var.audience = nil
 
                         local status = plugin.rewrite({}, ctx)
 
-                        assert.is_equal(403, status)
+                        assert.is_equal(401, status)
                     end
                 )
 
                 it(
-                    "should return 403 when audience is empty array", function()
+                    "should return 401 when audience is empty array", function()
                         ctx.var.is_bk_oauth2 = true
                         ctx.var.audience = {}
 
                         local status = plugin.rewrite({}, ctx)
 
-                        assert.is_equal(403, status)
+                        assert.is_equal(401, status)
                     end
                 )
             end
@@ -228,7 +228,7 @@ describe(
 
                         local status = plugin.rewrite({}, ctx)
 
-                        assert.is_equal(403, status)
+                        assert.is_equal(401, status)
                     end
                 )
 
@@ -241,7 +241,7 @@ describe(
 
                         local status = plugin.rewrite({}, ctx)
 
-                        assert.is_equal(403, status)
+                        assert.is_equal(401, status)
                     end
                 )
 
@@ -271,7 +271,7 @@ describe(
                         ctx.var.uri = "/api/v2/mcp-servers/my-server/resources"
                         ctx.var.audience = {"gateway:demo/api:*"}
 
-                        assert.is_equal(403, plugin.rewrite({}, ctx))
+                        assert.is_equal(401, plugin.rewrite({}, ctx))
                     end
                 )
             end
@@ -327,7 +327,7 @@ describe(
 
                         local status = plugin.rewrite({}, ctx)
 
-                        assert.is_equal(403, status)
+                        assert.is_equal(401, status)
                     end
                 )
 
@@ -340,7 +340,7 @@ describe(
 
                         local status = plugin.rewrite({}, ctx)
 
-                        assert.is_equal(403, status)
+                        assert.is_equal(401, status)
                     end
                 )
 
@@ -353,7 +353,7 @@ describe(
 
                         local status = plugin.rewrite({}, ctx)
 
-                        assert.is_equal(403, status)
+                        assert.is_equal(401, status)
                     end
                 )
             end
@@ -389,7 +389,7 @@ describe(
 
                         local status = plugin.rewrite({}, ctx)
 
-                        assert.is_equal(403, status)
+                        assert.is_equal(401, status)
                     end
                 )
             end

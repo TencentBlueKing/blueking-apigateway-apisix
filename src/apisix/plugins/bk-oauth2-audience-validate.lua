@@ -261,12 +261,12 @@ function _M.rewrite(conf, ctx) -- luacheck: no unused
                       "audience=", core.json.encode(audience),
                       "gateway=", ctx.var.bk_gateway_name, ", resource=", ctx.var.bk_resource_name,
                       "reason=", reason)
-        local err = errorx.new_app_no_permission()
+        local err = errorx.new_general_unauthorized()
             :with_field("reason", reason)
             :with_field("gateway", ctx.var.bk_gateway_name or "")
             :with_field("resource", ctx.var.bk_resource_name or "")
 
-        local www_auth = oauth2.build_www_authenticate_header(ctx, "invalid_audience", reason)
+        local www_auth = oauth2.build_www_authenticate_header(ctx, "invalid_token", reason)
         ngx.header["WWW-Authenticate"] = www_auth
         return errorx.exit_with_apigw_err(ctx, err, _M)
     end

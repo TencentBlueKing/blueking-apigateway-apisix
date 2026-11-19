@@ -213,7 +213,7 @@ pass
 --- response_body
 pass
 
-=== TEST 9: FAIL - empty audience returns 403
+=== TEST 9: FAIL - empty audience returns 401
 --- config
     location /t {
         content_by_lua_block {
@@ -228,16 +228,16 @@ pass
             }
 
             local status = plugin.rewrite({}, ctx)
-            -- status will be 403, and ngx.status is also set to 403
+            -- status will be 401, and ngx.status is also set to 401
             -- we output the status before the response is finalized
             ngx.status = 200
             ngx.say("status: " .. tostring(status))
         }
     }
 --- response_body
-status: 403
+status: 401
 
-=== TEST 10: FAIL - nil audience returns 403
+=== TEST 10: FAIL - nil audience returns 401
 --- config
     location /t {
         content_by_lua_block {
@@ -257,9 +257,9 @@ status: 403
         }
     }
 --- response_body
-status: 403
+status: 401
 
-=== TEST 11: FAIL - gateway mismatch returns 403
+=== TEST 11: FAIL - gateway mismatch returns 401
 --- config
     location /t {
         content_by_lua_block {
@@ -279,9 +279,9 @@ status: 403
         }
     }
 --- response_body
-status: 403
+status: 401
 
-=== TEST 12: FAIL - API mismatch returns 403
+=== TEST 12: FAIL - API mismatch returns 401
 --- config
     location /t {
         content_by_lua_block {
@@ -301,9 +301,9 @@ status: 403
         }
     }
 --- response_body
-status: 403
+status: 401
 
-=== TEST 13: FAIL - MCP server mismatch returns 403
+=== TEST 13: FAIL - MCP server mismatch returns 401
 --- config
     location /t {
         content_by_lua_block {
@@ -324,9 +324,9 @@ status: 403
         }
     }
 --- response_body
-status: 403
+status: 401
 
-=== TEST 14: FAIL - MCP server audience with wrong gateway returns 403
+=== TEST 14: FAIL - MCP server audience with wrong gateway returns 401
 --- config
     location /t {
         content_by_lua_block {
@@ -347,9 +347,9 @@ status: 403
         }
     }
 --- response_body
-status: 403
+status: 401
 
-=== TEST 15: FAIL - no matching audience in list returns 403
+=== TEST 15: FAIL - no matching audience in list returns 401
 --- config
     location /t {
         content_by_lua_block {
@@ -369,9 +369,9 @@ status: 403
         }
     }
 --- response_body
-status: 403
+status: 401
 
-=== TEST 16: FAIL - unknown audience format is ignored and returns 403
+=== TEST 16: FAIL - unknown audience format is ignored and returns 401
 --- config
     location /t {
         content_by_lua_block {
@@ -391,7 +391,7 @@ status: 403
         }
     }
 --- response_body
-status: 403
+status: 401
 
 === TEST 17: test validation logic - MCP server wildcard match
 --- config
@@ -444,7 +444,7 @@ pass
 --- response_body
 pass
 
-=== TEST 19: FAIL - wildcard gateway with a specific API returns 403
+=== TEST 19: FAIL - wildcard gateway with a specific API returns 401
 --- config
     location /t {
         content_by_lua_block {
@@ -464,4 +464,4 @@ pass
         }
     }
 --- response_body
-status: 403
+status: 401

@@ -90,57 +90,49 @@ end
 function _M.build_www_authenticate_header(ctx, error_code, error_description)
     local tmpl = config.get_bk_apigateway_api_tmpl()
 
-    -- If tmpl is not configured (nil or empty), return minimal header
-    if tmpl == nil or tmpl == "" then
-        return 'Bearer realm="bk-apigateway", error="invalid_request", error_description="api tmpl is not configured"'
+    -- If tmpl is not configured (nil or empty) or has no valid origin, use a minimal challenge.
+    local challenge = 'Bearer realm="bk-apigateway"'
+    if tmpl ~= nil and tmpl ~= "" then
+        -- The tmpl can be in two formats:
+        -- - subpath: http://bkapi.example.com/api/{api_name}
+        -- - subdomain: http://{api_name}.bkapi.example.com
+
+        -- Step 1: Replace {api_name} with "bk-apigateway" to get the base URL
+        local base_url = string_gsub(tmpl, "{api_name}", "bk-apigateway")
+
+        -- Step 2: Extract scheme and domain (host) from the rendered URL to get the origin
+        -- Pattern matches: scheme://host (stops at first / after host or end of string)
+        local gateway_name = (ctx and ctx.var and ctx.var.bk_gateway_name) or "unknown"
+        local rendered_url = string_gsub(tmpl, "{api_name}", gateway_name)
+        local rendered_origin = string_match(rendered_url, "^(https?://[^/]+)")
+        if rendered_origin then
+            -- Step 3: Build the resource path and encode it
+            local path = (ctx and ctx.var and ctx.var.uri) or "/"
+
+            -- In some envs, nginx rewrites subdomain to subpath, so the path has an extra /api/{gateway_name} prefix
+            -- e.g. /api/bk-apigateway/prod/api/v2/... should be /prod/api/v2/...
+            if config.should_strip_subpath_prefix() then
+                path = strip_subpath_prefix(path, gateway_name)
+            end
+            local resource_url = rendered_origin .. path
+            local encoded_resource_url = ngx_escape_uri(resource_url)
+
+            challenge = string_format(
+                'Bearer resource_metadata="%s/prod/api/v2/open/.well-known/oauth-protected-resource?resource=%s"',
+                base_url,
+                encoded_resource_url
+            )
+        end
     end
-
-    -- Validate that tmpl is a valid URL format (must start with http:// or https://)
-    if not string_match(tmpl, "^https?://") then
-        return 'Bearer realm="bk-apigateway", error="invalid_request", error_description="invalid api tmpl format"'
-    end
-
-    -- The tmpl can be in two formats:
-    -- - subpath: http://bkapi.example.com/api/{api_name}
-    -- - subdomain: http://{api_name}.bkapi.example.com
-
-    -- Step 1: Replace {api_name} with "bk-apigateway" to get the base URL
-    local base_url = string_gsub(tmpl, "{api_name}", "bk-apigateway")
-
-    -- Step 2: Extract scheme and domain (host) from the rendered URL to get the origin
-    -- Pattern matches: scheme://host (stops at first / after host or end of string)
-    local gateway_name = (ctx and ctx.var and ctx.var.bk_gateway_name) or "unknown"
-    local rendered_url = string_gsub(tmpl, "{api_name}", gateway_name)
-    local rendered_origin = string_match(rendered_url, "^(https?://[^/]+)")
-
-    -- Step 3: Build the resource path and encode it
-    local path = (ctx and ctx.var and ctx.var.uri) or "/"
-
-    -- In some envs, nginx rewrites subdomain to subpath, so the path has an extra /api/{gateway_name} prefix
-    -- e.g. /api/bk-apigateway/prod/api/v2/... should be /prod/api/v2/...
-    if config.should_strip_subpath_prefix() then
-        path = strip_subpath_prefix(path, gateway_name)
-    end
-    local resource_url = rendered_origin .. path
-    local encoded_resource_url = ngx_escape_uri(resource_url)
 
     if error_code and error_description then
-        local tmpl_str = 'Bearer resource_metadata="%s/prod/api/v2/open/.well-known/' ..
-            'oauth-protected-resource?resource=%s", error="%s", error_description="%s"'
-        return string_format(
-            tmpl_str,
-            base_url,
-            encoded_resource_url,
+        return challenge .. string_format(
+            ', error="%s", error_description="%s"',
             escape_auth_header_value(error_code),
             escape_auth_header_value(error_description)
         )
     end
-
-    return string_format(
-        'Bearer resource_metadata="%s/prod/api/v2/open/.well-known/oauth-protected-resource?resource=%s"',
-        base_url,
-        encoded_resource_url
-    )
+    return challenge
 end
 
 

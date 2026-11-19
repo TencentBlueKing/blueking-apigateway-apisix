@@ -172,7 +172,7 @@ WWW-Authenticate: Bearer .*
                     bk_gateway_name = "bk-apigateway",
                     uri = "/api/bk-apigateway/prod/api/v2/mcp-servers/bk-apigateway-prod-debugger/mcp/",
                 },
-            }, "invalid_request", "no valid authentication header found")
+            })
 
             bk_core.config.get_bk_apigateway_api_tmpl = old_get_tmpl
             bk_core.config.should_strip_subpath_prefix = old_should_strip
@@ -206,7 +206,7 @@ resource=http%3A%2F%2Fbk-apigateway.bkapi.example.com%2Fprod%2Fapi%2Fv2%2Fmcp-se
                     bk_gateway_name = "bk-apigateway",
                     uri = "/api/bk-apigateway/prod/api/v2/mcp-servers/bk-apigateway-prod-debugger/mcp/",
                 },
-            }, "invalid_request", "no valid authentication header found")
+            })
 
             bk_core.config.get_bk_apigateway_api_tmpl = old_get_tmpl
             bk_core.config.should_strip_subpath_prefix = old_should_strip
@@ -240,7 +240,7 @@ resource=http%3A%2F%2Fbk-apigateway.bkapi.example.com%2Fapi%2Fbk-apigateway%2Fpr
                     bk_gateway_name = "bk-apigateway",
                     uri = "/api/bk-apigateway-extra/prod/api/v2/mcp-servers",
                 },
-            }, "invalid_request", "no valid authentication header found")
+            })
 
             bk_core.config.get_bk_apigateway_api_tmpl = old_get_tmpl
             bk_core.config.should_strip_subpath_prefix = old_should_strip

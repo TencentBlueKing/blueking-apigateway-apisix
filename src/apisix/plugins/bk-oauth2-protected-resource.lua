@@ -203,9 +203,7 @@ function _M.rewrite(conf, ctx)
     -- No supported authentication credentials present
     -- Return 401 with WWW-Authenticate header for OAuth2 discovery
     core.log.info("bk-oauth2-protected-resource: no valid auth header, returning 401 with WWW-Authenticate")
-    local www_auth = oauth2.build_www_authenticate_header(
-        ctx, "invalid_request", "no valid authentication header found")
-    ngx.header["WWW-Authenticate"] = www_auth
+    ngx.header["WWW-Authenticate"] = oauth2.build_www_authenticate_header(ctx)
 
     local err = errorx.new_general_unauthorized()
         :with_field("reason", "no valid authentication header found")

@@ -18,7 +18,7 @@
 
 # The whole OAuth2 plugin chain of real app routes, with the bkauth
 # introspection stubbed: token mode mismatches return 401 with WWW-Authenticate in both
-# directions, an audience mismatch still returns 403, and the legacy entry is unchanged.
+# directions. Token validity, dependency failures, and legacy entry behavior are also exercised.
 
 use t::APISIX 'no_plan';
 
@@ -50,17 +50,26 @@ add_block_preprocessor(sub {
                 bk_username = "u-sub-1", bk_login_name = "tom", client_id = "personal",
                 audience = { "gateway:demo/api:*" },
             },
+            tai_pat_inactive = {
+                active = false,
+                error = { code = "EXPIRED", message = "bkauth expired detail" },
+            },
             tai_pat_other_audience = {
                 bk_username = "u-sub-1", bk_login_name = "tom", client_id = "real-app",
                 audience = { "gateway:other/api:*" },
             },
         }
         oauth2_cache.get_oauth2_access_token = function(token)
+            if token == "tai_pat_timeout" then
+                return nil, "bkauth request timeout"
+            end
             local result = results[token]
             if not result then
                 return nil, "unexpected token"
             end
-            result.active = true
+            if result.active == nil then
+                result.active = true
+            end
             result.exp = 4102444800
             result.bk_app_code = result.bk_app_code or "real-app"
             return result, nil
@@ -186,14 +195,15 @@ WWW-Authenticate: Bearer .*error="invalid_token".*only OAuth2 app tokens are all
 --- no_error_log
 [error]
 
-=== TEST 6: audience mismatch still returns 403
+=== TEST 6: audience mismatch returns 401 invalid_token
 --- request
 GET /chain-user
 --- more_headers
 Authorization: Bearer tai_pat_other_audience
---- error_code: 403
+--- error_code: 401
 --- response_headers_like
-WWW-Authenticate: Bearer .*error="invalid_audience".*
+WWW-Authenticate: Bearer .*error="invalid_token".*
+--- response_body_like: "code_name":"UNAUTHORIZED"
 --- no_error_log
 [error]
 
@@ -239,3 +249,36 @@ Authorization: Bearer tai_pat_personal
 hello world
 --- no_error_log
 [error]
+
+=== TEST 11: a request without credentials receives a discovery-only challenge
+--- request
+GET /chain-app-disabled
+--- error_code: 401
+--- response_headers_like
+WWW-Authenticate: Bearer resource_metadata="[^"]+"
+--- no_error_log
+[error]
+
+=== TEST 12: inactive introspection uses a standard code and includes the bkauth reason
+--- request
+GET /chain-app
+--- more_headers
+Authorization: Bearer tai_pat_inactive
+--- error_code: 401
+--- response_headers_like
+WWW-Authenticate: Bearer .*error="invalid_token", error_description="the access token is inactive \[bkauth expired detail\]"
+--- response_body_like: ^(?=.*the access token is inactive \[bkauth expired detail\]).*"code_name":"UNAUTHORIZED"
+--- no_error_log
+[error]
+
+=== TEST 13: introspection timeout returns 503 without a Bearer challenge
+--- request
+GET /chain-app
+--- more_headers
+Authorization: Bearer tai_pat_timeout
+--- error_code: 503
+--- response_headers
+WWW-Authenticate:
+--- response_body_like: ^(?=.*call bkauth api to verify token failed: bkauth request timeout).*"code_name":"SERVICE_UNAVAILABLE"
+--- error_log
+call bkauth api to verify token failed: bkauth request timeout

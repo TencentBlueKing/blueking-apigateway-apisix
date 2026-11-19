@@ -187,7 +187,7 @@ Bearer routing in `bk-oauth2-protected-resource`, evaluated in this order:
 4. Otherwise the request has no OAuth2 credential. This covers `other` and a
    bare `Bearer` with no token. Configured user cookies go to the legacy flow;
    `challenge_on_missing_credential=false` goes to the legacy flow; otherwise
-   return 401 with `WWW-Authenticate` and `resource_metadata`.
+   return 401 with a Bearer discovery challenge and no OAuth2 error fields.
 
 Rules and matching (`bk-core/oauth2.lua`):
 
@@ -207,8 +207,8 @@ Rules and matching (`bk-core/oauth2.lua`):
   logs above stay as they are.
 - New route fields default to the pre-change behavior (`support_app=false`,
   `challenge_on_missing_credential=true`). Explicit defaults behave the same as
-  omitted fields. Old routes on new plugins differ from `master` only for
-  personal/public Bearer routing, an accepted change.
+  omitted fields. Existing personal/public routes also use the Bearer routing
+  and response rules described here.
 
 Token mode and validation:
 
@@ -231,9 +231,11 @@ Token mode and validation:
   disallowed app codes return 401 with
   `WWW-Authenticate: Bearer ... error="invalid_token"`. Real app tokens on
   routes with `support_app=false` get the same app-channel-disabled reason
-  in both plugins, before token mode errors. Audience
-  mismatch stays 403 (`invalid_audience`). The legacy chain and personal/public
-  keep their 400/500 responses.
+  in both plugins, before token mode errors. An audience mismatch or an
+  introspection result of `active=false` also returns 401 `invalid_token`.
+  When introspection fails and no usable cached result is available, return
+  503 without a Bearer challenge. Application permission denials remain
+  403 `APP_NO_PERMISSION`. The legacy chain keeps its original responses.
 - MCP server paths on `bk-apigateway` accept both `mcp:<server>` and
   gateway-scoped audience (`gateway:*`, `gateway:bk-apigateway/api:*`,
   `gateway:bk-apigateway/api:<resource>`). This is intended: the MCP entry is a

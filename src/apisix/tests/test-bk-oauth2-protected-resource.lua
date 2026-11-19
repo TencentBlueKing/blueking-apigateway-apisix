@@ -239,7 +239,7 @@ describe(
 
                             assert.is_equal(401, status)
                             assert.is_nil(ctx.var.is_bk_oauth2)
-                            assert.matches('error="invalid_request"', ngx.header["WWW-Authenticate"])
+                            assert.matches('^Bearer resource_metadata="[^"]+"$', ngx.header["WWW-Authenticate"])
                         end
                     )
                 end
@@ -565,7 +565,7 @@ describe(
                 )
 
                 it(
-                    "should return realm error when tmpl is empty", function()
+                    "should return a realm-only challenge when tmpl is empty", function()
                         bk_core.config.get_bk_apigateway_api_tmpl:revert()
                         stub(
                             bk_core.config, "get_bk_apigateway_api_tmpl", function()
@@ -576,14 +576,14 @@ describe(
                         local header = oauth2.build_www_authenticate_header(ctx)
 
                         assert.is_equal(
-                            'Bearer realm="bk-apigateway", error="invalid_request", error_description="api tmpl is not configured"',
+                            'Bearer realm="bk-apigateway"',
                             header
                         )
                     end
                 )
 
                 it(
-                    "should return realm error for invalid tmpl format", function()
+                    "should return a realm-only challenge for invalid tmpl format", function()
                         bk_core.config.get_bk_apigateway_api_tmpl:revert()
                         stub(
                             bk_core.config, "get_bk_apigateway_api_tmpl", function()
@@ -594,7 +594,7 @@ describe(
                         local header = oauth2.build_www_authenticate_header(ctx)
 
                         assert.is_equal(
-                            'Bearer realm="bk-apigateway", error="invalid_request", error_description="invalid api tmpl format"',
+                            'Bearer realm="bk-apigateway"',
                             header
                         )
                     end
