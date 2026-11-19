@@ -58,7 +58,7 @@ local schema = {
 
 local _M = {
     version = 0.1,
-    priority = 17678,
+    priority = 17685,
     name = plugin_name,
     schema = schema,
 }
@@ -85,7 +85,7 @@ end
 
 ---Check channel access and token mode for a real BlueKing app using the verified OAuth2 identity.
 ---A user-required resource accepts a delegated token with a verified user. An app-only resource
----accepts an app token. The earlier bk-auth-validate plugin may already have rejected a missing user.
+---accepts an app token. This check runs before the shared auth validator and its user exemptions.
 ---The caller checks personal and public clients with their own route flags.
 ---@return string|nil reason The rejection reason, nil when the token is allowed
 local function validate_real_app(conf, ctx)
@@ -101,10 +101,15 @@ local function validate_real_app(conf, ctx)
 
     local token_mode = ctx.var.bk_oauth2_token_mode
     if user_required then
-        return oauth2.get_user_required_token_reject_reason(token_mode, ctx.var.bk_user)
-    end
+        if token_mode ~= "delegated" then
+            return "the resource requires a user, only OAuth2 delegated tokens are allowed"
+        end
 
-    if token_mode ~= "app" then
+        local user = ctx.var.bk_user
+        if not user or not user.verified then
+            return "the OAuth2 delegated token does not carry a valid user"
+        end
+    elseif token_mode ~= "app" then
         return "the resource does not require a user, only OAuth2 app tokens are allowed"
     end
     return nil

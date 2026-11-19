@@ -27,12 +27,6 @@
 -- The whitelist configuration is used during the validation to check if the process should
 -- be skipped.
 --
--- For OAuth2 tokens of real BlueKing apps (ctx.var.is_bk_oauth2 == true), the user exemptions
--- (the whitelist and skip_user_verification) are ignored, a resource requiring a user always
--- requires a verified user, so app tokens without a user are rejected with 401 and
--- WWW-Authenticate, the same contract as bk-oauth2-appcode-validate. Other requests keep
--- the legacy 400 (invalid args) / 500 responses.
---
 -- This plugin depends on:
 --     * bk-resource-context: To determine whether a verified data is necessary.
 --     * bk-auth-verify: Get the verified bk_app and bk_user objects.
@@ -40,7 +34,6 @@
 --
 local core = require("apisix.core")
 local errorx = require("apisix.plugins.bk-core.errorx")
-local oauth2 = require("apisix.plugins.bk-core.oauth2")
 local pl_types = require("pl.types")
 local tostring = tostring
 
@@ -98,17 +91,8 @@ local function validate_app(bk_resource_auth, app)
     return app.valid_error_message
 end
 
----Validate the given user object.
----@param ignore_user_exemption boolean|nil Ignore the whitelist and skip_user_verification.
----@return string|nil err An error message when invalid.
-local function validate_user(
-    bk_resource_id, bk_resource_auth, user, app, verified_user_exempted_apps, ignore_user_exemption
-)
-    if not bk_resource_auth:get_verified_user_required() then
-        return nil
-    end
-
-    if not ignore_user_exemption and (
+local function validate_user(bk_resource_id, bk_resource_auth, user, app, verified_user_exempted_apps)
+    if (not bk_resource_auth:get_verified_user_required() or
         is_app_exempted_from_verified_user(app:get_app_code(), bk_resource_id, verified_user_exempted_apps) or
         bk_resource_auth:get_skip_user_verification()) then
         return nil
@@ -129,27 +113,6 @@ local function is_server_error(err)
                core.string.has_suffix(err, "please contact the API Gateway developer to handle")
 end
 
----A real app OAuth2 token without a verified user on a resource requiring a user.
-local function exit_with_oauth2_user_error(ctx)
-    local token_mode = ctx.var.bk_oauth2_token_mode or ""
-    local reason = oauth2.get_user_required_token_reject_reason(token_mode, ctx.var.bk_user)
-    local app_code = ctx.var.bk_app:get_app_code()
-
-    local err = errorx.new_general_unauthorized():with_fields(
-        {
-            reason = reason,
-            bk_app_code = app_code,
-            token_mode = token_mode,
-            gateway = ctx.var.bk_gateway_name or "",
-            resource = ctx.var.bk_resource_name or "",
-        }
-    )
-    ngx.header["WWW-Authenticate"] = oauth2.build_www_authenticate_header(
-        ctx, "invalid_token", reason .. ": bk_app_code=" .. app_code .. ", token_mode=" .. token_mode
-    )
-    return errorx.exit_with_apigw_err(ctx, err, _M)
-end
-
 function _M.rewrite(conf, ctx) -- luacheck: no unused
     -- Return directly if "bk-resource-auth" is not loaded by checking "bk_resource_auth"
     if ctx.var.bk_resource_auth == nil then
@@ -165,19 +128,11 @@ function _M.rewrite(conf, ctx) -- luacheck: no unused
         end
     end
 
-    -- This plugin enforces the resource's user requirement before the OAuth2 app channel check.
-    -- When both checks would fail, the user error is returned here.
-    local ignore_user_exemption = ctx.var.is_bk_oauth2 == true
-        and oauth2.is_real_app_code(ctx.var.bk_app:get_app_code())
     err = validate_user(
         ctx.var.bk_resource_id, ctx.var.bk_resource_auth, ctx.var.bk_user, ctx.var.bk_app,
-        ctx.var.verified_user_exempted_apps, ignore_user_exemption
+        ctx.var.verified_user_exempted_apps
     )
     if err ~= nil then
-        if ignore_user_exemption then
-            return exit_with_oauth2_user_error(ctx)
-        end
-
         if is_server_error(err) then
             return errorx.exit_with_apigw_err(ctx, errorx.new_internal_server_error():with_field("reason", err), _M)
         else

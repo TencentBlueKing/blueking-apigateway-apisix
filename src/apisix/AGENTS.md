@@ -221,15 +221,16 @@ Token mode and validation:
   `public`/`personal` keep their existing checks and ignore the mode. The app
   identity is the introspected `bk_app_code`; `client_id` only feeds mode
   detection.
-- For real-app OAuth2 tokens, `bk-auth-validate` (17680) ignores user exemptions
-  (whitelist, `skip_user_verification`), and it runs before
-  `bk-oauth2-appcode-validate` (17678).
+- Rewrite validates OAuth2 client access and token mode first
+  (`bk-oauth2-appcode-validate`, 17685), then audience
+  (`bk-oauth2-audience-validate`, 17684), then generic app and user requirements
+  (`bk-auth-validate`, 17680). The generic validator has no OAuth2 branch.
+  A real app OAuth2 token must pass the mode and user checks before the
+  generic validator can apply a whitelist or `skip_user_verification`.
 - Failure contract. Token mode mismatch in either direction, `unknown`, and
   disallowed app codes return 401 with
-  `WWW-Authenticate: Bearer ... error="invalid_token"`. The first plugin to
-  reject the request determines the reason. `bk-auth-validate` can reject
-  a real app token for a missing user before `bk-oauth2-appcode-validate`
-  checks `support_app`. An audience mismatch or an
+  `WWW-Authenticate: Bearer ... error="invalid_token"`. OAuth2 rejections take
+  precedence over generic authentication errors. An audience mismatch or an
   introspection result of `active=false` also returns 401 `invalid_token`.
   When introspection fails and no usable cached result is available, return
   503 without a Bearer challenge. Application permission denials remain

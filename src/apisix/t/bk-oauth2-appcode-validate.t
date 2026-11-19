@@ -53,7 +53,7 @@ __DATA__
         }
     }
 --- response_body
-priority: 17678
+priority: 17685
 
 === TEST 2: non-OAuth2 requests are skipped
 --- config

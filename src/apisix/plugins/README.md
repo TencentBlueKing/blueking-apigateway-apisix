@@ -55,10 +55,10 @@ CORS（上下文初始化之后，认证之前）：
 执行 - 请求
 
 - bk-break-recursive-call                   # priority: 17700  # 该插件应默认应用于所有路由
+- bk-oauth2-appcode-validate                # priority: 17685  # 检查路由是否允许客户端，以及真实应用的 token 模式
+- bk-oauth2-audience-validate               # priority: 17684  # 检查 token 的 audience 是否覆盖当前 MCP 服务器或网关 API
 - bk-auth-validate                          # priority: 17680
 - bk-user-restriction                       # priority: 17679
-- bk-oauth2-appcode-validate                # priority: 17678  # OAuth2 app code 验证：按路由配置允许 public、personal 客户端和真实应用
-- bk-oauth2-audience-validate               # priority: 17677  # OAuth2 audience 验证：验证 MCP 服务器和网关 API 的 audience 声明
 - bk-tenant-validate-exempt                 # priority: 17676  # 如果资源配置了此插件, 则跳过 bk-tenant-validate 校验
 - bk-tenant-verify                          # priority: 17675
 - bk-tenant-validate                        # priority: 17674

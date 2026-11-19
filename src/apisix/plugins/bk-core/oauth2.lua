@@ -132,24 +132,6 @@ function _M.is_real_app_code(app_code)
 end
 
 
----The rejection reason when a resource requires a user but a real app OAuth2 token does not carry one.
----Shared by bk-auth-validate and bk-oauth2-appcode-validate so both return the same 401 reason.
----@param token_mode string|nil ctx.var.bk_oauth2_token_mode
----@param user table|nil ctx.var.bk_user
----@return string|nil reason nil when the token carries a verified user
-function _M.get_user_required_token_reject_reason(token_mode, user)
-    if token_mode ~= "delegated" then
-        return "the resource requires a user, only OAuth2 delegated tokens are allowed"
-    end
-
-    if not user or not user.verified then
-        return "the OAuth2 delegated token does not carry a valid user"
-    end
-
-    return nil
-end
-
-
 local function re_match(subject, pattern, field)
     local from, _, err = ngx_re_find(subject, pattern, "jo")
     if err then

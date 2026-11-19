@@ -50,6 +50,14 @@ add_block_preprocessor(sub {
                 bk_username = "u-sub-1", bk_login_name = "tom", client_id = "personal",
                 audience = { "gateway:demo/api:*" },
             },
+            tai_pat_personal_wrong_audience_no_user = {
+                bk_app_code = "personal",
+                audience = { "gateway:other/api:*" },
+            },
+            tai_pat_public_no_user = {
+                bk_app_code = "public",
+                audience = { "gateway:demo/api:*" },
+            },
             tai_pat_inactive = {
                 active = false,
                 error = { code = "EXPIRED", message = "bkauth expired detail" },
@@ -94,7 +102,7 @@ __DATA__
             local t = require("lib.test_admin").test
             local core = require("apisix.core")
 
-            local function route(name, user_required, support_app)
+            local function route(name, user_required, support_app, builtin_client, exempt_user)
                 return core.json.encode({
                     name = name,
                     uri = "/" .. name,
@@ -114,16 +122,23 @@ __DATA__
                             bk_resource_auth = {
                                 verified_app_required = true,
                                 verified_user_required = user_required,
+                                skip_user_verification = exempt_user,
                                 resource_perm_required = false,
                             },
                         },
-                        ["bk-oauth2-protected-resource"] = {challenge_on_missing_credential = not support_app},
+                        ["bk-verified-user-exempted-apps"] = exempt_user and {
+                            exempted_apps = {{ bk_app_code = "real-app", dimension = "api" }},
+                        } or nil,
+                        ["bk-oauth2-protected-resource"] = {
+                            challenge_on_missing_credential = builtin_client ~= nil,
+                        },
                         ["bk-oauth2-verify"] = {},
                         ["bk-auth-verify"] = {},
                         ["bk-auth-validate"] = {},
                         ["bk-oauth2-appcode-validate"] = {
                             support_app = support_app,
-                            support_personal = not support_app,
+                            support_personal = builtin_client == "personal",
+                            support_public = builtin_client == "public",
                         },
                         ["bk-oauth2-audience-validate"] = {},
                         ["bk-error-wrapper"] = {},
@@ -138,7 +153,9 @@ __DATA__
             for id, conf in pairs({
                 ["chain-user"] = route("chain-user", true, true),
                 ["chain-app"] = route("chain-app", false, true),
-                ["chain-app-disabled"] = route("chain-app-disabled", true, false),
+                ["chain-app-disabled"] = route("chain-app-disabled", true, false, "personal"),
+                ["chain-public"] = route("chain-public", true, false, "public"),
+                ["chain-user-exempt"] = route("chain-user-exempt", true, true, nil, true),
             }) do
                 local code, body = t("/apisix/admin/routes/" .. id, ngx.HTTP_PUT, conf)
                 if code >= 300 then
@@ -216,15 +233,15 @@ WWW-Authenticate:
 --- no_error_log
 [error]
 
-=== TEST 8: the user requirement takes precedence for app tokens when the app channel is disabled
+=== TEST 8: the app channel check rejects an app token on a disabled route
 --- request
 GET /chain-app-disabled
 --- more_headers
 Authorization: Bearer tai_pat_app
 --- error_code: 401
 --- response_headers_like
-WWW-Authenticate: Bearer .*error="invalid_token".*only OAuth2 delegated tokens are allowed.*
---- response_body_like: the resource requires a user
+WWW-Authenticate: Bearer .*error="invalid_token".*the OAuth2 app channel is not enabled for this route.*
+--- response_body_like: the OAuth2 app channel is not enabled for this route
 --- no_error_log
 [error]
 
@@ -282,3 +299,56 @@ WWW-Authenticate:
 --- response_body_like: ^(?=.*call bkauth api to verify token failed: bkauth request timeout).*"code_name":"SERVICE_UNAVAILABLE"
 --- error_log
 call bkauth api to verify token failed: bkauth request timeout
+
+=== TEST 14: an enabled public route sends a discovery challenge without credentials
+--- request
+GET /chain-public
+--- error_code: 401
+--- response_headers_like
+WWW-Authenticate: ^Bearer resource_metadata="[^"]+"$
+--- no_error_log
+[error]
+
+=== TEST 15: audience mismatch precedes the generic user check for an allowed personal client
+--- request
+GET /chain-app-disabled
+--- more_headers
+Authorization: Bearer tai_pat_personal_wrong_audience_no_user
+--- error_code: 401
+--- response_headers_like
+WWW-Authenticate: Bearer resource_metadata="[^"]+", error="invalid_token".*gateway mismatch.*
+--- no_error_log
+[error]
+
+=== TEST 16: a disabled personal client is rejected before the audience and generic user checks
+--- request
+GET /chain-public
+--- more_headers
+Authorization: Bearer tai_pat_personal_wrong_audience_no_user
+--- error_code: 401
+--- response_headers_like
+WWW-Authenticate: Bearer resource_metadata="[^"]+", error="invalid_token".*OAuth2 token app code is not allowed.*
+--- no_error_log
+[error]
+
+=== TEST 17: an allowed public client with matching audience still requires a user
+--- request
+GET /chain-public
+--- more_headers
+Authorization: Bearer tai_pat_public_no_user
+--- error_code: 400
+--- response_headers
+WWW-Authenticate:
+--- no_error_log
+[error]
+
+=== TEST 18: legacy user exemptions do not allow an app token on a user-required resource
+--- request
+GET /chain-user-exempt
+--- more_headers
+Authorization: Bearer tai_pat_app
+--- error_code: 401
+--- response_headers_like
+WWW-Authenticate: Bearer .*error="invalid_token".*only OAuth2 delegated tokens are allowed.*
+--- no_error_log
+[error]
