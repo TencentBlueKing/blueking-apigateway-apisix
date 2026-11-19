@@ -346,16 +346,20 @@ describe(
                     end
                 )
 
-                it(
-                    "requires a user when the resource auth context is absent", function()
-                        set_token("real-app", "app", false)
+                for _, token_mode in ipairs({ "app", "delegated" }) do
+                    it(
+                        "returns a server error for " .. token_mode .. " without resource auth context", function()
+                            set_token("real-app", token_mode, token_mode == "delegated")
 
-                        assert_rejected(
-                            check_conf({ support_app = true }),
-                            "the resource requires a user, only OAuth2 delegated tokens are allowed"
-                        )
-                    end
-                )
+                            local status = plugin.rewrite(check_conf({ support_app = true }), ctx)
+                            assert.is_equal(500, status)
+                            assert.is_equal("INTERNAL_SERVER_ERROR", ctx.var.bk_apigw_error.error.code_name)
+                            assert.matches("missing resource authentication context",
+                                           ctx.var.bk_apigw_error.error.message)
+                            assert.is_nil(ngx.header["WWW-Authenticate"])
+                        end
+                    )
+                end
 
                 for _, token_mode in ipairs({ "app", "unknown" }) do
                     it(
