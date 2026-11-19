@@ -207,6 +207,10 @@ function _M.validate_bkauth_bearer_token_rules()
         return { "bearer_token_rules must be a list, treated as not configured" }
     end
 
+    if #rules == 0 then
+        return { "bearer_token_rules is empty and matches no Bearer tokens" }
+    end
+
     local problems = {}
     for index, rule in ipairs(rules) do
         if type(rule) ~= "table" then

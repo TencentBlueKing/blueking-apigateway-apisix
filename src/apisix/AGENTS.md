@@ -201,8 +201,8 @@ Rules and matching (`bk-core/oauth2.lua`):
   string that fails to compile logs an error and fails closed (401). A
   non-string `format_pattern` means no format check (introspection decides).
 - `bk-oauth2-protected-resource.init()` runs `oauth2.validate_bkauth_bearer_token_rules`
-  once per worker, logs each problem, then warns when no usable rules exist
-  (missing or not a list).
+  once per worker, logs each problem (including an empty list), then warns
+  when the rules are missing or not a list.
   It must not stop startup or change request matching; the request-time error
   logs above stay as they are.
 - New route fields default to the pre-change behavior (`support_app=false`,

@@ -635,8 +635,6 @@ describe(
                 it(
                     "should report no problem for valid or missing rules", function()
                         assert.are.same({}, oauth2.validate_bkauth_bearer_token_rules())
-                        rules = {}
-                        assert.are.same({}, oauth2.validate_bkauth_bearer_token_rules())
                         rules = nil
                         assert.are.same({}, oauth2.validate_bkauth_bearer_token_rules())
                     end

@@ -119,6 +119,19 @@ describe(
                 )
 
                 it(
+                    "should log one error when rules are an empty list", function()
+                        rules = {}
+                        plugin.init()
+                        assert.stub(core.log.error).was_called(1)
+                        assert.stub(core.log.error).was_called_with(
+                            "bk-oauth2-protected-resource: invalid bk_gateway.bk_oauth2.",
+                            "bearer_token_rules is empty and matches no Bearer tokens"
+                        )
+                        assert.stub(core.log.warn).was_not_called()
+                    end
+                )
+
+                it(
                     "should log each invalid rule once", function()
                         rules = { { prefix_pattern = "^bk[" }, { prefix_pattern = "^bkp_", format_pattern = "(" } }
                         plugin.init()
