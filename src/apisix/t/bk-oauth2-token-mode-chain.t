@@ -16,9 +16,8 @@
 # to the current version of the project delivered to anyone in the future.
 #
 
-# The whole OAuth2 plugin chain of real app routes, with the bkauth
-# introspection stubbed: token mode mismatches return 401 with WWW-Authenticate in both
-# directions. Token validity, dependency failures, and legacy entry behavior are also exercised.
+# Exercise OAuth2 and legacy authentication through APISIX routes.
+# Mock external bkauth and permission responses, then inspect the headers the backend receives.
 
 use t::APISIX 'no_plan';
 
@@ -35,31 +34,33 @@ add_block_preprocessor(sub {
             return "http://{api_name}.example.com"
         end
 
-        local oauth2_cache = require("apisix.plugins.bk-cache.oauth2-access-token")
+        local core = require("apisix.core")
+        local bkauth_http = require("apisix.plugins.bk-components.utils")
+        local permission = require("apisix.plugins.bk-components.bk-apigateway-core")
+
+        local function claims(app_code, sub, client_id, username, audience)
+            return {
+                active = true,
+                bk_app_code = app_code,
+                sub = sub,
+                client_id = client_id,
+                username = username,
+                aud = { audience or "gateway:demo/api:*" },
+                exp = 4102444800,
+            }
+        end
+
         local results = {
-            tai_pat_delegated = {
-                bk_username = "real-app", bk_login_name = "tom", client_id = "real-app",
-                audience = { "gateway:demo/api:*" },
-            },
-            tai_pat_app = {
-                bk_username = "real-app", bk_login_name = "", client_id = "real-app",
-                audience = { "gateway:demo/api:*" },
-            },
-            tai_pat_personal = {
-                bk_app_code = "personal",
-                bk_username = "u-sub-1", bk_login_name = "tom", client_id = "personal",
-                audience = { "gateway:demo/api:*" },
-            },
-            tai_pat_personal_wrong_audience_no_user = {
-                bk_app_code = "personal",
-                bk_username = "", client_id = "personal",
-                audience = { "gateway:other/api:*" },
-            },
-            tai_pat_public_no_user = {
-                bk_app_code = "public",
-                bk_username = "", client_id = "public",
-                audience = { "gateway:demo/api:*" },
-            },
+            tai_pat_delegated = claims("real-app", "oauth-client", "oauth-client", "tom"),
+            tai_pat_app = claims("real-app", "oauth-client", "oauth-client", ""),
+            tai_pat_app_ungranted = claims("ungranted-app", "oauth-client", "oauth-client", ""),
+            tai_pat_missing_username = claims("real-app", "oauth-client", "oauth-client", nil),
+            tai_pat_null_username = claims("real-app", "oauth-client", "oauth-client", ngx.null),
+            tai_pat_personal = claims("personal", "u-sub-1", "personal", "tom"),
+            tai_pat_personal_wrong_audience_no_user =
+                claims("personal", "", "personal", nil, "gateway:other/api:*"),
+            tai_pat_public_no_user = claims("public", "", "public", nil),
+            tai_pat_other_audience = claims("real-app", "u-sub-1", "oauth-client", "tom", "gateway:other/api:*"),
             bkp_short = {
                 active = false,
                 error = { code = "", message = "invalid token format" },
@@ -68,29 +69,54 @@ add_block_preprocessor(sub {
                 active = false,
                 error = { code = "EXPIRED", message = "bkauth expired detail" },
             },
-            tai_pat_other_audience = {
-                bk_username = "u-sub-1", bk_login_name = "tom", client_id = "real-app",
-                audience = { "gateway:other/api:*" },
-            },
         }
-        oauth2_cache.get_oauth2_access_token = function(token)
-            if token == "tai_pat_timeout" then
-                return nil, "bkauth request timeout"
+
+        bkauth_http.handle_request = function(url, params)
+            local request = assert(core.json.decode(params.body))
+            local result
+            if url:match("/realms/blueking/oauth2/introspect$") then
+                if request.token == "tai_pat_timeout" then
+                    return nil, "bkauth request timeout"
+                end
+                result = assert(results[request.token], "unexpected introspection request")
+            else
+                assert(url:match("/api/v1/apps/legacy%-app/access%-keys/verify$"), "unexpected bkauth URL")
+                result = { code = 0, data = { is_match = request.bk_app_secret == "legacy-test-secret" } }
             end
-            local result = results[token]
-            if not result then
-                return nil, "unexpected token"
+            return { status = 200, body = core.json.encode(result) }
+        end
+
+        permission.query_permission = function(gateway, stage, resource, app_code)
+            assert(gateway == "demo" and stage == "prod", "unexpected permission lookup")
+            if app_code == "real-app" or app_code == "legacy-app" then
+                return { [gateway .. ":" .. resource .. ":" .. app_code] = ngx.time() + 60 }
             end
-            if result.active == nil then
-                result.active = true
-            end
-            result.exp = 4102444800
-            result.bk_app_code = result.bk_app_code or "real-app"
-            return result, nil
+            return {}
         end
 _EOC_
 
     $block->set_value("extra_init_by_lua", $extra_init_by_lua);
+    $block->set_value("http_config", <<'_EOC_');
+        lua_shared_dict plugin-bk-cache-fallback-lock 1m;
+        lua_shared_dict plugin-bk-permission 1m;
+_EOC_
+
+    my $upstream_server_config = <<'_EOC_';
+        location = /oauth2-chain-echo {
+            content_by_lua_block {
+                local jwt = require("resty.jwt")
+                local headers = ngx.req.get_headers()
+                local assertion = jwt:load_jwt(assert(headers["X-Bkapi-Jwt"], "missing gateway JWT"))
+                assert(assertion.valid, "invalid gateway JWT")
+                ngx.say("app=", assertion.payload.app.app_code)
+                ngx.say("username=", assertion.payload.user.username)
+                ngx.say("user_verified=", tostring(assertion.payload.user.verified))
+                ngx.say("authorization=", headers["Authorization"] or "")
+            }
+        }
+_EOC_
+
+    $block->set_value("upstream_server_config", $upstream_server_config);
 
     if (!defined $block->request) {
         $block->set_value("request", "GET /t");
@@ -107,6 +133,9 @@ __DATA__
         content_by_lua_block {
             local t = require("lib.test_admin").test
             local core = require("apisix.core")
+            local pkey = require("resty.openssl.pkey")
+            local private_key = assert(pkey.new({ type = "RSA", bits = 2048 }))
+            local encoded_key = ngx.encode_base64(assert(private_key:to_PEM("private")))
 
             local function route(name, user_required, support_app, builtin_client, exempt_user)
                 return core.json.encode({
@@ -116,9 +145,10 @@ __DATA__
                         ["bk-stage-context"] = {
                             bk_gateway_name = "demo",
                             bk_stage_name = "prod",
-                            jwt_private_key = "dGhpcyBpcyBhIGZha2Ugand0IHByaXZhdGUga2V5",
+                            jwt_private_key = encoded_key,
                             bk_api_auth = {
                                 api_type = 10,
+                                allow_auth_from_params = true,
                                 user_conf = {user_type = "bkuser", from_bk_token = true, from_username = false},
                             },
                         },
@@ -129,7 +159,7 @@ __DATA__
                                 verified_app_required = true,
                                 verified_user_required = user_required,
                                 skip_user_verification = exempt_user,
-                                resource_perm_required = false,
+                                resource_perm_required = support_app,
                             },
                         },
                         ["bk-verified-user-exempted-apps"] = exempt_user and {
@@ -148,7 +178,9 @@ __DATA__
                         },
                         ["bk-oauth2-audience-validate"] = {},
                         ["bk-error-wrapper"] = {},
-                        ["proxy-rewrite"] = {uri = "/hello"},
+                        ["bk-jwt"] = {},
+                        ["bk-permission"] = {},
+                        ["proxy-rewrite"] = {uri = "/oauth2-chain-echo"},
                     },
                     upstream = {
                         nodes = {["127.0.0.1:1980"] = 1}, type = "roundrobin",
@@ -182,7 +214,10 @@ GET /chain-user
 --- more_headers
 Authorization: Bearer tai_pat_delegated
 --- response_body
-hello world
+app=real-app
+username=oauth-client
+user_verified=true
+authorization=
 --- no_error_log
 [error]
 
@@ -203,7 +238,10 @@ GET /chain-app
 --- more_headers
 Authorization: Bearer tai_pat_app
 --- response_body
-hello world
+app=real-app
+username=
+user_verified=false
+authorization=
 --- no_error_log
 [error]
 
@@ -269,7 +307,10 @@ GET /chain-app-disabled
 --- more_headers
 Authorization: Bearer tai_pat_personal
 --- response_body
-hello world
+app=personal
+username=u-sub-1
+user_verified=true
+authorization=
 --- no_error_log
 [error]
 
@@ -302,9 +343,9 @@ Authorization: Bearer tai_pat_timeout
 --- error_code: 503
 --- response_headers
 WWW-Authenticate:
---- response_body_like: ^(?=.*call bkauth api to verify token failed: bkauth request timeout).*"code_name":"SERVICE_UNAVAILABLE"
+--- response_body_like: ^(?=.*bkauth request timeout).*"code_name":"SERVICE_UNAVAILABLE"
 --- error_log
-call bkauth api to verify token failed: bkauth request timeout
+bkauth request timeout
 
 === TEST 14: an enabled public route sends a discovery challenge without credentials
 --- request
@@ -368,5 +409,80 @@ Authorization: Bearer bkp_short
 --- response_headers_like
 WWW-Authenticate: Bearer .*error="invalid_token", error_description="the access token is inactive \[invalid token format\]"
 --- response_body_like: "code_name":"UNAUTHORIZED"
+--- no_error_log
+[error]
+
+
+=== TEST 20: an app token without resource permission receives 403
+--- request
+GET /chain-app
+--- more_headers
+Authorization: Bearer tai_pat_app_ungranted
+--- error_code: 403
+--- response_headers
+WWW-Authenticate:
+--- response_body_like: "code_name":"APP_NO_PERMISSION"
+
+=== TEST 21: legacy app credentials in the header preserve a backend Bearer
+--- request
+GET /chain-app
+--- more_headers
+X-Bkapi-Authorization: {"bk_app_code":"legacy-app","bk_app_secret":"legacy-test-secret"}
+Authorization: Bearer backend-token
+--- response_body
+app=legacy-app
+username=
+user_verified=false
+authorization=Bearer backend-token
+--- no_error_log
+[error]
+
+=== TEST 22: legacy app credentials in the query preserve a backend Bearer
+--- request
+GET /chain-app?bk_app_code=legacy-app&bk_app_secret=legacy-test-secret
+--- more_headers
+Authorization: Bearer backend-token
+--- response_body
+app=legacy-app
+username=
+user_verified=false
+authorization=Bearer backend-token
+--- no_error_log
+[error]
+
+=== TEST 23: legacy app credentials in the JSON body preserve a backend Bearer
+--- request
+POST /chain-app
+{"bk_app_code":"legacy-app","bk_app_secret":"legacy-test-secret"}
+--- more_headers
+Content-Type: application/json
+Authorization: Bearer backend-token
+--- response_body
+app=legacy-app
+username=
+user_verified=false
+authorization=Bearer backend-token
+--- no_error_log
+[error]
+
+=== TEST 24: a missing introspection username does not qualify as an app token
+--- request
+GET /chain-app
+--- more_headers
+Authorization: Bearer tai_pat_missing_username
+--- error_code: 401
+--- response_headers_like
+WWW-Authenticate: Bearer .*error="invalid_token".*token_mode=unknown"
+--- no_error_log
+[error]
+
+=== TEST 25: a null introspection username does not qualify as an app token
+--- request
+GET /chain-app
+--- more_headers
+Authorization: Bearer tai_pat_null_username
+--- error_code: 401
+--- response_headers_like
+WWW-Authenticate: Bearer .*error="invalid_token".*token_mode=unknown"
 --- no_error_log
 [error]

@@ -138,12 +138,17 @@ describe(
                 )
 
                 it(
-                    "should use the rule loaded at init without reading config on requests", function()
-                        rules = { { prefix_pattern = "^tai_pat_" } }
+                    "should use only the configured prefix loaded at init", function()
+                        rules = { { prefix_pattern = "^custom_" } }
                         plugin.init()
-                        headers["Authorization"] = "Bearer tai_pat_test"
                         rules = {}
 
+                        for _, token in ipairs({ "tai_pat_test", "bkp_test" }) do
+                            headers["Authorization"] = "Bearer " .. token
+                            assert.is_equal(401, plugin.rewrite({}, ctx))
+                        end
+
+                        headers["Authorization"] = "Bearer custom_test"
                         assert.is_nil(plugin.rewrite({}, ctx))
                         assert.is_true(ctx.var.is_bk_oauth2)
                         assert.stub(bk_core.config.get_oauth2_bearer_token_rules).was_called(1)

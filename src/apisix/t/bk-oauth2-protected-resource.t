@@ -61,7 +61,13 @@ done
                 ngx.HTTP_PUT,
                 [[{
                     "plugins": {
-                        "bk-oauth2-protected-resource": {}
+                        "bk-oauth2-protected-resource": {},
+                        "serverless-post-function": {
+                            "phase": "rewrite",
+                            "functions": [
+                                "return function(_, ctx) ngx.header['X-Auth-Flow'] = tostring(ctx.var.is_bk_oauth2) end"
+                            ]
+                        }
                     },
                     "upstream": {
                         "nodes": {
@@ -135,7 +141,9 @@ WWW-Authenticate: Bearer .*
 GET /hello
 --- more_headers
 X-Bkapi-Authorization: {"bk_app_code": "test"}
-Authorization: Bearer test-token
+Authorization: Bearer bkp_short
+--- response_headers
+X-Auth-Flow: false
 --- response_body
 hello world
 --- no_error_log
