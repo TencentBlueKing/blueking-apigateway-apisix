@@ -129,32 +129,10 @@ local function is_server_error(err)
                core.string.has_suffix(err, "please contact the API Gateway developer to handle")
 end
 
-local function is_oauth2_app_channel_disabled(ctx)
-    local plugins = ctx.plugins
-    if not plugins then
-        return false
-    end
-
-    -- APISIX rewrite uses alternating plugin and config entries after merging route and service.
-    for index = 1, #plugins, 2 do
-        if plugins[index].name == "bk-oauth2-appcode-validate" then
-            return not plugins[index + 1].support_app
-        end
-    end
-
-    return false
-end
-
 ---A real app OAuth2 token without a verified user on a resource requiring a user.
 local function exit_with_oauth2_user_error(ctx)
     local token_mode = ctx.var.bk_oauth2_token_mode or ""
-    local reason
-    if is_oauth2_app_channel_disabled(ctx) then
-        reason = oauth2.APP_CHANNEL_DISABLED_REASON
-    else
-        reason = oauth2.get_user_required_token_reject_reason(token_mode, ctx.var.bk_user)
-            or "the OAuth2 delegated token does not carry a valid user"
-    end
+    local reason = oauth2.get_user_required_token_reject_reason(token_mode, ctx.var.bk_user)
     local app_code = ctx.var.bk_app:get_app_code()
 
     local err = errorx.new_general_unauthorized():with_fields(
@@ -187,6 +165,8 @@ function _M.rewrite(conf, ctx) -- luacheck: no unused
         end
     end
 
+    -- This plugin enforces the resource's user requirement before the OAuth2 app channel check.
+    -- When both checks would fail, the user error is returned here.
     local ignore_user_exemption = ctx.var.is_bk_oauth2 == true
         and oauth2.is_real_app_code(ctx.var.bk_app:get_app_code())
     err = validate_user(

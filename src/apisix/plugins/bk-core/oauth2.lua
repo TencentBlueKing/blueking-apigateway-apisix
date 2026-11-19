@@ -31,19 +31,7 @@ local string_sub = string.sub
 local string_len = string.len
 local table_insert = table.insert
 
-local _M = {
-    APP_CHANNEL_DISABLED_REASON = "the OAuth2 app channel is not enabled for this route",
-}
-
-
----Read bearer_token_rules; anything that is not a list (an empty list counts) is treated as not configured
-local function get_bkauth_bearer_token_rules()
-    local rules = config.get_oauth2_bearer_token_rules()
-    if type(rules) ~= "table" or not table_isarray(rules) then
-        return nil
-    end
-    return rules
-end
+local _M = {}
 
 -- app codes of the builtin OAuth2 clients; other app codes are real BlueKing apps
 local BUILTIN_CLIENT_APP_CODES = {
@@ -188,72 +176,77 @@ local function check_pattern(pattern, field, index)
 end
 
 
----Validate bk_gateway.bk_oauth2.bearer_token_rules without changing how requests are matched.
----Used at plugin init to report misconfiguration once instead of only at request time.
----@return table problems A list of problem descriptions, empty when valid or not configured
+---Validate and prepare bearer_token_rules when the plugin loads.
+---@return table|nil rules Validated rules, nil when the configuration is missing or is not a list
+---@return table problems Invalid configuration diagnostics
+---@return string|nil warning Missing configuration diagnostic
 function _M.validate_bkauth_bearer_token_rules()
     local rules = config.get_oauth2_bearer_token_rules()
     if rules == nil then
-        return {}
+        return nil, {}, "bearer_token_rules is not configured, " ..
+            "every Bearer is treated as a bkauth token on personal/public routes"
     end
 
     if type(rules) ~= "table" or not table_isarray(rules) then
-        return { "bearer_token_rules must be a list, treated as not configured" }
+        return nil, { "bearer_token_rules must be a list, treated as not configured" }
     end
 
     if #rules == 0 then
-        return { "bearer_token_rules is empty and matches no Bearer tokens" }
+        return {}, { "bearer_token_rules is empty and matches no Bearer tokens" }
     end
 
+    local validated_rules = {}
     local problems = {}
     for index, rule in ipairs(rules) do
         if type(rule) ~= "table" then
             table_insert(problems, "bearer_token_rules[" .. index .. "] must be an object")
         else
-            local problem = check_pattern(rule.prefix_pattern, "prefix_pattern", index)
-            if problem then
-                table_insert(problems, problem)
+            local prefix_problem = check_pattern(rule.prefix_pattern, "prefix_pattern", index)
+            if prefix_problem then
+                table_insert(problems, prefix_problem)
             end
 
+            local format_problem
             if rule.format_pattern ~= nil then
-                problem = check_pattern(rule.format_pattern, "format_pattern", index)
-                if problem then
-                    table_insert(problems, problem)
+                format_problem = check_pattern(rule.format_pattern, "format_pattern", index)
+                if format_problem then
+                    table_insert(problems, format_problem)
                 end
+            end
+
+            -- Keep a valid prefix even if its format is invalid, so matching tokens are rejected.
+            if not prefix_problem then
+                table_insert(validated_rules, {
+                    prefix_pattern = rule.prefix_pattern,
+                    format_pattern = rule.format_pattern,
+                    invalid_format = format_problem ~= nil,
+                })
             end
         end
     end
 
-    return problems
-end
-
-
----Whether bk_gateway.bk_oauth2.bearer_token_rules is configured (an empty list counts as configured)
----@return boolean
-function _M.has_bkauth_bearer_token_rules()
-    return get_bkauth_bearer_token_rules() ~= nil
+    return validated_rules, problems
 end
 
 
 ---Classify a Bearer token by the bkauth token rules (bk_gateway.bk_oauth2.bearer_token_rules).
 ---The first rule whose prefix_pattern matches decides; format_pattern is optional.
 ---@param token string The Bearer token
+---@param rules table|nil The rules prepared at plugin init
 ---@return string|nil kind "bkauth": verify it by bkauth; "malformed": a rule prefix matches but its
 ---    format does not; "other": no rule matches, not a bkauth token; nil: the rules are not configured
-function _M.classify_bearer_token(token)
-    local rules = get_bkauth_bearer_token_rules()
+function _M.classify_bearer_token(token, rules)
     if rules == nil then
         return nil
     end
 
     for _, rule in ipairs(rules) do
-        if type(rule) == "table" and type(rule.prefix_pattern) == "string"
-            and re_match(token, rule.prefix_pattern, "prefix_pattern") then
-            if type(rule.format_pattern) ~= "string"
-                or re_match(token, rule.format_pattern, "format_pattern") then
-                return "bkauth"
+        if re_match(token, rule.prefix_pattern, "prefix_pattern") then
+            if rule.invalid_format
+                or (rule.format_pattern and not re_match(token, rule.format_pattern, "format_pattern")) then
+                return "malformed"
             end
-            return "malformed"
+            return "bkauth"
         end
     end
 

@@ -38,7 +38,7 @@ add_block_preprocessor(sub {
         local oauth2_cache = require("apisix.plugins.bk-cache.oauth2-access-token")
         local results = {
             tai_pat_delegated = {
-                bk_username = "u-sub-1", bk_login_name = "tom", client_id = "real-app",
+                bk_username = "real-app", bk_login_name = "tom", client_id = "real-app",
                 audience = { "gateway:demo/api:*" },
             },
             tai_pat_app = {
@@ -153,7 +153,7 @@ __DATA__
 --- response_body
 passed
 
-=== TEST 2: user-required resource allows a delegated token
+=== TEST 2: user-required resource allows a delegated token when sub equals client_id
 --- request
 GET /chain-user
 --- more_headers
@@ -216,15 +216,15 @@ WWW-Authenticate:
 --- no_error_log
 [error]
 
-=== TEST 8: a real app's app token is rejected when the app channel is disabled
+=== TEST 8: the user requirement takes precedence for app tokens when the app channel is disabled
 --- request
 GET /chain-app-disabled
 --- more_headers
 Authorization: Bearer tai_pat_app
 --- error_code: 401
 --- response_headers_like
-WWW-Authenticate: Bearer .*error="invalid_token".*the OAuth2 app channel is not enabled for this route.*
---- response_body_like: the OAuth2 app channel is not enabled for this route
+WWW-Authenticate: Bearer .*error="invalid_token".*only OAuth2 delegated tokens are allowed.*
+--- response_body_like: the resource requires a user
 --- no_error_log
 [error]
 

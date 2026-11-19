@@ -53,6 +53,7 @@ local BKAPI_AUTHORIZATION_HEADER = "X-Bkapi-Authorization"
 local AUTHORIZATION_HEADER = "Authorization"
 local BEARER_PREFIX = "bearer "
 local BEARER_PREFIX_LEN = #BEARER_PREFIX
+local bearer_token_rules
 
 local schema = {
     type = "object",
@@ -79,15 +80,15 @@ function _M.check_schema(conf)
 end
 
 
--- Report invalid bearer_token_rules once per worker at load time; request handling is unchanged.
 function _M.init()
-    for _, problem in ipairs(oauth2.validate_bkauth_bearer_token_rules()) do
+    local rules, problems, warning = oauth2.validate_bkauth_bearer_token_rules()
+    bearer_token_rules = rules
+    for _, problem in ipairs(problems) do
         core.log.error("bk-oauth2-protected-resource: invalid bk_gateway.bk_oauth2.", problem)
     end
 
-    if not oauth2.has_bkauth_bearer_token_rules() then
-        core.log.warn("bk-oauth2-protected-resource: bk_gateway.bk_oauth2.bearer_token_rules is not configured, ",
-                      "every Bearer is treated as a bkauth token on personal/public routes")
+    if warning then
+        core.log.warn("bk-oauth2-protected-resource: bk_gateway.bk_oauth2.", warning)
     end
 end
 
@@ -136,7 +137,7 @@ end
 ---Classify the Bearer token for this route
 ---@return string kind "bkauth", "malformed" or "other", see oauth2.classify_bearer_token
 local function classify_bearer_token(conf, token)
-    local kind = oauth2.classify_bearer_token(token)
+    local kind = oauth2.classify_bearer_token(token, bearer_token_rules)
     if kind ~= nil then
         return kind
     end
@@ -187,7 +188,8 @@ function _M.rewrite(conf, ctx)
         core.log.info("bk-oauth2-protected-resource: non-bkauth Bearer, treated as no credential")
     end
 
-    -- Only select the legacy flow here; it still verifies the cookie and resource requirements.
+    -- An absent, empty or unmatched Bearer leaves no OAuth2 credential.
+    -- The legacy flow still verifies the cookie and resource requirements.
     if has_configured_user_ticket_cookie(ctx) then
         ctx.var.is_bk_oauth2 = false
         core.log.info("bk-oauth2-protected-resource: user cookie detected, using legacy auth")

@@ -54,9 +54,9 @@ local string_sub = string.sub
 local string_match = string.match
 
 local plugin_name = "bk-oauth2-verify"
-local TOKEN_MODE_DELEGATED = "delegated"
-local TOKEN_MODE_APP = "app"
-local TOKEN_MODE_UNKNOWN = "unknown"
+local OAUTH2_TOKEN_MODE_DELEGATED = "delegated"
+local OAUTH2_TOKEN_MODE_APP = "app"
+local OAUTH2_TOKEN_MODE_UNKNOWN = "unknown"
 local AUTHORIZATION_HEADER = "Authorization"
 local BEARER_PREFIX = "bearer "
 local BEARER_PREFIX_LEN = #BEARER_PREFIX
@@ -155,20 +155,20 @@ end
 local function detect_token_mode(result)
     local sub = string_field(result.bk_username)
     local client_id = string_field(result.client_id)
-    local username = string_field(result.bk_login_name)
-    if sub == "" or client_id == "" then
-        return TOKEN_MODE_UNKNOWN
+    local username = result.bk_login_name
+    if sub == "" or client_id == "" or type(username) ~= "string" then
+        return OAUTH2_TOKEN_MODE_UNKNOWN
     end
 
-    if sub ~= client_id and username ~= "" then
-        return TOKEN_MODE_DELEGATED
+    if username ~= "" then
+        return OAUTH2_TOKEN_MODE_DELEGATED
     end
 
-    if sub == client_id and username == "" then
-        return TOKEN_MODE_APP
+    if sub == client_id then
+        return OAUTH2_TOKEN_MODE_APP
     end
 
-    return TOKEN_MODE_UNKNOWN
+    return OAUTH2_TOKEN_MODE_UNKNOWN
 end
 
 
@@ -177,7 +177,7 @@ end
 ---@param token_mode string The detected token mode
 ---@return table user The user object
 local function create_user_from_result(result, token_mode)
-    if token_mode == TOKEN_MODE_APP then
+    if token_mode == OAUTH2_TOKEN_MODE_APP then
         return bk_user_define.new_anonymous_user("the OAuth2 app token does not carry a user")
     end
 

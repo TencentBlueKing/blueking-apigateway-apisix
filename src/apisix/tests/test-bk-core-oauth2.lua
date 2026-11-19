@@ -530,6 +530,11 @@ describe(
                 local rules
                 local valid_bk_token = "bkp_" .. string.rep("a1B2", 9)
 
+                local function classify(token)
+                    local validated_rules = oauth2.validate_bkauth_bearer_token_rules()
+                    return oauth2.classify_bearer_token(token, validated_rules)
+                end
+
                 before_each(
                     function()
                         rules = {
@@ -553,7 +558,7 @@ describe(
                 it(
                     "should return nil when rules are not configured", function()
                         rules = nil
-                        assert.is_nil(oauth2.classify_bearer_token("anything"))
+                        assert.is_nil(classify("anything"))
                     end
                 )
 
@@ -561,23 +566,22 @@ describe(
                     "should treat non-list rules as not configured", function()
                         for _, value in ipairs({ true, false, "^bkp_", 1, { a = 1 } }) do
                             rules = value
-                            assert.is_nil(oauth2.classify_bearer_token("anything"))
-                            assert.is_false(oauth2.has_bkauth_bearer_token_rules())
+                            assert.is_nil(classify("anything"))
                         end
                     end
                 )
 
                 it(
-                    "should treat a non-string format_pattern as no format check", function()
+                    "should reject a token when its prefix matches a non-string format", function()
                         rules = { { prefix_pattern = "^bkp_", format_pattern = 1 } }
-                        assert.is_equal("bkauth", oauth2.classify_bearer_token("bkp_short"))
+                        assert.is_equal("malformed", classify("bkp_short"))
                     end
                 )
 
                 it(
                     "should match prefix and full format", function()
                         for _, prefix in ipairs({ "bko_", "bkp_", "bkr_", "bks_" }) do
-                            assert.is_equal("bkauth", oauth2.classify_bearer_token(prefix .. string.rep("a1B2", 9)))
+                            assert.is_equal("bkauth", classify(prefix .. string.rep("a1B2", 9)))
                         end
                     end
                 )
@@ -589,14 +593,14 @@ describe(
                             valid_bk_token .. "x",
                             "bkp_" .. string.rep("a1B2", 8) .. "a1-2",
                         }) do
-                            assert.is_equal("malformed", oauth2.classify_bearer_token(token))
+                            assert.is_equal("malformed", classify(token))
                         end
                     end
                 )
 
                 it(
                     "should accept any suffix when format_pattern is absent", function()
-                        assert.is_equal("bkauth", oauth2.classify_bearer_token("tai_pat_any.thing-123"))
+                        assert.is_equal("bkauth", classify("tai_pat_any.thing-123"))
                     end
                 )
 
@@ -604,7 +608,7 @@ describe(
                     "should not match similar but different prefixes", function()
                         local tokens = { "bkx_" .. string.rep("a1B2", 9), "bk_abc", "tai_abc", "xbkp_abc" }
                         for _, token in ipairs(tokens) do
-                            assert.is_equal("other", oauth2.classify_bearer_token(token))
+                            assert.is_equal("other", classify(token))
                         end
                     end
                 )
@@ -612,51 +616,47 @@ describe(
                 it(
                     "should skip invalid rules", function()
                         rules = { "invalid", { format_pattern = "^bkp_" }, { prefix_pattern = "^tai_pat_" } }
-                        assert.is_equal("other", oauth2.classify_bearer_token("bkp_abc"))
-                        assert.is_equal("bkauth", oauth2.classify_bearer_token("tai_pat_abc"))
+                        assert.is_equal("other", classify("bkp_abc"))
+                        assert.is_equal("bkauth", classify("tai_pat_abc"))
                     end
                 )
 
                 it(
                     "should treat an invalid prefix pattern as not matched", function()
                         rules = { { prefix_pattern = "^bk[" } }
-                        assert.is_equal("other", oauth2.classify_bearer_token("bkp_abc"))
+                        assert.is_equal("other", classify("bkp_abc"))
                     end
                 )
 
                 it(
-                    "should log an invalid prefix pattern and continue with the next rule", function()
-                        stub(core.log, "error")
+                    "should skip an invalid prefix pattern and continue with the next rule", function()
                         rules = { { prefix_pattern = "^bk[" }, { prefix_pattern = "^bkp_" } }
 
-                        assert.is_equal("bkauth", oauth2.classify_bearer_token("bkp_abc"))
-                        assert.stub(core.log.error).was_called()
-                        core.log.error:revert()
+                        assert.is_equal("bkauth", classify("bkp_abc"))
                     end
                 )
 
                 it(
                     "should reject the token when the format pattern is invalid", function()
-                        stub(core.log, "error")
                         rules = { { prefix_pattern = "^bkp_", format_pattern = "^bkp_[0-9a-z{36}$" } }
 
                         -- the prefix decides it is a bkauth token; an invalid format fails closed (401)
-                        assert.is_equal("malformed", oauth2.classify_bearer_token(valid_bk_token))
-                        assert.stub(core.log.error).was_called()
-                        core.log.error:revert()
+                        assert.is_equal("malformed", classify(valid_bk_token))
                     end
                 )
 
                 it(
-                    "should report no problem for valid or missing rules", function()
-                        assert.are.same({}, oauth2.validate_bkauth_bearer_token_rules())
-                        rules = nil
-                        assert.are.same({}, oauth2.validate_bkauth_bearer_token_rules())
+                    "should use the format of the first matching prefix", function()
+                        rules = {
+                            { prefix_pattern = "^bkp_", format_pattern = "^bkp_[0-9]+$" },
+                            { prefix_pattern = "^bkp_special_" },
+                        }
+                        assert.is_equal("malformed", classify("bkp_special_token"))
                     end
                 )
 
                 it(
-                    "should report invalid rules without changing matching", function()
+                    "should report invalid fields while preparing rules", function()
                         rules = {
                             "invalid",
                             { format_pattern = "^bkp_" },
@@ -665,7 +665,7 @@ describe(
                             { prefix_pattern = "^tai_pat_", format_pattern = 1 },
                         }
 
-                        local problems = oauth2.validate_bkauth_bearer_token_rules()
+                        local _, problems = oauth2.validate_bkauth_bearer_token_rules()
 
                         assert.is_equal(5, #problems)
                         assert.matches("bearer_token_rules%[1%] must be an object", problems[1])
@@ -673,24 +673,13 @@ describe(
                         assert.matches("bearer_token_rules%[3%]%.prefix_pattern=%^bk%[ is invalid", problems[3])
                         assert.matches("bearer_token_rules%[4%]%.format_pattern=.* is invalid", problems[4])
                         assert.matches("bearer_token_rules%[5%]%.format_pattern must be a string", problems[5])
-
-                        for _, value in ipairs({ 1, false, "x", { a = 1 } }) do
-                            rules = value
-                            assert.are.same(
-                                { "bearer_token_rules must be a list, treated as not configured" },
-                                oauth2.validate_bkauth_bearer_token_rules()
-                            )
-                        end
                     end
                 )
 
                 it(
-                    "should report whether the rules are configured", function()
-                        assert.is_true(oauth2.has_bkauth_bearer_token_rules())
+                    "should match no tokens with a configured empty list", function()
                         rules = {}
-                        assert.is_true(oauth2.has_bkauth_bearer_token_rules())
-                        rules = nil
-                        assert.is_false(oauth2.has_bkauth_bearer_token_rules())
+                        assert.is_equal("other", classify(valid_bk_token))
                     end
                 )
             end

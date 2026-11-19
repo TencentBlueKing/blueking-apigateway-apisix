@@ -288,7 +288,7 @@ describe(
                         local cases = {
                             { { bk_username = "u1", client_id = "app1", bk_login_name = "tom" }, "delegated" },
                             { { bk_username = "app1", client_id = "app1", bk_login_name = "" }, "app" },
-                            { { bk_username = "app1", client_id = "app1", bk_login_name = "tom" }, "unknown" },
+                            { { bk_username = "app1", client_id = "app1", bk_login_name = "tom" }, "delegated" },
                             { { bk_username = "u1", client_id = "app1", bk_login_name = "" }, "unknown" },
                             { { bk_username = "u1", client_id = "", bk_login_name = "tom" }, "unknown" },
                             { { bk_username = "", client_id = "app1", bk_login_name = "" }, "unknown" },
@@ -310,6 +310,9 @@ describe(
                             { bk_username = "u1", client_id = { "app1" }, bk_login_name = "tom" },
                             { bk_username = "u1", client_id = "app1", bk_login_name = null },
                             { bk_username = "u1", client_id = "app1", bk_login_name = true },
+                            { bk_username = "app1", client_id = "app1" },
+                            { bk_username = "app1", client_id = "app1", bk_login_name = null },
+                            { bk_username = "app1", client_id = "app1", bk_login_name = false },
                         }
                         for _, case in ipairs(cases) do
                             assert.is_equal("unknown", plugin._detect_token_mode(case))

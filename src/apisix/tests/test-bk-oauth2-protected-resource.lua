@@ -32,6 +32,7 @@ describe(
 
         before_each(
             function()
+                plugin.init()
                 ctx = {
                     var = {
                         uri = "/api/test/resource",
@@ -140,11 +141,11 @@ describe(
                 )
 
                 it(
-                    "should log an error and warn when rules are not a list", function()
+                    "should log one error when rules are not a list", function()
                         rules = true
                         plugin.init()
                         assert.stub(core.log.error).was_called(1)
-                        assert.stub(core.log.warn).was_called(1)
+                        assert.stub(core.log.warn).was_not_called()
                     end
                 )
 
@@ -154,6 +155,19 @@ describe(
                         plugin.init()
                         assert.stub(core.log.warn).was_called(1)
                         assert.stub(core.log.error).was_not_called()
+                    end
+                )
+
+                it(
+                    "should use the rule loaded at init without reading config on requests", function()
+                        rules = { { prefix_pattern = "^tai_pat_" } }
+                        plugin.init()
+                        headers["Authorization"] = "Bearer tai_pat_test"
+                        rules = {}
+
+                        assert.is_nil(plugin.rewrite({}, ctx))
+                        assert.is_true(ctx.var.is_bk_oauth2)
+                        assert.stub(bk_core.config.get_oauth2_bearer_token_rules).was_called(1)
                     end
                 )
             end
@@ -315,6 +329,7 @@ describe(
                 before_each(
                     function()
                         stub(bk_core.config, "get_oauth2_bearer_token_rules", function() return nil end)
+                        plugin.init()
                     end
                 )
 

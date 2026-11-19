@@ -192,19 +192,17 @@ Bearer routing in `bk-oauth2-protected-resource`, evaluated in this order:
 Rules and matching (`bk-core/oauth2.lua`):
 
 - With nil rules, `classify_bearer_token` returns nil and the plugin decides by
-  route (step 2 above). An empty list counts as configured and matches nothing. A value that is not a list
-  (boolean, string, number, map) is treated as nil everywhere, including
-  `has_bkauth_bearer_token_rules`; only `init()` reports it.
-- The first matching `prefix_pattern` decides. Regexes are passed to `ngx.re.find`
-  (`jo`) when a request reaches that rule; they are not precompiled. An invalid
-  `prefix_pattern` logs an error and the rule is skipped; a `format_pattern`
-  string that fails to compile logs an error and fails closed (401). A
-  non-string `format_pattern` means no format check (introspection decides).
-- `bk-oauth2-protected-resource.init()` runs `oauth2.validate_bkauth_bearer_token_rules`
-  once per worker, logs each problem (including an empty list), then warns
-  when the rules are missing or not a list.
-  It must not stop startup or change request matching; the request-time error
-  logs above stay as they are.
+  route (step 2 above). A non-list value also uses this fallback. An empty
+  list counts as configured and matches nothing.
+- `bk-oauth2-protected-resource.init()` validates rule types and regex syntax
+  and stores the resulting list for requests. Missing rules log a warning.
+  An empty list or a non-list value logs one error. Invalid rules are logged
+  at load time and do not stop startup.
+- The first matching `prefix_pattern` decides. A rule with an invalid prefix
+  is skipped. `format_pattern` is optional, and a supplied value must be a
+  valid regex string. A matched prefix with an invalid format rule rejects
+  the token with 401. Requests match the prepared rules with `ngx.re.find`
+  (`jo`) and log regex execution errors.
 - New route fields default to the pre-change behavior (`support_app=false`,
   `challenge_on_missing_credential=true`). Explicit defaults behave the same as
   omitted fields. Existing personal/public routes also use the Bearer routing
@@ -214,10 +212,9 @@ Token mode and validation:
 
 - `bk-oauth2-verify` reads introspection, sets `ctx.var.bk_oauth2_token_mode`
   and removes the consumed `Authorization` header:
-  - `delegated`: `sub != client_id` and `username` is set.
-  - `app`: `sub == client_id` and `username` is empty.
-  - `unknown`: anything else, including fields that are missing, empty, JSON
-    `null` (`cjson.null` is truthy) or not strings.
+  - `delegated`: `sub`, `client_id` and `username` are non-empty strings.
+  - `app`: `sub` and `client_id` are equal non-empty strings, and `username` is `""`.
+  - `unknown`: other combinations, including a missing, null or non-string `username`.
 
   App tokens never carry a user, and `sub` is never used as the username.
 - `bk-oauth2-appcode-validate` rejects `unknown` only for real apps.
@@ -229,9 +226,10 @@ Token mode and validation:
   `bk-oauth2-appcode-validate` (17678).
 - Failure contract. Token mode mismatch in either direction, `unknown`, and
   disallowed app codes return 401 with
-  `WWW-Authenticate: Bearer ... error="invalid_token"`. Real app tokens on
-  routes with `support_app=false` get the same app-channel-disabled reason
-  in both plugins, before token mode errors. An audience mismatch or an
+  `WWW-Authenticate: Bearer ... error="invalid_token"`. The first plugin to
+  reject the request determines the reason. `bk-auth-validate` can reject
+  a real app token for a missing user before `bk-oauth2-appcode-validate`
+  checks `support_app`. An audience mismatch or an
   introspection result of `active=false` also returns 401 `invalid_token`.
   When introspection fails and no usable cached result is available, return
   503 without a Bearer challenge. Application permission denials remain

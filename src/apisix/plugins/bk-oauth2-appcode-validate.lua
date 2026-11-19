@@ -83,11 +83,14 @@ local function log_validation(phase, app_code, conf, ctx)
 end
 
 
----Validate the token of a real BlueKing app against the route and resource configuration
+---Check channel access and token mode for a real BlueKing app using the verified OAuth2 identity.
+---A user-required resource accepts a delegated token with a verified user. An app-only resource
+---accepts an app token. The earlier bk-auth-validate plugin may already have rejected a missing user.
+---The caller checks personal and public clients with their own route flags.
 ---@return string|nil reason The rejection reason, nil when the token is allowed
 local function validate_real_app(conf, ctx)
     if not conf.support_app then
-        return oauth2.APP_CHANNEL_DISABLED_REASON
+        return "the OAuth2 app channel is not enabled for this route"
     end
 
     local user_required = true

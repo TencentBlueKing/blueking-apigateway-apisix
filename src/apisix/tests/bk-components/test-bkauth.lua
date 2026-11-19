@@ -490,7 +490,7 @@ describe(
                 )
 
                 it(
-                    "should default missing client_id to empty string", function()
+                    "should preserve the absence of username and default missing client_id to empty string", function()
                         response = {
                             status = 200,
                             body = core.json.encode({ active = true, sub = "u-sub-1", bk_app_code = "public" }),
@@ -498,6 +498,7 @@ describe(
 
                         local result, err = bkauth.verify_oauth2_access_token("fake-token")
                         assert.is_nil(err)
+                        assert.is_nil(result.bk_login_name)
                         assert.is_equal("", result.client_id)
                         assert.is_equal("u-sub-1", result.bk_username)
                     end
