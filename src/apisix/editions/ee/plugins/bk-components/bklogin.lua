@@ -36,6 +36,7 @@ local _M = {
     host = bk_core.config.get_login_addr(),
     token = bk_core.config.get_login_token(),
     enable_multi_tenant_mode = bk_core.config.get_enable_multi_tenant_mode(),
+    enable_esb = bk_core.config.get_enable_esb(),
 }
 
 local function bklogin_do_request(host, path, params, request_id)
@@ -92,7 +93,7 @@ end
 function _M.get_username_by_bk_token(bk_token)
     local request_id = uuid.generate_v4()
     local path = LEGACY_VERIFY_BK_TOKEN_URL
-    if _M.enable_multi_tenant_mode then
+    if _M.enable_multi_tenant_mode or not _M.enable_esb then
         path = VERIFY_BK_TOKEN_URL
     end
 
@@ -125,7 +126,7 @@ function _M.get_username_by_bk_token(bk_token)
     -- legacy verify
     -- status: 200, but result is false
     -- {"result": false, "bk_error_code": 1302100, "bk_error_msg": "\u53c2\u6570 bk_token \u975e\u6cd5", "data": {}}
-    if not _M.enable_multi_tenant_mode and result.result == false then
+    if path == LEGACY_VERIFY_BK_TOKEN_URL and result.result == false then
         return {
             error_message = result.bk_error_msg,
         }, nil
