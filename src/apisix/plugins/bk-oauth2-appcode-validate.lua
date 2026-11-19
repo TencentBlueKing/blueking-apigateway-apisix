@@ -87,7 +87,7 @@ end
 ---@return string|nil reason The rejection reason, nil when the token is allowed
 local function validate_real_app(conf, ctx)
     if not conf.support_app then
-        return "OAuth2 token app code is not allowed"
+        return oauth2.APP_CHANNEL_DISABLED_REASON
     end
 
     local user_required = true

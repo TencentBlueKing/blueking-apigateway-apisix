@@ -129,13 +129,32 @@ local function is_server_error(err)
                core.string.has_suffix(err, "please contact the API Gateway developer to handle")
 end
 
+local function is_oauth2_app_channel_disabled(ctx)
+    local plugins = ctx.plugins
+    if not plugins then
+        return false
+    end
+
+    -- APISIX rewrite uses alternating plugin and config entries after merging route and service.
+    for index = 1, #plugins, 2 do
+        if plugins[index].name == "bk-oauth2-appcode-validate" then
+            return not plugins[index + 1].support_app
+        end
+    end
+
+    return false
+end
+
 ---A real app OAuth2 token without a verified user on a resource requiring a user.
----Return 401 with the same reason as bk-oauth2-appcode-validate, so the client can tell
----it needs a delegated token, instead of the legacy 400.
-local function exit_with_oauth2_token_mode_mismatch(ctx)
+local function exit_with_oauth2_user_error(ctx)
     local token_mode = ctx.var.bk_oauth2_token_mode or ""
-    local reason = oauth2.get_user_required_token_reject_reason(token_mode, ctx.var.bk_user)
-        or "the OAuth2 delegated token does not carry a valid user"
+    local reason
+    if is_oauth2_app_channel_disabled(ctx) then
+        reason = oauth2.APP_CHANNEL_DISABLED_REASON
+    else
+        reason = oauth2.get_user_required_token_reject_reason(token_mode, ctx.var.bk_user)
+            or "the OAuth2 delegated token does not carry a valid user"
+    end
     local app_code = ctx.var.bk_app:get_app_code()
 
     local err = errorx.new_general_unauthorized():with_fields(
@@ -176,7 +195,7 @@ function _M.rewrite(conf, ctx) -- luacheck: no unused
     )
     if err ~= nil then
         if ignore_user_exemption then
-            return exit_with_oauth2_token_mode_mismatch(ctx)
+            return exit_with_oauth2_user_error(ctx)
         end
 
         if is_server_error(err) then

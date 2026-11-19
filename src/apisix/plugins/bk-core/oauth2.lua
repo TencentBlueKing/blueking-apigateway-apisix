@@ -31,7 +31,9 @@ local string_sub = string.sub
 local string_len = string.len
 local table_insert = table.insert
 
-local _M = {}
+local _M = {
+    APP_CHANNEL_DISABLED_REASON = "the OAuth2 app channel is not enabled for this route",
+}
 
 
 ---Read bearer_token_rules; anything that is not a list (an empty list counts) is treated as not configured

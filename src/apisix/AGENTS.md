@@ -229,8 +229,9 @@ Token mode and validation:
   `bk-oauth2-appcode-validate` (17678).
 - Failure contract. Token mode mismatch in either direction, `unknown`, and
   disallowed app codes return 401 with
-  `WWW-Authenticate: Bearer ... error="invalid_token"`. Both plugins use the
-  reason text from `oauth2.get_user_required_token_reject_reason`. Audience
+  `WWW-Authenticate: Bearer ... error="invalid_token"`. Real app tokens on
+  routes with `support_app=false` get the same app-channel-disabled reason
+  in both plugins, before token mode errors. Audience
   mismatch stays 403 (`invalid_audience`). The legacy chain and personal/public
   keep their 400/500 responses.
 - MCP server paths on `bk-apigateway` accept both `mcp:<server>` and

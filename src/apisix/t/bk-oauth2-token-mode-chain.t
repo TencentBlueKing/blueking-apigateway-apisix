@@ -16,7 +16,7 @@
 # to the current version of the project delivered to anyone in the future.
 #
 
-# The whole OAuth2 plugin chain of a real app route (support_app=true), with the bkauth
+# The whole OAuth2 plugin chain of real app routes, with the bkauth
 # introspection stubbed: token mode mismatches return 401 with WWW-Authenticate in both
 # directions, an audience mismatch still returns 403, and the legacy entry is unchanged.
 
@@ -45,6 +45,11 @@ add_block_preprocessor(sub {
                 bk_username = "real-app", bk_login_name = "", client_id = "real-app",
                 audience = { "gateway:demo/api:*" },
             },
+            tai_pat_personal = {
+                bk_app_code = "personal",
+                bk_username = "u-sub-1", bk_login_name = "tom", client_id = "personal",
+                audience = { "gateway:demo/api:*" },
+            },
             tai_pat_other_audience = {
                 bk_username = "u-sub-1", bk_login_name = "tom", client_id = "real-app",
                 audience = { "gateway:other/api:*" },
@@ -57,7 +62,7 @@ add_block_preprocessor(sub {
             end
             result.active = true
             result.exp = 4102444800
-            result.bk_app_code = "real-app"
+            result.bk_app_code = result.bk_app_code or "real-app"
             return result, nil
         end
 _EOC_
@@ -80,7 +85,7 @@ __DATA__
             local t = require("lib.test_admin").test
             local core = require("apisix.core")
 
-            local function route(name, user_required)
+            local function route(name, user_required, support_app)
                 return core.json.encode({
                     name = name,
                     uri = "/" .. name,
@@ -103,12 +108,16 @@ __DATA__
                                 resource_perm_required = false,
                             },
                         },
-                        ["bk-oauth2-protected-resource"] = {challenge_on_missing_credential = false},
+                        ["bk-oauth2-protected-resource"] = {challenge_on_missing_credential = not support_app},
                         ["bk-oauth2-verify"] = {},
                         ["bk-auth-verify"] = {},
                         ["bk-auth-validate"] = {},
-                        ["bk-oauth2-appcode-validate"] = {support_app = true},
+                        ["bk-oauth2-appcode-validate"] = {
+                            support_app = support_app,
+                            support_personal = not support_app,
+                        },
                         ["bk-oauth2-audience-validate"] = {},
+                        ["bk-error-wrapper"] = {},
                         ["proxy-rewrite"] = {uri = "/hello"},
                     },
                     upstream = {
@@ -118,8 +127,9 @@ __DATA__
             end
 
             for id, conf in pairs({
-                ["chain-user"] = route("chain-user", true),
-                ["chain-app"] = route("chain-app", false),
+                ["chain-user"] = route("chain-user", true, true),
+                ["chain-app"] = route("chain-app", false, true),
+                ["chain-app-disabled"] = route("chain-app-disabled", true, false),
             }) do
                 local code, body = t("/apisix/admin/routes/" .. id, ngx.HTTP_PUT, conf)
                 if code >= 300 then
@@ -193,5 +203,39 @@ GET /chain-user
 --- error_code: 400
 --- response_headers
 WWW-Authenticate:
+--- no_error_log
+[error]
+
+=== TEST 8: a real app's app token is rejected when the app channel is disabled
+--- request
+GET /chain-app-disabled
+--- more_headers
+Authorization: Bearer tai_pat_app
+--- error_code: 401
+--- response_headers_like
+WWW-Authenticate: Bearer .*error="invalid_token".*the OAuth2 app channel is not enabled for this route.*
+--- response_body_like: the OAuth2 app channel is not enabled for this route
+--- no_error_log
+[error]
+
+=== TEST 9: a real app's delegated token is rejected when the app channel is disabled
+--- request
+GET /chain-app-disabled
+--- more_headers
+Authorization: Bearer tai_pat_delegated
+--- error_code: 401
+--- response_headers_like
+WWW-Authenticate: Bearer .*error="invalid_token".*the OAuth2 app channel is not enabled for this route.*
+--- response_body_like: the OAuth2 app channel is not enabled for this route
+--- no_error_log
+[error]
+
+=== TEST 10: a personal client still works with the app channel disabled
+--- request
+GET /chain-app-disabled
+--- more_headers
+Authorization: Bearer tai_pat_personal
+--- response_body
+hello world
 --- no_error_log
 [error]

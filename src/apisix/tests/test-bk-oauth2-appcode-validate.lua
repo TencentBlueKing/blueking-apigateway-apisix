@@ -330,7 +330,7 @@ describe(
                         set_token("real-app", "delegated", true)
 
                         local conf = check_conf({ support_public = true, support_personal = true })
-                        assert_rejected(conf, "OAuth2 token app code is not allowed")
+                        assert_rejected(conf, "the OAuth2 app channel is not enabled for this route")
                         local message = ctx.var.bk_apigw_error.error.message
                         assert.is_truthy(string.find(message, 'support_app="false"', 1, true))
                         assert.is_truthy(string.find(message, 'token_mode="delegated"', 1, true))
