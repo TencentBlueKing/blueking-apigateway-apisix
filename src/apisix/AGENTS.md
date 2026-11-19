@@ -174,42 +174,35 @@ and the Dashboard converter.
 
 Bearer routing in `bk-oauth2-protected-resource`, evaluated in this order:
 
-1. `X-Bkapi-Authorization` present: legacy flow.
-2. Classify the Bearer as `bkauth`, `malformed` or `other`
-   (`oauth2.classify_bearer_token`). When `bk_gateway.bk_oauth2.bearer_token_rules`
-   is nil, personal/public routes classify every Bearer as `bkauth` (the behavior
-   before the rules existed) and app-channel-only routes
-   (`challenge_on_missing_credential=false`) as `other`, so the app channel stays
-   off until Helm delivers the rules.
-3. `malformed` (a rule's `prefix_pattern` matches but its `format_pattern` does
-   not): return 401 `invalid_token` without introspection and without falling
-   back to cookies or legacy credentials. `bkauth`: OAuth2 flow.
-4. Otherwise the request has no OAuth2 credential. This covers `other` and a
-   bare `Bearer` with no token. Configured user cookies go to the legacy flow;
-   `challenge_on_missing_credential=false` goes to the legacy flow; otherwise
-   return 401 with a Bearer discovery challenge and no OAuth2 error fields.
+1. `X-Bkapi-Authorization` present goes to the legacy flow.
+2. A Bearer matching any configured `prefix_pattern` enters the OAuth2 flow.
+   bkauth introspection determines token validity. A rejected token stays in
+   the OAuth2 flow.
+3. An absent or empty Bearer or one with an unmatched prefix leaves no OAuth2
+   credential. A configured user cookie or `challenge_on_missing_credential=false`
+   sends the request to the legacy flow. Otherwise return 401 with a Bearer
+   discovery challenge.
 
 Rules and matching (`bk-core/oauth2.lua`):
 
-- With nil rules, `classify_bearer_token` returns nil and the plugin decides by
-  route (step 2 above). A non-list value also uses this fallback. An empty
-  list counts as configured and matches nothing.
-- `bk-oauth2-protected-resource.init()` validates rule types and regex syntax
-  and stores the resulting list for requests. Missing rules log a warning.
-  An empty list or a non-list value logs one error. Invalid rules are logged
-  at load time and do not stop startup.
-- The first matching `prefix_pattern` decides. A rule with an invalid prefix
-  is skipped. `format_pattern` is optional, and a supplied value must be a
-  valid regex string. A matched prefix with an invalid format rule rejects
-  the token with 401. Requests match the prepared rules with `ngx.re.find`
-  (`jo`) and log regex execution errors.
-- New route fields default to the pre-change behavior (`support_app=false`,
-  `challenge_on_missing_credential=true`). Explicit defaults behave the same as
+- The configuration path is `bk_gateway.bk_oauth2.bearer_token_rules`.
+  A missing or empty list uses the default prefixes `^bk[oprs]_` and
+  `^tai_pat_`. A configured non-empty list replaces the defaults.
+- `bk-oauth2-protected-resource.init()` validates the list, rule types and
+  regex syntax, logs each configuration error, and logs the effective rules
+  once after validation. An invalid list type produces no matchable rules.
+  Invalid entries are skipped within a list.
+- Requests match the prepared prefixes with `ngx.re.find` (`jo`) and log
+  regex execution errors.
+- The route fields default to `support_app=false` and
+  `challenge_on_missing_credential=true`. Explicit defaults behave the same as
   omitted fields. Existing personal/public routes also use the Bearer routing
   and response rules described here.
 
 Token mode and validation:
 
+- `bk-components/bkauth.lua` maps the introspected `username` to a string
+  (including `""`) or `nil` for a missing or non-string value.
 - `bk-oauth2-verify` reads introspection, sets `ctx.var.bk_oauth2_token_mode`
   and removes the consumed `Authorization` header:
   - `delegated`: `sub`, `client_id` and `username` are non-empty strings.

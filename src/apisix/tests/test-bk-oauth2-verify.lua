@@ -301,18 +301,14 @@ describe(
                 )
 
                 it(
-                    "should treat null or non-string introspection fields as unknown", function()
+                    "should treat invalid sub or client_id and a missing normalized username as unknown", function()
                         local null = require("cjson.safe").null
                         local cases = {
                             { bk_username = "app1", client_id = null, bk_login_name = "" },
                             { bk_username = null, client_id = null, bk_login_name = "" },
                             { bk_username = 123, client_id = 123, bk_login_name = "" },
                             { bk_username = "u1", client_id = { "app1" }, bk_login_name = "tom" },
-                            { bk_username = "u1", client_id = "app1", bk_login_name = null },
-                            { bk_username = "u1", client_id = "app1", bk_login_name = true },
                             { bk_username = "app1", client_id = "app1" },
-                            { bk_username = "app1", client_id = "app1", bk_login_name = null },
-                            { bk_username = "app1", client_id = "app1", bk_login_name = false },
                         }
                         for _, case in ipairs(cases) do
                             assert.is_equal("unknown", plugin._detect_token_mode(case))

@@ -18,6 +18,8 @@
 
 local core = require("apisix.core")
 
+local next = next
+local type = type
 local string_lower = string.lower
 
 local _M = {}
@@ -117,11 +119,17 @@ function _M.get_bk_apigateway_api_tmpl()
 end
 
 
----Get the rules that identify bkauth Bearer tokens for the OAuth2 flow
----@return table|nil rules A list of {prefix_pattern, format_pattern}, nil when not configured
+---Get the configured bkauth Bearer rules, with defaults for a missing or empty list.
 function _M.get_oauth2_bearer_token_rules()
     local conf = core.config.local_conf()
-    return core.table.try_read_attr(conf, "bk_gateway", "bk_oauth2", "bearer_token_rules")
+    local rules = core.table.try_read_attr(conf, "bk_gateway", "bk_oauth2", "bearer_token_rules")
+    if rules == nil or (type(rules) == "table" and next(rules) == nil) then
+        return {
+            { prefix_pattern = "^bk[oprs]_" },
+            { prefix_pattern = "^tai_pat_" },
+        }
+    end
+    return rules
 end
 
 

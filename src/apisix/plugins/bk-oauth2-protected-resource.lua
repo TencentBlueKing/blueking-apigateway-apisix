@@ -21,12 +21,8 @@
 -- or legacy BlueKing authentication (X-Bkapi-Authorization) and routes accordingly:
 --
 --     * X-Bkapi-Authorization present: legacy flow
---     * challenge_on_missing_credential=false (only the app channel is enabled) and
---       bk_gateway.bk_oauth2.bearer_token_rules not configured: legacy flow for any Bearer,
---       the app channel is effectively off until the rules are deployed
---     * bkauth Bearer token (matched by bk_gateway.bk_oauth2.bearer_token_rules):
---       OAuth2 flow; a token matching a prefix but not its format is rejected with 401
---       without introspection and without falling back to the legacy flow
+--     * bkauth Bearer token (matched by the configured or default prefix rules):
+--       OAuth2 flow; bkauth introspection checks the token
 --     * otherwise, a non-bkauth Bearer is treated as no OAuth2 credential and kept as is:
 --         - configured user ticket cookies on a user-only resource: legacy flow
 --         - challenge_on_missing_credential=false (only the app channel is enabled): legacy flow
@@ -81,15 +77,15 @@ end
 
 
 function _M.init()
-    local rules, problems, warning = oauth2.validate_bkauth_bearer_token_rules()
+    local rules, problems = oauth2.validate_bkauth_bearer_token_rules()
     bearer_token_rules = rules
     for _, problem in ipairs(problems) do
         core.log.error("bk-oauth2-protected-resource: invalid bk_gateway.bk_oauth2.", problem)
     end
 
-    if warning then
-        core.log.warn("bk-oauth2-protected-resource: bk_gateway.bk_oauth2.", warning)
-    end
+    -- The gateway defaults to warn logging. Report the validated rules once per init.
+    core.log.warn(plugin_name, ": effective bearer_token_rules (", #rules, "): ",
+                  core.json.delay_encode(rules))
 end
 
 
@@ -134,24 +130,6 @@ local function has_configured_user_ticket_cookie(ctx)
 end
 
 
----Classify the Bearer token for this route
----@return string kind "bkauth", "malformed" or "other", see oauth2.classify_bearer_token
-local function classify_bearer_token(conf, token)
-    local kind = oauth2.classify_bearer_token(token, bearer_token_rules)
-    if kind ~= nil then
-        return kind
-    end
-
-    -- bearer_token_rules not configured: personal/public routes keep treating every Bearer as a
-    -- bkauth token (the behavior before the rules); a route that only enables the app channel must
-    -- not intercept backend-own Bearer tokens, so the app channel stays off until the rules are deployed
-    if conf.challenge_on_missing_credential == false then
-        return "other"
-    end
-    return "bkauth"
-end
-
-
 function _M.rewrite(conf, ctx)
     -- Check for X-Bkapi-Authorization header first (legacy BlueKing auth)
     -- If present, skip OAuth2 flow and allow legacy flow to handle authentication
@@ -164,27 +142,14 @@ function _M.rewrite(conf, ctx)
 
     -- Check for Authorization: Bearer header (OAuth2), only bkauth tokens are intercepted
     local bearer_token = parse_bearer_token(core.request.header(ctx, AUTHORIZATION_HEADER))
-    local bearer_kind = bearer_token and classify_bearer_token(conf, bearer_token)
-
-    if bearer_kind == "malformed" then
-        core.log.info("bk-oauth2-protected-resource: malformed bkauth Bearer token, returning 401")
-        local www_auth = oauth2.build_www_authenticate_header(
-            ctx, "invalid_token", "the bkauth bearer token is malformed")
-        ngx.header["WWW-Authenticate"] = www_auth
-
-        local err = errorx.new_general_unauthorized()
-            :with_field("reason", "the bkauth bearer token is malformed")
-        return errorx.exit_with_apigw_err(ctx, err, _M)
-    end
-
-    if bearer_kind == "bkauth" then
+    if bearer_token and oauth2.is_bkauth_bearer_token(bearer_token, bearer_token_rules) then
         -- OAuth2 flow: set flag for downstream plugins
         ctx.var.is_bk_oauth2 = true
         core.log.info("bk-oauth2-protected-resource: bkauth Bearer detected, using OAuth2 flow")
         return
     end
 
-    if bearer_kind == "other" then
+    if bearer_token then
         core.log.info("bk-oauth2-protected-resource: non-bkauth Bearer, treated as no credential")
     end
 

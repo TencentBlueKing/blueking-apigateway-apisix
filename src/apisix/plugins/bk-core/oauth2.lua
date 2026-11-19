@@ -132,49 +132,26 @@ function _M.is_real_app_code(app_code)
 end
 
 
-local function re_match(subject, pattern, field)
-    local from, _, err = ngx_re_find(subject, pattern, "jo")
-    if err then
-        core.log.error("invalid bk_oauth2.bearer_token_rules ", field, "=", pattern,
-                       ", error: ", err)
-        return false
-    end
-
-    return from ~= nil
-end
-
-
-local function check_pattern(pattern, field, index)
+local function check_prefix_pattern(pattern, index)
+    local field = "bearer_token_rules[" .. index .. "].prefix_pattern"
     if type(pattern) ~= "string" then
-        return "bearer_token_rules[" .. index .. "]." .. field .. " must be a string"
+        return field .. " must be a string"
     end
 
     local _, _, err = ngx_re_find("", pattern, "jo")
     if err then
-        return "bearer_token_rules[" .. index .. "]." .. field .. "=" .. pattern .. " is invalid: " .. err
+        return field .. "=" .. pattern .. " is invalid: " .. err
     end
-
-    return nil
 end
 
 
 ---Validate and prepare bearer_token_rules when the plugin loads.
----@return table|nil rules Validated rules, nil when the configuration is missing or is not a list
+---@return table rules Validated rules, possibly empty if the configuration is invalid
 ---@return table problems Invalid configuration diagnostics
----@return string|nil warning Missing configuration diagnostic
 function _M.validate_bkauth_bearer_token_rules()
     local rules = config.get_oauth2_bearer_token_rules()
-    if rules == nil then
-        return nil, {}, "bearer_token_rules is not configured, " ..
-            "every Bearer is treated as a bkauth token on personal/public routes"
-    end
-
     if type(rules) ~= "table" or not table_isarray(rules) then
-        return nil, { "bearer_token_rules must be a list, treated as not configured" }
-    end
-
-    if #rules == 0 then
-        return {}, { "bearer_token_rules is empty and matches no Bearer tokens" }
+        return {}, { "bearer_token_rules must be a list" }
     end
 
     local validated_rules = {}
@@ -183,26 +160,11 @@ function _M.validate_bkauth_bearer_token_rules()
         if type(rule) ~= "table" then
             table_insert(problems, "bearer_token_rules[" .. index .. "] must be an object")
         else
-            local prefix_problem = check_pattern(rule.prefix_pattern, "prefix_pattern", index)
-            if prefix_problem then
-                table_insert(problems, prefix_problem)
-            end
-
-            local format_problem
-            if rule.format_pattern ~= nil then
-                format_problem = check_pattern(rule.format_pattern, "format_pattern", index)
-                if format_problem then
-                    table_insert(problems, format_problem)
-                end
-            end
-
-            -- Keep a valid prefix even if its format is invalid, so matching tokens are rejected.
-            if not prefix_problem then
-                table_insert(validated_rules, {
-                    prefix_pattern = rule.prefix_pattern,
-                    format_pattern = rule.format_pattern,
-                    invalid_format = format_problem ~= nil,
-                })
+            local problem = check_prefix_pattern(rule.prefix_pattern, index)
+            if problem then
+                table_insert(problems, problem)
+            else
+                table_insert(validated_rules, { prefix_pattern = rule.prefix_pattern })
             end
         end
     end
@@ -211,28 +173,21 @@ function _M.validate_bkauth_bearer_token_rules()
 end
 
 
----Classify a Bearer token by the bkauth token rules (bk_gateway.bk_oauth2.bearer_token_rules).
----The first rule whose prefix_pattern matches decides; format_pattern is optional.
+---Match a Bearer token by prefix. Introspection validates the token itself.
 ---@param token string The Bearer token
----@param rules table|nil The rules prepared at plugin init
----@return string|nil kind "bkauth": verify it by bkauth; "malformed": a rule prefix matches but its
----    format does not; "other": no rule matches, not a bkauth token; nil: the rules are not configured
-function _M.classify_bearer_token(token, rules)
-    if rules == nil then
-        return nil
-    end
-
+---@param rules table The rules prepared at plugin init
+---@return boolean
+function _M.is_bkauth_bearer_token(token, rules)
     for _, rule in ipairs(rules) do
-        if re_match(token, rule.prefix_pattern, "prefix_pattern") then
-            if rule.invalid_format
-                or (rule.format_pattern and not re_match(token, rule.format_pattern, "format_pattern")) then
-                return "malformed"
-            end
-            return "bkauth"
+        local from, _, err = ngx_re_find(token, rule.prefix_pattern, "jo")
+        if err then
+            core.log.error("invalid bk_oauth2.bearer_token_rules prefix_pattern=", rule.prefix_pattern,
+                           ", error: ", err)
+        elseif from then
+            return true
         end
     end
-
-    return "other"
+    return false
 end
 
 

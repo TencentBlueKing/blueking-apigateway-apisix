@@ -456,7 +456,7 @@ describe(
         context(
             "verify_oauth2_access_token", function()
                 it(
-                    "should keep raw sub, username and client_id", function()
+                    "should keep string sub, username and client_id", function()
                         response = {
                             status = 200,
                             body = core.json.encode(
@@ -501,6 +501,26 @@ describe(
                         assert.is_nil(result.bk_login_name)
                         assert.is_equal("", result.client_id)
                         assert.is_equal("u-sub-1", result.bk_username)
+                    end
+                )
+
+                it(
+                    "should distinguish an empty username from a non-string username", function()
+                        local fields = { active = true, sub = "real-app", client_id = "real-app" }
+
+                        fields.username = ""
+                        response = { status = 200, body = core.json.encode(fields) }
+                        local result, err = bkauth.verify_oauth2_access_token("fake-token")
+                        assert.is_nil(err)
+                        assert.is_equal("", result.bk_login_name)
+
+                        for _, value in ipairs({ require("cjson.safe").null, false, true, 1, {} }) do
+                            fields.username = value
+                            response.body = core.json.encode(fields)
+                            result, err = bkauth.verify_oauth2_access_token("fake-token")
+                            assert.is_nil(err)
+                            assert.is_nil(result.bk_login_name)
+                        end
                     end
                 )
             end

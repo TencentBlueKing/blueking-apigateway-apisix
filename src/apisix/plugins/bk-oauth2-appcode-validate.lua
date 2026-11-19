@@ -83,16 +83,11 @@ local function log_validation(phase, app_code, conf, ctx)
 end
 
 
----Check channel access and token mode for a real BlueKing app using the verified OAuth2 identity.
+---Check token mode for a real BlueKing app whose OAuth2 channel is enabled.
 ---A user-required resource accepts a delegated token with a verified user. An app-only resource
 ---accepts an app token. This check runs before the shared auth validator and its user exemptions.
----The caller checks personal and public clients with their own route flags.
 ---@return string|nil reason The rejection reason, nil when the token is allowed
-local function validate_real_app(conf, ctx)
-    if not conf.support_app then
-        return "the OAuth2 app channel is not enabled for this route"
-    end
-
+local function validate_real_app(ctx)
     local user_required = true
     local resource_auth = ctx.var.bk_resource_auth
     if resource_auth then
@@ -143,10 +138,14 @@ function _M.rewrite(conf, ctx)
 
     local reason = "OAuth2 token app code is not allowed"
     if oauth2.is_real_app_code(app_code) then
-        reason = validate_real_app(conf, ctx)
-        if not reason then
-            log_validation("validation passed", app_code, conf, ctx)
-            return
+        if not conf.support_app then
+            reason = "the OAuth2 app channel is not enabled for this route"
+        else
+            reason = validate_real_app(ctx)
+            if not reason then
+                log_validation("validation passed", app_code, conf, ctx)
+                return
+            end
         end
     end
 
@@ -178,9 +177,5 @@ function _M.rewrite(conf, ctx)
     return errorx.exit_with_apigw_err(ctx, err, _M)
 end
 
-
-if _TEST then -- luacheck: ignore
-    _M._validate_real_app = validate_real_app
-end
 
 return _M

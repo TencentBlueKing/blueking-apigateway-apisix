@@ -24,6 +24,7 @@ local bk_components_utils = require("apisix.plugins.bk-components.utils")
 local string_format = string.format
 local table_insert = table.insert
 local ipairs = ipairs
+local type = type
 
 local VERIFY_APP_SECRET_URL = "/api/v1/apps/%s/access-keys/verify"
 local LIST_APP_SECRETS_URL = "/api/v1/apps/%s/access-keys"
@@ -265,11 +266,11 @@ function _M.verify_oauth2_access_token(access_token)
     end
 
     -- NOTE: it's cacheable for all conditions
-    -- Keep the original username so token mode detection can distinguish a missing field from "".
+    -- Keep explicit "" for app tokens. Missing and invalid usernames stay nil.
     return {
         active = result.active,
         bk_app_code = result.bk_app_code or "",
-        bk_login_name = result.username,
+        bk_login_name = type(result.username) == "string" and result.username or nil,
         bk_username = result.sub or "",
         client_id = result.client_id or "",
         exp = result.exp or 0,

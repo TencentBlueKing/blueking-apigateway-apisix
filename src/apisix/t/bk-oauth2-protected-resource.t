@@ -102,16 +102,15 @@ hello world
 --- no_error_log
 [error]
 
-=== TEST 5: malformed bkauth Bearer token should return 401 invalid_token
+=== TEST 5: a short bkauth Bearer enters the OAuth2 flow
 --- request
 GET /hello
 --- more_headers
 Authorization: Bearer bkp_short
---- error_code: 401
---- response_headers_like
-WWW-Authenticate: Bearer .*
+--- response_body
+hello world
 --- error_log
-malformed bkauth Bearer token, returning 401
+bkauth Bearer detected, using OAuth2 flow
 
 === TEST 6: non-bkauth Bearer token is treated as no credential
 --- request
@@ -340,17 +339,16 @@ X-Auth-Flow: oauth2
 --- no_error_log
 [error]
 
-=== TEST 18: malformed bkauth Bearer does not fall back to configured cookie
+=== TEST 18: a short bkauth Bearer takes precedence over a configured cookie
 --- request
 GET /cookie-bk_token
 --- more_headers
 Cookie: bk_token=user-ticket
 Authorization: Bearer bkp_short
---- error_code: 401
---- response_headers_like
-WWW-Authenticate: Bearer .*
---- error_log
-malformed bkauth Bearer token, returning 401
+--- response_headers
+X-Auth-Flow: oauth2
+--- no_error_log
+[error]
 
 === TEST 19: non-bkauth Bearer does not block configured cookie
 --- request
@@ -481,13 +479,12 @@ X-Auth-Flow: oauth2
 --- no_error_log
 [error]
 
-=== TEST 27: app channel only, malformed bkauth Bearer returns 401
+=== TEST 27: app channel only, a short bkauth Bearer enters the OAuth2 flow
 --- request
 GET /app-channel-only
 --- more_headers
 Authorization: Bearer bko_short
---- error_code: 401
---- response_headers_like
-WWW-Authenticate: Bearer .*
---- error_log
-malformed bkauth Bearer token, returning 401
+--- response_headers
+X-Auth-Flow: oauth2
+--- no_error_log
+[error]

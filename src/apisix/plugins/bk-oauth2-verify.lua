@@ -22,11 +22,10 @@
 --
 -- It also detects the token mode from the introspection result and sets
 -- ctx.var.bk_oauth2_token_mode:
---     * "delegated": sub ~= client_id and username is not empty, the token carries a user
+--     * "delegated": sub, client_id and username are non-empty, the token carries a user
 --     * "app": sub == client_id and username is empty, an app token without user;
 --       the user is left empty and unverified, `sub` is never used as the username
---     * "unknown": any other combination, including sub/client_id/username that are missing,
---       empty, JSON null or not a string; the user is set as before, and
+--     * "unknown": any other combination; the user is set as before, and
 --       bk-oauth2-appcode-validate rejects it for real BlueKing apps
 --
 -- This plugin only runs when ctx.var.is_bk_oauth2 == true (set by bk-oauth2-protected-resource).
@@ -155,8 +154,8 @@ end
 local function detect_token_mode(result)
     local sub = string_field(result.bk_username)
     local client_id = string_field(result.client_id)
-    local username = result.bk_login_name
-    if sub == "" or client_id == "" or type(username) ~= "string" then
+    local username = result.bk_login_name -- string or nil, normalized by the bkauth adapter
+    if sub == "" or client_id == "" or username == nil then
         return OAUTH2_TOKEN_MODE_UNKNOWN
     end
 

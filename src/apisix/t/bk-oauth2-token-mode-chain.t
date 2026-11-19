@@ -58,6 +58,10 @@ add_block_preprocessor(sub {
                 bk_app_code = "public",
                 audience = { "gateway:demo/api:*" },
             },
+            bkp_short = {
+                active = false,
+                error = { message = "invalid token format" },
+            },
             tai_pat_inactive = {
                 active = false,
                 error = { code = "EXPIRED", message = "bkauth expired detail" },
@@ -350,5 +354,17 @@ Authorization: Bearer tai_pat_app
 --- error_code: 401
 --- response_headers_like
 WWW-Authenticate: Bearer .*error="invalid_token".*only OAuth2 delegated tokens are allowed.*
+--- no_error_log
+[error]
+
+=== TEST 19: a short bkauth Bearer is rejected by introspection
+--- request
+GET /chain-app
+--- more_headers
+Authorization: Bearer bkp_short
+--- error_code: 401
+--- response_headers_like
+WWW-Authenticate: Bearer .*error="invalid_token", error_description="the access token is inactive \[invalid token format\]"
+--- response_body_like: "code_name":"UNAUTHORIZED"
 --- no_error_log
 [error]
