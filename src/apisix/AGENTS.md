@@ -175,24 +175,24 @@ and the Dashboard converter.
 Bearer routing in `bk-oauth2-protected-resource`, evaluated in this order:
 
 1. `X-Bkapi-Authorization` present: legacy flow.
-2. `challenge_on_missing_credential=false` (only the app channel is enabled) and
-   `bk_gateway.bk_oauth2.bearer_token_rules` is nil: any Bearer goes to the
-   legacy flow. This is the fallback when the rules are missing (the app channel
-   stays off until Helm delivers them).
-3. Bearer matching a rule's `prefix_pattern`: OAuth2 flow. If the token fails
-   `format_pattern`, return 401 `invalid_token` without introspection and without
-   falling back to cookies or legacy credentials.
-4. Otherwise the request has no OAuth2 credential. This covers a non-bkauth
-   Bearer and a bare `Bearer` with no token. Configured user cookies go to the
-   legacy flow; `challenge_on_missing_credential=false` goes to the legacy flow;
-   otherwise return 401 with `WWW-Authenticate` and `resource_metadata`.
+2. Classify the Bearer as `bkauth`, `malformed` or `other`
+   (`oauth2.classify_bearer_token`). When `bk_gateway.bk_oauth2.bearer_token_rules`
+   is nil, personal/public routes classify every Bearer as `bkauth` (the behavior
+   before the rules existed) and app-channel-only routes
+   (`challenge_on_missing_credential=false`) as `other`, so the app channel stays
+   off until Helm delivers the rules.
+3. `malformed` (a rule's `prefix_pattern` matches but its `format_pattern` does
+   not): return 401 `invalid_token` without introspection and without falling
+   back to cookies or legacy credentials. `bkauth`: OAuth2 flow.
+4. Otherwise the request has no OAuth2 credential. This covers `other` and a
+   bare `Bearer` with no token. Configured user cookies go to the legacy flow;
+   `challenge_on_missing_credential=false` goes to the legacy flow; otherwise
+   return 401 with `WWW-Authenticate` and `resource_metadata`.
 
 Rules and matching (`bk-core/oauth2.lua`):
 
-- With nil rules, `match_bkauth_bearer_token` returns `true, true` for every
-  Bearer. This keeps personal/public routes identical to the behavior before
-  the rules existed; step 2 above is what protects app-only routes. An empty
-  list counts as configured and matches nothing. A value that is not a list
+- With nil rules, `classify_bearer_token` returns nil and the plugin decides by
+  route (step 2 above). An empty list counts as configured and matches nothing. A value that is not a list
   (boolean, string, number, map) is treated as nil everywhere, including
   `has_bkauth_bearer_token_rules`; only `init()` reports it.
 - The first matching `prefix_pattern` decides. Regexes are passed to `ngx.re.find`

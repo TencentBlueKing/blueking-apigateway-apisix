@@ -237,31 +237,29 @@ function _M.has_bkauth_bearer_token_rules()
 end
 
 
----Match a Bearer token against the bkauth token rules (bk_gateway.bk_oauth2.bearer_token_rules).
+---Classify a Bearer token by the bkauth token rules (bk_gateway.bk_oauth2.bearer_token_rules).
 ---The first rule whose prefix_pattern matches decides; format_pattern is optional.
----When the rules are not configured, every Bearer token is treated as a bkauth token,
----which keeps the behavior before the rules were introduced.
 ---@param token string The Bearer token
----@return boolean matched Whether the token should be verified by bkauth
----@return boolean format_ok Whether the token matches the full format of the matched rule
-function _M.match_bkauth_bearer_token(token)
+---@return string|nil kind "bkauth": verify it by bkauth; "malformed": a rule prefix matches but its
+---    format does not; "other": no rule matches, not a bkauth token; nil: the rules are not configured
+function _M.classify_bearer_token(token)
     local rules = get_bkauth_bearer_token_rules()
     if rules == nil then
-        return true, true
+        return nil
     end
 
     for _, rule in ipairs(rules) do
         if type(rule) == "table" and type(rule.prefix_pattern) == "string"
             and re_match(token, rule.prefix_pattern, "prefix_pattern") then
-            if type(rule.format_pattern) ~= "string" then
-                return true, true
+            if type(rule.format_pattern) ~= "string"
+                or re_match(token, rule.format_pattern, "format_pattern") then
+                return "bkauth"
             end
-
-            return true, re_match(token, rule.format_pattern, "format_pattern")
+            return "malformed"
         end
     end
 
-    return false, false
+    return "other"
 end
 
 

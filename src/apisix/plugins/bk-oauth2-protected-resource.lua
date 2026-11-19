@@ -133,6 +133,24 @@ local function has_configured_user_ticket_cookie(ctx)
 end
 
 
+---Classify the Bearer token for this route
+---@return string kind "bkauth", "malformed" or "other", see oauth2.classify_bearer_token
+local function classify_bearer_token(conf, token)
+    local kind = oauth2.classify_bearer_token(token)
+    if kind ~= nil then
+        return kind
+    end
+
+    -- bearer_token_rules not configured: personal/public routes keep treating every Bearer as a
+    -- bkauth token (the behavior before the rules); a route that only enables the app channel must
+    -- not intercept backend-own Bearer tokens, so the app channel stays off until the rules are deployed
+    if conf.challenge_on_missing_credential == false then
+        return "other"
+    end
+    return "bkauth"
+end
+
+
 function _M.rewrite(conf, ctx)
     -- Check for X-Bkapi-Authorization header first (legacy BlueKing auth)
     -- If present, skip OAuth2 flow and allow legacy flow to handle authentication
@@ -144,38 +162,28 @@ function _M.rewrite(conf, ctx)
     end
 
     -- Check for Authorization: Bearer header (OAuth2), only bkauth tokens are intercepted
-    local authorization = core.request.header(ctx, AUTHORIZATION_HEADER)
-    local bearer_token = parse_bearer_token(authorization)
+    local bearer_token = parse_bearer_token(core.request.header(ctx, AUTHORIZATION_HEADER))
+    local bearer_kind = bearer_token and classify_bearer_token(conf, bearer_token)
 
-    if bearer_token and conf.challenge_on_missing_credential == false
-        and not oauth2.has_bkauth_bearer_token_rules() then
-        -- Without the rules every Bearer would be a bkauth token; a route that only enables the
-        -- app channel must not intercept backend-own Bearer tokens, so it keeps the legacy flow.
-        ctx.var.is_bk_oauth2 = false
-        core.log.info("bk-oauth2-protected-resource: bearer_token_rules not configured, using legacy auth")
+    if bearer_kind == "malformed" then
+        core.log.info("bk-oauth2-protected-resource: malformed bkauth Bearer token, returning 401")
+        local www_auth = oauth2.build_www_authenticate_header(
+            ctx, "invalid_token", "the bkauth bearer token is malformed")
+        ngx.header["WWW-Authenticate"] = www_auth
+
+        local err = errorx.new_general_unauthorized()
+            :with_field("reason", "the bkauth bearer token is malformed")
+        return errorx.exit_with_apigw_err(ctx, err, _M)
+    end
+
+    if bearer_kind == "bkauth" then
+        -- OAuth2 flow: set flag for downstream plugins
+        ctx.var.is_bk_oauth2 = true
+        core.log.info("bk-oauth2-protected-resource: bkauth Bearer detected, using OAuth2 flow")
         return
     end
 
-    if bearer_token then
-        local matched, format_ok = oauth2.match_bkauth_bearer_token(bearer_token)
-        if matched and not format_ok then
-            core.log.info("bk-oauth2-protected-resource: malformed bkauth Bearer token, returning 401")
-            local www_auth = oauth2.build_www_authenticate_header(
-                ctx, "invalid_token", "the bkauth bearer token is malformed")
-            ngx.header["WWW-Authenticate"] = www_auth
-
-            local err = errorx.new_general_unauthorized()
-                :with_field("reason", "the bkauth bearer token is malformed")
-            return errorx.exit_with_apigw_err(ctx, err, _M)
-        end
-
-        if matched then
-            -- OAuth2 flow: set flag for downstream plugins
-            ctx.var.is_bk_oauth2 = true
-            core.log.info("bk-oauth2-protected-resource: bkauth Bearer detected, using OAuth2 flow")
-            return
-        end
-
+    if bearer_kind == "other" then
         core.log.info("bk-oauth2-protected-resource: non-bkauth Bearer, treated as no credential")
     end
 
