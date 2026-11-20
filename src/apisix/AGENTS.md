@@ -168,7 +168,7 @@ later plugins.
 
 Dashboard generates the route config (`support_public`, `support_personal`,
 `support_app` and `challenge_on_missing_credential`). The design and its
-confirmed decisions live in `blueking-apigateway/docs/resource-oauth2-app-access-design.md`
+confirmed decisions live in `blueking-apigateway/docs/design/resource-oauth2-app-access-design.md`
 (sections 4 and 7). Do not change these contracts without updating that doc
 and the Dashboard converter.
 
