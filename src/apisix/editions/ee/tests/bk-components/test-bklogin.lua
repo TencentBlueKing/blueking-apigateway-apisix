@@ -23,15 +23,14 @@ describe(
     "bklogin", function()
 
         local response, response_err, request_url
-        local enable_multi_tenant_mode, enable_esb
+        local use_login_v3_url
 
         before_each(
             function()
                 response = nil
                 response_err = nil
                 request_url = nil
-                enable_multi_tenant_mode = bklogin.enable_multi_tenant_mode
-                enable_esb = bklogin.enable_esb
+                use_login_v3_url = bklogin.use_login_v3_url
 
                 stub(
                     bk_components_utils, "handle_request", function(url)
@@ -44,8 +43,7 @@ describe(
 
         after_each(
             function()
-                bklogin.enable_multi_tenant_mode = enable_multi_tenant_mode
-                bklogin.enable_esb = enable_esb
+                bklogin.use_login_v3_url = use_login_v3_url
                 bk_components_utils.handle_request:revert()
             end
         )
@@ -120,8 +118,7 @@ describe(
 
                 it(
                     "legacy protocol result false", function()
-                        bklogin.enable_multi_tenant_mode = false
-                        bklogin.enable_esb = true
+                        bklogin.use_login_v3_url = false
                         response = {
                             status = 200,
                             body = core.json.encode(
@@ -147,8 +144,7 @@ describe(
 
                 it(
                     "legacy protocol success without result field", function()
-                        bklogin.enable_multi_tenant_mode = false
-                        bklogin.enable_esb = true
+                        bklogin.use_login_v3_url = false
                         response = {
                             status = 200,
                             body = core.json.encode(
@@ -170,16 +166,11 @@ describe(
                 )
 
                 for _, case in ipairs({
-                    { name = "single tenant with ESB", esb = true, multi_tenant = false,
-                      v3 = false },
-                    { name = "single tenant without ESB", esb = false, multi_tenant = false,
-                      v3 = true },
-                    { name = "multi-tenant, ESB on", esb = true, multi_tenant = true, v3 = true },
-                    { name = "multi-tenant, ESB off", esb = false, multi_tenant = true, v3 = true },
+                    { use_login_v3_url = false, path = "/login/api/v2/is_login/" },
+                    { use_login_v3_url = true, path = "/login/api/v3/apigw/bk-tokens/verify/" },
                 }) do
-                    it("selects the verification endpoint for " .. case.name, function()
-                        bklogin.enable_multi_tenant_mode = case.multi_tenant
-                        bklogin.enable_esb = case.esb
+                    it("uses " .. case.path .. " for verification", function()
+                        bklogin.use_login_v3_url = case.use_login_v3_url
                         response = {
                             status = 200,
                             body = '{"data":{"bk_username":"admin"}}',
@@ -188,9 +179,7 @@ describe(
                         local result, err = bklogin.get_username_by_bk_token("fake-bk-token")
                         assert.is_nil(err)
                         assert.equals("admin", result.username)
-                        local path = case.v3 and "/login/api/v3/apigw/bk-tokens/verify/"
-                            or "/login/api/v2/is_login/"
-                        assert.equals(path, request_url:sub(-#path))
+                        assert.equals(case.path, request_url:sub(-#case.path))
                     end)
                 end
 

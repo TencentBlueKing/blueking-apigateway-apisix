@@ -148,14 +148,17 @@ function _M.get_enable_multi_tenant_mode()
     return enable_multi_tenant_mode
 end
 
-function _M.get_enable_esb()
+function _M.get_use_login_v3_url()
     local conf = core.config.local_conf()
 
-    local enable_esb = core.table.try_read_attr(conf, "bk_gateway", "enable_esb")
-    if enable_esb == nil then
-        return true
+    local use_login_v3_url = core.table.try_read_attr(conf, "bk_gateway", "use_login_v3_url")
+    if use_login_v3_url ~= nil then
+        return use_login_v3_url
     end
-    return enable_esb
+
+    -- Preserve endpoint selection for configs rendered before use_login_v3_url was added.
+    local enable_esb = core.table.try_read_attr(conf, "bk_gateway", "enable_esb")
+    return _M.get_enable_multi_tenant_mode() or enable_esb == false
 end
 
 function _M.should_strip_subpath_prefix()
