@@ -28,20 +28,28 @@ describe(
             end
         )
 
-        context("get_enable_esb", function()
-            it("defaults to true when enable_esb is absent", function()
-                stub(core.config, "local_conf", function()
-                    return { bk_gateway = {} }
+        context("get_use_login_v3_url", function()
+            for _, case in ipairs({
+                { name = "uses v2 by default", config = {}, expected = false },
+                { name = "uses v3 when enabled", config = { use_login_v3_url = true },
+                  expected = true },
+                { name = "honors explicit false", config = {
+                    use_login_v3_url = false, enable_multi_tenant_mode = true, enable_esb = false,
+                }, expected = false },
+                { name = "preserves v3 for legacy multi-tenant config", config = {
+                    enable_multi_tenant_mode = true, enable_esb = true,
+                }, expected = true },
+                { name = "preserves v3 when legacy ESB is disabled", config = {
+                    enable_esb = false,
+                }, expected = true },
+            }) do
+                it(case.name, function()
+                    stub(core.config, "local_conf", function()
+                        return { bk_gateway = case.config }
+                    end)
+                    assert.equals(case.expected, bk_core.config.get_use_login_v3_url())
                 end)
-                assert.is_true(bk_core.config.get_enable_esb())
-            end)
-
-            it("returns false when enable_esb is explicitly disabled", function()
-                stub(core.config, "local_conf", function()
-                    return { bk_gateway = { enable_esb = false } }
-                end)
-                assert.is_false(bk_core.config.get_enable_esb())
-            end)
+            end
         end)
 
         context(

@@ -35,8 +35,7 @@ local err_status_400 = "status 400, bk_token is not valid"
 local _M = {
     host = bk_core.config.get_login_addr(),
     token = bk_core.config.get_login_token(),
-    enable_multi_tenant_mode = bk_core.config.get_enable_multi_tenant_mode(),
-    enable_esb = bk_core.config.get_enable_esb(),
+    use_login_v3_url = bk_core.config.get_use_login_v3_url(),
 }
 
 local function bklogin_do_request(host, path, params, request_id)
@@ -93,7 +92,7 @@ end
 function _M.get_username_by_bk_token(bk_token)
     local request_id = uuid.generate_v4()
     local path = LEGACY_VERIFY_BK_TOKEN_URL
-    if _M.enable_multi_tenant_mode or not _M.enable_esb then
+    if _M.use_login_v3_url then
         path = VERIFY_BK_TOKEN_URL
     end
 
