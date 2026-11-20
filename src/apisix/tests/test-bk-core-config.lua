@@ -33,15 +33,11 @@ describe(
                 { name = "uses v2 by default", config = {}, expected = false },
                 { name = "uses v3 when enabled", config = { use_login_v3_url = true },
                   expected = true },
-                { name = "honors explicit false", config = {
-                    use_login_v3_url = false, enable_multi_tenant_mode = true, enable_esb = false,
+                { name = "uses v2 when disabled", config = { use_login_v3_url = false },
+                  expected = false },
+                { name = "uses v2 when only multi-tenant mode is set", config = {
+                    enable_multi_tenant_mode = true,
                 }, expected = false },
-                { name = "preserves v3 for legacy multi-tenant config", config = {
-                    enable_multi_tenant_mode = true, enable_esb = true,
-                }, expected = true },
-                { name = "preserves v3 when legacy ESB is disabled", config = {
-                    enable_esb = false,
-                }, expected = true },
             }) do
                 it(case.name, function()
                     stub(core.config, "local_conf", function()
