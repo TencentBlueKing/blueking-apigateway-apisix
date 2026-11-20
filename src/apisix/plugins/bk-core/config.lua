@@ -138,6 +138,7 @@ function _M.get_jwt_issuer()
     return core.table.try_read_attr(conf, "bk_gateway", "jwt_issuer")
 end
 
+-- Currently unused by APISIX. Helm includes multi-tenant mode in use_login_v3_url.
 function _M.get_enable_multi_tenant_mode()
     local conf = core.config.local_conf()
 
@@ -148,14 +149,14 @@ function _M.get_enable_multi_tenant_mode()
     return enable_multi_tenant_mode
 end
 
-function _M.get_enable_esb()
+function _M.get_use_login_v3_url()
     local conf = core.config.local_conf()
 
-    local enable_esb = core.table.try_read_attr(conf, "bk_gateway", "enable_esb")
-    if enable_esb == nil then
-        return true
+    local use_login_v3_url = core.table.try_read_attr(conf, "bk_gateway", "use_login_v3_url")
+    if use_login_v3_url == nil then
+        return false
     end
-    return enable_esb
+    return use_login_v3_url
 end
 
 function _M.should_strip_subpath_prefix()
