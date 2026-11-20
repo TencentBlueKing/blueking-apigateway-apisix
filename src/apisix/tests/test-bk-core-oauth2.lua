@@ -15,6 +15,7 @@
 -- We undertake not to change the open source license (MIT license) applicable
 -- to the current version of the project delivered to anyone in the future.
 --
+local core = require("apisix.core")
 local bk_core = require("apisix.plugins.bk-core.init")
 local oauth2 = require("apisix.plugins.bk-core.oauth2")
 
@@ -156,7 +157,7 @@ describe(
         context(
             "build_www_authenticate_header - tmpl validation", function()
                 it(
-                    "should return realm error when tmpl is nil", function()
+                    "should return a realm-only challenge when tmpl is nil", function()
                         bk_core.config.get_bk_apigateway_api_tmpl:revert()
                         stub(
                             bk_core.config, "get_bk_apigateway_api_tmpl", function()
@@ -167,15 +168,14 @@ describe(
                         local header = oauth2.build_www_authenticate_header(ctx)
 
                         assert.is_equal(
-                            'Bearer realm="bk-apigateway", error="invalid_request",'
-                                .. ' error_description="api tmpl is not configured"',
+                            'Bearer realm="bk-apigateway"',
                             header
                         )
                     end
                 )
 
                 it(
-                    "should return realm error when tmpl is empty", function()
+                    "should return a realm-only challenge when tmpl is empty", function()
                         bk_core.config.get_bk_apigateway_api_tmpl:revert()
                         stub(
                             bk_core.config, "get_bk_apigateway_api_tmpl", function()
@@ -186,15 +186,14 @@ describe(
                         local header = oauth2.build_www_authenticate_header(ctx)
 
                         assert.is_equal(
-                            'Bearer realm="bk-apigateway", error="invalid_request",'
-                                .. ' error_description="api tmpl is not configured"',
+                            'Bearer realm="bk-apigateway"',
                             header
                         )
                     end
                 )
 
                 it(
-                    "should return realm error for invalid tmpl format", function()
+                    "should return a realm-only challenge for invalid tmpl format", function()
                         bk_core.config.get_bk_apigateway_api_tmpl:revert()
                         stub(
                             bk_core.config, "get_bk_apigateway_api_tmpl", function()
@@ -205,8 +204,25 @@ describe(
                         local header = oauth2.build_www_authenticate_header(ctx)
 
                         assert.is_equal(
-                            'Bearer realm="bk-apigateway", error="invalid_request",'
-                                .. ' error_description="invalid api tmpl format"',
+                            'Bearer realm="bk-apigateway"',
+                            header
+                        )
+                    end
+                )
+
+                it(
+                    "should keep the caller's error when the tmpl has no host", function()
+                        bk_core.config.get_bk_apigateway_api_tmpl:revert()
+                        stub(
+                            bk_core.config, "get_bk_apigateway_api_tmpl", function()
+                                return "https://"
+                            end
+                        )
+
+                        local header = oauth2.build_www_authenticate_header(ctx, "invalid_token", "token expired")
+
+                        assert.is_equal(
+                            'Bearer realm="bk-apigateway", error="invalid_token", error_description="token expired"',
                             header
                         )
                     end
@@ -485,6 +501,102 @@ describe(
                                 1, true
                             )
                         )
+                    end
+                )
+            end
+        )
+
+        context(
+            "is_real_app_code", function()
+                it(
+                    "should accept real app codes", function()
+                        assert.is_true(oauth2.is_real_app_code("my-app"))
+                    end
+                )
+
+                it(
+                    "should reject builtin clients and empty values", function()
+                        assert.is_false(oauth2.is_real_app_code("public"))
+                        assert.is_false(oauth2.is_real_app_code("personal"))
+                        assert.is_false(oauth2.is_real_app_code(""))
+                        assert.is_false(oauth2.is_real_app_code(nil))
+                    end
+                )
+            end
+        )
+
+        context(
+            "Bearer prefix rules", function()
+                local rules
+
+                local function matches(token)
+                    local validated_rules = oauth2.validate_bkauth_bearer_token_rules()
+                    return oauth2.is_bkauth_bearer_token(token, validated_rules)
+                end
+
+                before_each(
+                    function()
+                        rules = {
+                            { prefix_pattern = "^bk[oprs]_" },
+                            { prefix_pattern = "^tai_pat_" },
+                        }
+                        stub(
+                            bk_core.config, "get_oauth2_bearer_token_rules", function()
+                                return rules
+                            end
+                        )
+                    end
+                )
+
+                after_each(
+                    function()
+                        bk_core.config.get_oauth2_bearer_token_rules:revert()
+                    end
+                )
+
+                it(
+                    "should match known prefixes regardless of the suffix", function()
+                        for _, token in ipairs({ "bko_", "bkp_short", "bkr_123", "bks_-", "tai_pat_any.thing-123" }) do
+                            assert.is_true(matches(token))
+                        end
+                    end
+                )
+
+                it(
+                    "should not match similar but different prefixes", function()
+                        for _, token in ipairs({ "bkx_abc", "bk_abc", "tai_abc", "xbkp_abc" }) do
+                            assert.is_false(matches(token))
+                        end
+                    end
+                )
+
+                it(
+                    "should log a non-list configuration and match no tokens", function()
+                        for _, value in ipairs({ true, false, "^bkp_", 1, { a = 1 } }) do
+                            rules = value
+                            local validated_rules, problems = oauth2.validate_bkauth_bearer_token_rules()
+                            assert.same({}, validated_rules)
+                            assert.same({ "bearer_token_rules must be a list" }, problems)
+                            assert.is_false(oauth2.is_bkauth_bearer_token("bkp_abc", validated_rules))
+                        end
+                    end
+                )
+
+                it(
+                    "should report and skip invalid rules while retaining valid prefixes", function()
+                        rules = {
+                            "invalid",
+                            {},
+                            { prefix_pattern = "^bk[" },
+                            { prefix_pattern = "^tai_pat_" },
+                        }
+                        local validated_rules, problems = oauth2.validate_bkauth_bearer_token_rules()
+                        assert.is_equal(3, #problems)
+                        assert.matches("bearer_token_rules%[1%] must be an object", problems[1])
+                        assert.matches("bearer_token_rules%[2%]%.prefix_pattern must be a string", problems[2])
+                        assert.matches("bearer_token_rules%[3%]%.prefix_pattern=%^bk%[ is invalid", problems[3])
+                        assert.is_false(oauth2.is_bkauth_bearer_token("bkp_abc", validated_rules))
+                        assert.is_true(oauth2.is_bkauth_bearer_token("tai_pat_abc", validated_rules))
                     end
                 )
             end

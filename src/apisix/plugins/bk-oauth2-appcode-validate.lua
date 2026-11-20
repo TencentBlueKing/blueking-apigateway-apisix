@@ -19,10 +19,16 @@
 --
 -- Validate whether an OAuth2 token's application code is enabled by route configuration.
 --
+--     * "public" / "personal": allowed by support_public / support_personal
+--     * a real BlueKing app: allowed by support_app, and the token mode must match the resource:
+--         - the resource requires a user: only a delegated token with a verified user
+--         - the resource does not require a user: only an app token
+--
 -- This plugin only runs when ctx.var.is_bk_oauth2 == true.
 --
 -- This plugin depends on:
---     * bk-oauth2-verify: To set ctx.var.bk_app_code
+--     * bk-oauth2-verify: To set ctx.var.bk_app_code, ctx.var.bk_user and ctx.var.bk_oauth2_token_mode
+--     * bk-resource-context: To set ctx.var.bk_resource_auth
 --
 local core = require("apisix.core")
 local errorx = require("apisix.plugins.bk-core.errorx")
@@ -43,12 +49,16 @@ local schema = {
             type = "boolean",
             default = false,
         },
+        support_app = {
+            type = "boolean",
+            default = false,
+        },
     },
 }
 
 local _M = {
     version = 0.1,
-    priority = 17678,
+    priority = 17685,
     name = plugin_name,
     schema = schema,
 }
@@ -65,13 +75,39 @@ local function log_validation(phase, app_code, conf, ctx)
         ", bk_app_code=", app_code,
         ", support_public=", conf.support_public,
         ", support_personal=", conf.support_personal,
+        ", support_app=", conf.support_app,
+        ", token_mode=", ctx.var.bk_oauth2_token_mode,
         ", gateway=", ctx.var.bk_gateway_name,
         ", resource=", ctx.var.bk_resource_name
     )
 end
 
 
-function _M.rewrite(conf, ctx) -- luacheck: no unused
+---Check token mode for a real BlueKing app whose OAuth2 channel is enabled.
+---This check runs before the shared auth validator and its user exemptions.
+---@return string|nil reason The rejection reason, nil when the token is allowed
+local function validate_real_app_token(ctx, resource_auth)
+    local user_required = resource_auth:get_verified_user_required()
+    -- Each resource accepts exactly one real-app token mode.
+    -- An app-only resource requires the caller to act as the app itself.
+    local expected_mode = user_required and "delegated" or "app"
+
+    if ctx.var.bk_oauth2_token_mode ~= expected_mode then
+        if user_required then
+            return "the resource requires a user, only OAuth2 delegated tokens are allowed"
+        end
+        return "the resource does not require a user, only OAuth2 app tokens are allowed"
+    end
+
+    local user = ctx.var.bk_user
+    if user_required and not (user and user.verified) then
+        return "the OAuth2 delegated token does not carry a valid user"
+    end
+    return nil
+end
+
+
+function _M.rewrite(conf, ctx)
     if ctx.var.is_bk_oauth2 ~= true then
         core.log.info(
             plugin_name .. ": skipping",
@@ -96,14 +132,36 @@ function _M.rewrite(conf, ctx) -- luacheck: no unused
         return
     end
 
+    local reason = "OAuth2 token app code is not allowed"
+    if oauth2.is_real_app_code(app_code) then
+        local resource_auth = ctx.var.bk_resource_auth
+        if not conf.support_app then
+            reason = "the OAuth2 app channel is not enabled for this route"
+        elseif not resource_auth then
+            -- bk-resource-context runs earlier and supplies the policy that selects the token mode.
+            local err = errorx.new_internal_server_error()
+                :with_field("reason", "missing resource authentication context")
+            return errorx.exit_with_apigw_err(ctx, err, _M)
+        else
+            reason = validate_real_app_token(ctx, resource_auth)
+            if not reason then
+                log_validation("validation passed", app_code, conf, ctx)
+                return
+            end
+        end
+    end
+
     log_validation("validation failed", app_code, conf, ctx)
 
+    local token_mode = ctx.var.bk_oauth2_token_mode or ""
     local err = errorx.new_general_unauthorized():with_fields(
         {
-            reason = "OAuth2 token app code is not allowed",
+            reason = reason,
             bk_app_code = app_code,
             support_public = conf.support_public,
             support_personal = conf.support_personal,
+            support_app = conf.support_app,
+            token_mode = token_mode,
             gateway = ctx.var.bk_gateway_name or "",
             resource = ctx.var.bk_resource_name or "",
         }
@@ -112,9 +170,11 @@ function _M.rewrite(conf, ctx) -- luacheck: no unused
     ngx.header["WWW-Authenticate"] = oauth2.build_www_authenticate_header(
         ctx,
         "invalid_token",
-        "OAuth2 token app code is not allowed: bk_app_code=" .. app_code ..
+        reason .. ": bk_app_code=" .. app_code ..
             ", support_public=" .. tostring(conf.support_public) ..
-            ", support_personal=" .. tostring(conf.support_personal)
+            ", support_personal=" .. tostring(conf.support_personal) ..
+            ", support_app=" .. tostring(conf.support_app) ..
+            ", token_mode=" .. token_mode
     )
     return errorx.exit_with_apigw_err(ctx, err, _M)
 end

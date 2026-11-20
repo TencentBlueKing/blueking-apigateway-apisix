@@ -24,6 +24,7 @@ local bk_components_utils = require("apisix.plugins.bk-components.utils")
 local string_format = string.format
 local table_insert = table.insert
 local ipairs = ipairs
+local type = type
 
 local VERIFY_APP_SECRET_URL = "/api/v1/apps/%s/access-keys/verify"
 local LIST_APP_SECRETS_URL = "/api/v1/apps/%s/access-keys"
@@ -212,6 +213,11 @@ function _M.get_app_tenant_info(app_code)
 end
 
 
+local function string_or_empty(value)
+    return type(value) == "string" and value or ""
+end
+
+
 ---Verify an OAuth2 access token via bkauth service
 ---@param access_token string The OAuth2 access token to verify
 ---@return table|nil result The verification result containing bk_app_code, bk_username, audience
@@ -258,21 +264,22 @@ function _M.verify_oauth2_access_token(access_token)
     --     }
     -- }
 
-    local error = {}
-    if result.error then
-        error.code = result.error.code or ""
-        error.message = result.error.message or ""
-    end
+    local token_error = type(result.error) == "table" and result.error or {}
 
     -- NOTE: it's cacheable for all conditions
+    -- Keep explicit "" for app tokens. Missing and invalid usernames stay nil.
     return {
         active = result.active,
         bk_app_code = result.bk_app_code or "",
-        bk_login_name = result.username or "",
-        bk_username = result.sub or "",
+        bk_login_name = type(result.username) == "string" and result.username or nil,
+        bk_username = string_or_empty(result.sub),
+        client_id = string_or_empty(result.client_id),
         exp = result.exp or 0,
         audience = result.aud or {},
-        error = error,
+        error = {
+            code = string_or_empty(token_error.code),
+            message = string_or_empty(token_error.message),
+        },
     }, nil
 end
 

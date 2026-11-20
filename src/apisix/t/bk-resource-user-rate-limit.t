@@ -44,6 +44,7 @@ __DATA__
             local mock_services = [[return function()
                 local cache = require("apisix.plugins.bk-cache.oauth2-access-token")
                 cache.get_oauth2_access_token = function(token)
+                    token = token:gsub("^tai_pat_", "")
                     local username = token
                     local app_code = "app-one"
                     if token == "alice-other-app" then
@@ -121,7 +122,7 @@ __DATA__
             local function request(token, uri, status, headers)
                 local res, err = httpc:request_uri(
                     "http://127.0.0.1:" .. ngx.var.server_port .. (uri or "/hello"),
-                    {headers = {Authorization = "Bearer " .. token}}
+                    {headers = {Authorization = "Bearer tai_pat_" .. token}}
                 )
                 assert(res, err)
                 assert(res.status == status, token .. ": " .. res.status .. " " .. res.body)

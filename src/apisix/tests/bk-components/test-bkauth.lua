@@ -452,5 +452,117 @@ describe(
                 )
             end
         )
+
+        context(
+            "verify_oauth2_access_token", function()
+                it(
+                    "should keep string sub, username and client_id", function()
+                        response = {
+                            status = 200,
+                            body = core.json.encode(
+                                {
+                                    active = true,
+                                    username = "tom",
+                                    sub = "u-sub-1",
+                                    client_id = "real-app",
+                                    bk_app_code = "real-app",
+                                    exp = 4102444800,
+                                    aud = { "gateway:demo/api:test" },
+                                }
+                            ),
+                        }
+
+                        local result, err = bkauth.verify_oauth2_access_token("fake-token")
+                        assert.is_nil(err)
+                        assert.is_same(
+                            {
+                                active = true,
+                                bk_app_code = "real-app",
+                                bk_login_name = "tom",
+                                bk_username = "u-sub-1",
+                                client_id = "real-app",
+                                exp = 4102444800,
+                                audience = { "gateway:demo/api:test" },
+                                error = { code = "", message = "" },
+                            }, result
+                        )
+                    end
+                )
+
+                it(
+                    "should preserve the absence of username and default missing client_id to empty string", function()
+                        response = {
+                            status = 200,
+                            body = core.json.encode({ active = true, sub = "u-sub-1", bk_app_code = "public" }),
+                        }
+
+                        local result, err = bkauth.verify_oauth2_access_token("fake-token")
+                        assert.is_nil(err)
+                        assert.is_nil(result.bk_login_name)
+                        assert.is_equal("", result.client_id)
+                        assert.is_equal("u-sub-1", result.bk_username)
+                    end
+                )
+
+                it(
+                    "should distinguish an empty username from a non-string username", function()
+                        local fields = { active = true, sub = "real-app", client_id = "real-app" }
+
+                        fields.username = ""
+                        response = { status = 200, body = core.json.encode(fields) }
+                        local result, err = bkauth.verify_oauth2_access_token("fake-token")
+                        assert.is_nil(err)
+                        assert.is_equal("", result.bk_login_name)
+
+                        for _, value in ipairs({ require("cjson.safe").null, false, true, 1, {} }) do
+                            fields.username = value
+                            response.body = core.json.encode(fields)
+                            result, err = bkauth.verify_oauth2_access_token("fake-token")
+                            assert.is_nil(err)
+                            assert.is_nil(result.bk_login_name)
+                        end
+                    end
+                )
+
+                it(
+                    "should normalize non-string subject, client ID and error fields", function()
+                        local null = require("cjson.safe").null
+                        for _, value in ipairs({ null, false, true, 1, {} }) do
+                            response = {
+                                status = 200,
+                                body = core.json.encode({
+                                    active = false,
+                                    sub = value,
+                                    client_id = value,
+                                    error = { code = value, message = value },
+                                }),
+                            }
+
+                            local result, err = bkauth.verify_oauth2_access_token("fake-token")
+                            assert.is_nil(err)
+                            assert.is_equal("", result.bk_username)
+                            assert.is_equal("", result.client_id)
+                            assert.same({ code = "", message = "" }, result.error)
+                        end
+                    end
+                )
+
+                it(
+                    "should keep string error details and default a null error object", function()
+                        local fields = { active = false, error = { code = "EXPIRED", message = "token expired" } }
+                        response = { status = 200, body = core.json.encode(fields) }
+                        local result, err = bkauth.verify_oauth2_access_token("fake-token")
+                        assert.is_nil(err)
+                        assert.same(fields.error, result.error)
+
+                        fields.error = require("cjson.safe").null
+                        response.body = core.json.encode(fields)
+                        result, err = bkauth.verify_oauth2_access_token("fake-token")
+                        assert.is_nil(err)
+                        assert.same({ code = "", message = "" }, result.error)
+                    end
+                )
+            end
+        )
     end
 )

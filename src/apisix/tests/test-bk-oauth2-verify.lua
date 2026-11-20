@@ -176,20 +176,34 @@ describe(
                 )
 
                 it(
-                    "should return 401 when token verification fails", function()
+                    "should return 503 without a challenge when introspection fails", function()
                         ctx.var.is_bk_oauth2 = true
-                        authorization_header = "Bearer invalid-token"
-                        cached_result = nil  -- Verification fails
+                        authorization_header = "Bearer example-token"
+
+                        local status = plugin.rewrite({}, ctx)
+
+                        assert.is_equal(503, status)
+                        assert.is_nil(www_authenticate_header)
+                    end
+                )
+
+                it(
+                    "should reject an introspection result without active", function()
+                        ctx.var.is_bk_oauth2 = true
+                        authorization_header = "Bearer example-token"
+                        cached_result = {
+                            exp = 4102444800,
+                            bk_app_code = "test-app",
+                            error = { code = "", message = "" },
+                        }
 
                         local status = plugin.rewrite({}, ctx)
 
                         assert.is_equal(401, status)
-                        assert.is_truthy(www_authenticate_header)
-                        local expected_prefix = "resource_metadata="
-                            .. '"https://bk-apigateway-api.example.com/prod/api/v2/open/'
-                            .. '.well-known/oauth-protected-resource?resource='
-                        assert.is_true(
-                            string.find(www_authenticate_header, expected_prefix, 1, true) ~= nil
+                        assert.is_nil(ctx.var.bk_app)
+                        assert.matches(
+                            'error="invalid_token", error_description="the access token is inactive"$',
+                            www_authenticate_header
                         )
                     end
                 )
@@ -262,6 +276,109 @@ describe(
                         local status = plugin.rewrite({}, ctx)
 
                         assert.is_equal(401, status)
+                    end
+                )
+            end
+        )
+
+        context(
+            "token mode", function()
+                it(
+                    "should detect token modes from sub, client_id and username", function()
+                        local cases = {
+                            { { bk_username = "u1", client_id = "app1", bk_login_name = "tom" }, "delegated" },
+                            { { bk_username = "app1", client_id = "app1", bk_login_name = "" }, "app" },
+                            { { bk_username = "app1", client_id = "app1", bk_login_name = "tom" }, "delegated" },
+                            { { bk_username = "u1", client_id = "app1", bk_login_name = "" }, "unknown" },
+                            { { bk_username = "u1", client_id = "", bk_login_name = "tom" }, "unknown" },
+                            { { bk_username = "", client_id = "app1", bk_login_name = "" }, "unknown" },
+                            { { bk_username = "app1", client_id = "app1" }, "unknown" },
+                        }
+                        for _, case in ipairs(cases) do
+                            assert.is_equal(case[2], plugin._detect_token_mode(case[1]))
+                        end
+                    end
+                )
+
+                it(
+                    "should not mark an empty subject as a verified user", function()
+                        local user = plugin._create_user_from_result(
+                            { bk_username = "" }, "unknown"
+                        )
+
+                        assert.is_false(user.verified)
+                        assert.is_equal("", user.username)
+                    end
+                )
+
+                it(
+                    "should set the user for a delegated token", function()
+                        ctx.var.is_bk_oauth2 = true
+                        authorization_header = "Bearer valid-token"
+                        cached_result = {
+                            active = true,
+                            exp = 4102444800,
+                            bk_app_code = "real-app",
+                            bk_username = "u-sub-1",
+                            bk_login_name = "tom",
+                            client_id = "real-app",
+                            audience = {},
+                        }
+
+                        plugin.rewrite({}, ctx)
+
+                        assert.is_equal("delegated", ctx.var.bk_oauth2_token_mode)
+                        assert.is_true(ctx.var.bk_user.verified)
+                        assert.is_equal("u-sub-1", ctx.var.bk_user.username)
+                        assert.is_equal("u-sub-1", ctx.var.bk_username)
+                        assert.is_equal("real-app", ctx.var.bk_app_code)
+                    end
+                )
+
+                it(
+                    "should not use sub as the username for an app token", function()
+                        ctx.var.is_bk_oauth2 = true
+                        authorization_header = "Bearer valid-token"
+                        cached_result = {
+                            active = true,
+                            exp = 4102444800,
+                            bk_app_code = "real-app",
+                            bk_username = "real-app",
+                            bk_login_name = "",
+                            client_id = "real-app",
+                            audience = {"gateway:demo/api:test"},
+                        }
+
+                        local result = plugin.rewrite({}, ctx)
+
+                        assert.is_nil(result)
+                        assert.is_equal("app", ctx.var.bk_oauth2_token_mode)
+                        assert.is_false(ctx.var.bk_user.verified)
+                        assert.is_equal("", ctx.var.bk_user.username)
+                        assert.is_equal("", ctx.var.bk_username)
+                        assert.is_true(ctx.var.bk_app.verified)
+                        assert.is_equal("real-app", ctx.var.bk_app_code)
+                        assert.is_nil(authorization_header)
+                    end
+                )
+
+                it(
+                    "should keep the previous user handling when the mode is unknown", function()
+                        ctx.var.is_bk_oauth2 = true
+                        authorization_header = "Bearer valid-token"
+                        cached_result = {
+                            active = true,
+                            exp = 4102444800,
+                            bk_app_code = "personal",
+                            bk_username = "test-user",
+                            audience = {},
+                        }
+
+                        plugin.rewrite({}, ctx)
+
+                        assert.is_equal("unknown", ctx.var.bk_oauth2_token_mode)
+                        assert.is_true(ctx.var.bk_user.verified)
+                        assert.is_equal("test-user", ctx.var.bk_username)
                     end
                 )
             end

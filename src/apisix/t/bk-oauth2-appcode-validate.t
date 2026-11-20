@@ -53,7 +53,7 @@ __DATA__
         }
     }
 --- response_body
-priority: 17678
+priority: 17685
 
 === TEST 2: non-OAuth2 requests are skipped
 --- config
@@ -142,7 +142,7 @@ bk_gateway:
 --- response_body_like eval
 qr/status: 401\ncode_name: UNAUTHORIZED\nmessage: Unauthorized .*OAuth2 token app code is not allowed.*\nhas_gateway: true\nhas_resource: true/
 --- response_headers_like
-WWW-Authenticate: Bearer .*error="invalid_token".*bk_app_code=personal.*support_public=true.*support_personal=false"
+WWW-Authenticate: Bearer .*error="invalid_token".*bk_app_code=personal.*support_public=true.*support_personal=false, support_app=.*"
 
 === TEST 5: personal-only configuration allows personal
 --- config
@@ -198,7 +198,7 @@ bk_gateway:
 --- response_body
 status: 401
 --- response_headers_like
-WWW-Authenticate: Bearer .*error="invalid_token".*support_public=false.*support_personal=true"
+WWW-Authenticate: Bearer .*error="invalid_token".*support_public=false.*support_personal=true, support_app=.*"
 
 === TEST 7: both-enabled configuration allows both app codes
 --- config
@@ -260,7 +260,7 @@ bk_gateway:
 --- response_body
 status: 401
 --- response_headers_like
-WWW-Authenticate: Bearer .*error="invalid_token".*support_public=false.*support_personal=false"
+WWW-Authenticate: Bearer .*error="invalid_token".*support_public=false.*support_personal=false, support_app=.*"
 
 === TEST 9: ordinary app code stays unsupported when both flags are enabled
 --- extra_yaml_config
@@ -292,4 +292,4 @@ bk_gateway:
 --- response_body
 status: 401
 --- response_headers_like
-WWW-Authenticate: Bearer .*error="invalid_token".*bk_app_code=ordinary-app.*support_public=true.*support_personal=true"
+WWW-Authenticate: Bearer .*error="invalid_token".*bk_app_code=ordinary-app.*support_public=true.*support_personal=true, support_app=.*"

@@ -157,12 +157,84 @@ later plugins.
   explicitly changes the auth contract and includes focused tests.
 - OAuth2 flow depends on `ctx.var.is_bk_oauth2` and `ctx.var.audience` across
   `bk-oauth2-protected-resource`, `bk-oauth2-verify`, and
-  `bk-oauth2-audience-validate`.
+  `bk-oauth2-audience-validate`. See "OAuth2 App Channel Contracts" below.
 - MCP virtual app codes use `v_mcp_{mcp_service_id}_{app_code}`. Use
   `bk_app:get_real_app_code()` when downstream services expect the real app
   code, such as tenant lookup or signing JWTs.
 - Do not log raw tokens or secrets. Follow existing masking patterns such as
   the OAuth2 token hint logs.
+
+## OAuth2 App Channel Contracts
+
+Dashboard generates the route config (`support_public`, `support_personal`,
+`support_app` and `challenge_on_missing_credential`). The design and its
+confirmed decisions live in `blueking-apigateway/docs/resource-oauth2-app-access-design.md`
+(sections 4 and 7). Do not change these contracts without updating that doc
+and the Dashboard converter.
+
+Bearer routing in `bk-oauth2-protected-resource`, evaluated in this order:
+
+1. `X-Bkapi-Authorization` present goes to the legacy flow.
+2. A Bearer matching any configured `prefix_pattern` enters the OAuth2 flow.
+   bkauth introspection determines token validity. A rejected token stays in
+   the OAuth2 flow.
+3. An absent or empty Bearer or one with an unmatched prefix leaves no OAuth2
+   credential. A configured user cookie or `challenge_on_missing_credential=false`
+   sends the request to the legacy flow. Otherwise return 401 with a Bearer
+   discovery challenge.
+
+Rules and matching (`bk-core/oauth2.lua`):
+
+- The configuration path is `bk_gateway.bk_oauth2.bearer_token_rules`.
+  A missing or empty list uses the default prefixes `^bk[oprs]_` and
+  `^tai_pat_`. A configured non-empty list replaces the defaults.
+- `bk-oauth2-protected-resource.init()` validates the list, rule types and
+  regex syntax, logs each configuration error, and logs the effective rules
+  once after validation. An invalid list type produces no matchable rules.
+  Invalid entries are skipped within a list.
+- Requests match the prepared prefixes with `ngx.re.find` (`jo`) and log
+  regex execution errors.
+- The route fields default to `support_app=false` and
+  `challenge_on_missing_credential=true`. Explicit defaults behave the same as
+  omitted fields. Existing personal/public routes also use the Bearer routing
+  and response rules described here.
+
+Token mode and validation:
+
+- `bk-components/bkauth.lua` maps the introspected `username` to a string
+  (including `""`) or `nil` for a missing or non-string value.
+- `bk-oauth2-verify` reads introspection, sets `ctx.var.bk_oauth2_token_mode`
+  and removes the consumed `Authorization` header:
+  - `delegated`: `sub`, `client_id` and `username` are non-empty strings.
+  - `app`: `sub` and `client_id` are equal non-empty strings, and `username` is `""`.
+  - `unknown`: other combinations, including a missing, null or non-string `username`.
+
+  App tokens never carry a user, and `sub` is never used as the username.
+- `bk-oauth2-appcode-validate` rejects `unknown` only for real apps.
+  `public`/`personal` keep their existing checks and ignore the mode. The app
+  identity is the introspected `bk_app_code`; `client_id` only feeds mode
+  detection.
+- Rewrite validates OAuth2 client access and token mode first
+  (`bk-oauth2-appcode-validate`, 17685), then audience
+  (`bk-oauth2-audience-validate`, 17684), then generic app and user requirements
+  (`bk-auth-validate`, 17680). The generic validator has no OAuth2 branch.
+  A real app OAuth2 token must pass the mode and user checks before the
+  generic validator can apply a whitelist or `skip_user_verification`.
+- Failure contract. Token mode mismatch in either direction, `unknown`, and
+  disallowed app codes return 401 with
+  `WWW-Authenticate: Bearer ... error="invalid_token"`. OAuth2 rejections take
+  precedence over generic authentication errors. An audience mismatch or an
+  introspection result of `active=false` also returns 401 `invalid_token`.
+  When introspection fails and no usable cached result is available, return
+  503 without a Bearer challenge. Application permission denials remain
+  403 `APP_NO_PERMISSION`. The legacy chain keeps its original responses.
+- MCP server paths on `bk-apigateway` accept both `mcp:<server>` and
+  gateway-scoped audience (`gateway:*`, `gateway:bk-apigateway/api:*`,
+  `gateway:bk-apigateway/api:<resource>`). This is intended: the MCP entry is a
+  `bk-apigateway` resource, and mcp-proxy owns the per-MCP-server permission.
+  Do not narrow it here without a matching bkauth issuance and mcp-proxy change.
+- When changing any plugin in this chain, run `t/bk-oauth2-token-mode-chain.t`.
+  It exercises the full chain on a real route with stubbed introspection.
 
 ## Lua Style
 

@@ -44,7 +44,7 @@ __DATA__
             local mock_token_verification = [[return function()
                 local cache = require("apisix.plugins.bk-cache.oauth2-access-token")
                 cache.get_oauth2_access_token = function(token)
-                    if token == "valid-token" then
+                    if token == "tai_pat_valid" then
                         return {active = true, exp = ngx.time() + 60,
                             bk_app_code = "personal", bk_username = "test-user", audience = {}}
                     end
@@ -128,7 +128,7 @@ WWW-Authenticate: Bearer .*
 GET /hello
 --- more_headers
 Origin: https://allowed.example.com
-Authorization: Bearer invalid-token
+Authorization: Bearer tai_pat_invalid
 --- error_code: 401
 --- response_headers
 Access-Control-Allow-Origin: https://allowed.example.com
@@ -143,7 +143,7 @@ WWW-Authenticate: Bearer .*
 GET /hello
 --- more_headers
 Origin: https://allowed.example.com
-Authorization: Bearer valid-token
+Authorization: Bearer tai_pat_valid
 --- response_body
 hello world
 --- response_headers

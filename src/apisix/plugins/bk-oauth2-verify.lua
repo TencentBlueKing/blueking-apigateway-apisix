@@ -20,6 +20,14 @@
 -- This plugin verifies OAuth2 access tokens via the bkauth service and sets
 -- the authentication-related context variables (bk_app, bk_user, audience, etc.)
 --
+-- It also detects the token mode from the introspection result and sets
+-- ctx.var.bk_oauth2_token_mode:
+--     * "delegated": sub, client_id and username are non-empty, the token carries a user
+--     * "app": sub == client_id and username is empty, an app token without user;
+--       the user is left empty and unverified, `sub` is never used as the username
+--     * "unknown": any other combination; the user is set as before, and
+--       bk-oauth2-appcode-validate rejects it for real BlueKing apps
+--
 -- This plugin only runs when ctx.var.is_bk_oauth2 == true (set by bk-oauth2-protected-resource).
 -- When is_bk_oauth2 is false or nil, the plugin skips processing to allow the legacy
 -- bk-auth-verify flow to handle authentication.
@@ -45,6 +53,9 @@ local string_sub = string.sub
 local string_match = string.match
 
 local plugin_name = "bk-oauth2-verify"
+local OAUTH2_TOKEN_MODE_DELEGATED = "delegated"
+local OAUTH2_TOKEN_MODE_APP = "app"
+local OAUTH2_TOKEN_MODE_UNKNOWN = "unknown"
 local AUTHORIZATION_HEADER = "Authorization"
 local BEARER_PREFIX = "bearer "
 local BEARER_PREFIX_LEN = #BEARER_PREFIX
@@ -126,13 +137,42 @@ local function create_app_from_result(result)
 end
 
 
+---Detect whether the token carries a user (delegated) or only an app (app)
+---@param result table The verification result normalized by the bkauth adapter
+---@return string mode One of "delegated", "app", "unknown"
+local function detect_token_mode(result)
+    local sub = result.bk_username
+    local client_id = result.client_id
+    local username = result.bk_login_name
+    if sub == "" or client_id == "" or username == nil then
+        return OAUTH2_TOKEN_MODE_UNKNOWN
+    end
+
+    if username ~= "" then
+        return OAUTH2_TOKEN_MODE_DELEGATED
+    end
+
+    if sub == client_id then
+        return OAUTH2_TOKEN_MODE_APP
+    end
+
+    return OAUTH2_TOKEN_MODE_UNKNOWN
+end
+
+
 ---Create a user object from the verification result
 ---@param result table The verification result from bkauth
+---@param token_mode string The detected token mode
 ---@return table user The user object
-local function create_user_from_result(result)
+local function create_user_from_result(result, token_mode)
+    if token_mode == OAUTH2_TOKEN_MODE_APP then
+        return bk_user_define.new_anonymous_user("the OAuth2 app token does not carry a user")
+    end
+
+    local username = result.bk_username
     return bk_user_define.new_user({
-        username = result.bk_username or "",
-        verified = not pl_types.is_empty(result.bk_username),
+        username = username,
+        verified = username ~= "",
         valid_error_message = "",
     })
 end
@@ -159,29 +199,30 @@ function _M.rewrite(conf, ctx) -- luacheck: no unused
     end
 
     local masked_token = mask_token(access_token)
-    local error_obj = errorx.new_general_unauthorized():with_field("token_hint", masked_token)
 
     -- Verify the token via bkauth (with caching)
+    -- The cache resolves any usable fallback before returning a dependency error.
     local result, err = verify_token(access_token)
     if result == nil then
-        core.log.info("bk-oauth2-verify: token verification failed, token_hint=", masked_token, ", error=", err)
-
-        -- wrap it, it's an internal error
+        core.log.info("bk-oauth2-verify: introspection failed, token_hint=", masked_token, ", error=", err)
         local error_message = "call bkauth api to verify token failed: " .. (err or "unknown error")
-        error_obj = error_obj:with_field("reason", error_message)
-        local www_auth = oauth2.build_www_authenticate_header(ctx, "invalid_token", error_message)
-        ngx.header["WWW-Authenticate"] = www_auth
+        local error_obj = errorx.new_service_unavailable():with_field("reason", error_message)
         return errorx.exit_with_apigw_err(ctx, error_obj, _M)
     end
 
+    local error_obj = errorx.new_general_unauthorized():with_field("token_hint", masked_token)
     if not result.active then
-        core.log.info("bk-oauth2-verify: token verification failed, token_hint=", masked_token, ", error=",
-                      result.error.message)
+        local error_message = result.error.message
+        core.log.info("bk-oauth2-verify: inactive token, token_hint=", masked_token,
+                      ", error_code=", result.error.code,
+                      ", error_message=", error_message)
 
-        local reason = result.error.message or "token verification failed, active=false"
+        local reason = "the access token is inactive"
+        if error_message ~= "" then
+            reason = reason .. " [" .. error_message .. "]"
+        end
         error_obj = error_obj:with_field("reason", reason)
-        local www_auth = oauth2.build_www_authenticate_header(ctx, result.error.code, reason)
-        ngx.header["WWW-Authenticate"] = www_auth
+        ngx.header["WWW-Authenticate"] = oauth2.build_www_authenticate_header(ctx, "invalid_token", reason)
         return errorx.exit_with_apigw_err(ctx, error_obj, _M)
     end
 
@@ -195,20 +236,23 @@ function _M.rewrite(conf, ctx) -- luacheck: no unused
         return errorx.exit_with_apigw_err(ctx, error_obj, _M)
     end
 
+    local token_mode = detect_token_mode(result)
     core.log.info("bk-oauth2-verify: token verified, app=", result.bk_app_code,
-                  ", user=", result.bk_username, ", audience_count=", #(result.audience or {}))
+                  ", user=", result.bk_username, ", token_mode=", token_mode,
+                  ", audience_count=", #(result.audience or {}))
 
     -- Create and set app object
     local app = create_app_from_result(result)
     ctx.var.bk_app = app
 
     -- Create and set user object
-    local user = create_user_from_result(result)
+    local user = create_user_from_result(result, token_mode)
     ctx.var.bk_user = user
 
     -- Set additional context variables
+    ctx.var.bk_oauth2_token_mode = token_mode
     ctx.var.bk_app_code = result.bk_app_code or ""
-    ctx.var.bk_username = result.bk_username or ""
+    ctx.var.bk_username = user.username
     ctx.var.audience = result.audience or {}
     ctx.var.auth_params_location = "header"
 
@@ -223,6 +267,7 @@ if _TEST then -- luacheck: ignore
     _M._verify_token = verify_token
     _M._create_app_from_result = create_app_from_result
     _M._create_user_from_result = create_user_from_result
+    _M._detect_token_mode = detect_token_mode
 end
 
 return _M

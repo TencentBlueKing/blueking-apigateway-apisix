@@ -18,6 +18,8 @@
 
 local core = require("apisix.core")
 
+local next = next
+local type = type
 local string_lower = string.lower
 
 local _M = {}
@@ -114,6 +116,20 @@ end
 function _M.get_bk_apigateway_api_tmpl()
     local conf = core.config.local_conf()
     return core.table.try_read_attr(conf, "bk_gateway", "hosts", "bk-apigateway-api", "tmpl")
+end
+
+
+---Get the configured bkauth Bearer rules, with defaults for a missing or empty list.
+function _M.get_oauth2_bearer_token_rules()
+    local conf = core.config.local_conf()
+    local rules = core.table.try_read_attr(conf, "bk_gateway", "bk_oauth2", "bearer_token_rules")
+    if rules == nil or (type(rules) == "table" and next(rules) == nil) then
+        return {
+            { prefix_pattern = "^bk[oprs]_" },
+            { prefix_pattern = "^tai_pat_" },
+        }
+    end
+    return rules
 end
 
 
