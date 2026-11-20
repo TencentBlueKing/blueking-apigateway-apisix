@@ -28,6 +28,22 @@ describe(
             end
         )
 
+        context("get_enable_esb", function()
+            it("defaults to true when enable_esb is absent", function()
+                stub(core.config, "local_conf", function()
+                    return { bk_gateway = {} }
+                end)
+                assert.is_true(bk_core.config.get_enable_esb())
+            end)
+
+            it("returns false when enable_esb is explicitly disabled", function()
+                stub(core.config, "local_conf", function()
+                    return { bk_gateway = { enable_esb = false } }
+                end)
+                assert.is_false(bk_core.config.get_enable_esb())
+            end)
+        end)
+
         context(
             "should_strip_subpath_prefix", function()
                 it(

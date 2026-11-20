@@ -148,6 +148,16 @@ function _M.get_enable_multi_tenant_mode()
     return enable_multi_tenant_mode
 end
 
+function _M.get_enable_esb()
+    local conf = core.config.local_conf()
+
+    local enable_esb = core.table.try_read_attr(conf, "bk_gateway", "enable_esb")
+    if enable_esb == nil then
+        return true
+    end
+    return enable_esb
+end
+
 function _M.should_strip_subpath_prefix()
     local conf = core.config.local_conf()
     local strip_subpath_prefix = core.table.try_read_attr(conf, "bk_gateway", "strip_subpath_prefix")
