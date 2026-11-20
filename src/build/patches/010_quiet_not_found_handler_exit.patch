@@ -1,0 +1,16 @@
+diff --git a/apisix/plugin.lua b/apisix/plugin.lua
+--- a/apisix/plugin.lua
++++ b/apisix/plugin.lua
+@@ -1394,7 +1394,11 @@ function _M.run_plugin(phase, plugins, api_ctx)
+                 if code or body then
+                     if is_http then
+                         if code >= 400 then
+-                            core.log.warn(plugins[i].name, " exits with http status code ", code)
++                            -- A miss on BlueKing's fallback route is an expected response.
++                            -- Keep warnings for other plugins and unexpected status codes.
++                            if plugins[i].name ~= "bk-not-found-handler" or code ~= 404 then
++                                core.log.warn(plugins[i].name, " exits with http status code ", code)
++                            end
+ 
+                             if conf._meta and conf._meta.error_response then
+                                 -- Whether or not the original error message is output,
