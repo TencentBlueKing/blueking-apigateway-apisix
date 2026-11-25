@@ -469,6 +469,49 @@ describe(
         )
 
         context(
+            "bk_auth_flow", function()
+                it("should be legacy when X-Bkapi-Authorization is present", function()
+                    headers["X-Bkapi-Authorization"] = '{"bk_app_code": "test"}'
+                    headers["Authorization"] = "Bearer " .. BKAUTH_TOKEN
+                    assert.is_nil(plugin.rewrite({}, ctx))
+                    assert.is_equal("legacy", ctx.var.bk_auth_flow)
+                end)
+
+                it("should be oauth2 for a bkauth Bearer token", function()
+                    headers["Authorization"] = "Bearer " .. BKAUTH_TOKEN
+                    assert.is_nil(plugin.rewrite({}, ctx))
+                    assert.is_equal("oauth2", ctx.var.bk_auth_flow)
+                end)
+
+                it("should be fallback_cookie for a configured user ticket cookie", function()
+                    ctx.var.bk_resource_auth = resource_auth.new({verified_user_required = true})
+                    ctx.var.bk_api_auth = api_auth.new({
+                        user_conf = {user_type = "bkuser", from_bk_token = true},
+                    })
+                    stub(bk_core.cookie, "get_value", function(name)
+                        return name == "bk_token" and "user-ticket" or nil
+                    end)
+
+                    assert.is_nil(plugin.rewrite({}, ctx))
+                    assert.is_equal("fallback_cookie", ctx.var.bk_auth_flow)
+
+                    bk_core.cookie.get_value:revert()
+                end)
+
+                it("should be fallback_no_credential when the challenge is disabled", function()
+                    headers["Authorization"] = "Bearer backend-own-token"
+                    assert.is_nil(plugin.rewrite({ challenge_on_missing_credential = false }, ctx))
+                    assert.is_equal("fallback_no_credential", ctx.var.bk_auth_flow)
+                end)
+
+                it("should be oauth2_challenge when no credential is present", function()
+                    assert.is_equal(401, plugin.rewrite({}, ctx))
+                    assert.is_equal("oauth2_challenge", ctx.var.bk_auth_flow)
+                end)
+            end
+        )
+
+        context(
             "WWW-Authenticate header", function()
                 it(
                     "should include resource_metadata URL", function()

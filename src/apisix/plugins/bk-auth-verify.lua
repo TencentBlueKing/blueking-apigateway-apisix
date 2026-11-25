@@ -25,6 +25,10 @@
 -- or returning an error response. Even if the verification fails or no parameters can be found,
 -- the plugin use anonymous application and user objects.
 --
+-- The plugin also returns ctx.var.bk_auth_flow in the X-Bkapi-Auth-Flow response header, including
+-- error responses. bk-oauth2-protected-resource sets the flow on OAuth2-protected resources;
+-- other requests that reach this plugin use "legacy".
+--
 -- This plugin depends on:
 --     * bk-resource-context: To determine whether the user verification should be skipped.
 --
@@ -42,6 +46,8 @@ local ipairs = ipairs
 local plugin_name = "bk-auth-verify"
 
 local BKAPI_AUTHORIZATION_HEADER = "X-Bkapi-Authorization"
+local BKAPI_AUTH_FLOW_HEADER = "X-Bkapi-Auth-Flow"
+local AUTH_FLOW_LEGACY = "legacy"
 
 -- apisix.yaml
 local schema = {
@@ -207,6 +213,8 @@ function _M.rewrite(conf, ctx) -- luacheck: no unused
         return
     end
 
+    ctx.var.bk_auth_flow = ctx.var.bk_auth_flow or AUTH_FLOW_LEGACY
+
     local app, user = _M.verify(ctx)
 
     ctx.var.bk_app = app
@@ -215,6 +223,14 @@ function _M.rewrite(conf, ctx) -- luacheck: no unused
     ctx.var.bk_username = user["username"]
     -- 记录认证参数位置，便于统计哪些请求将认证参数放到请求参数，推动优化
     ctx.var.auth_params_location = ctx.var.auth_params_location or ""
+end
+
+function _M.header_filter(conf, ctx) -- luacheck: no unused
+    -- Unset when the request is rejected before an authentication flow is chosen.
+    local auth_flow = ctx.var.bk_auth_flow
+    if auth_flow then
+        core.response.set_header(BKAPI_AUTH_FLOW_HEADER, auth_flow)
+    end
 end
 
 if _TEST then -- luacheck: ignore
