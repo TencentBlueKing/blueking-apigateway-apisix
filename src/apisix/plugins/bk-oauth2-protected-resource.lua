@@ -29,6 +29,15 @@
 --         - challenge_on_missing_credential=true (default, personal/public enabled): 401 with
 --           a WWW-Authenticate header containing the resource_metadata URL for OAuth2 discovery
 --
+-- The selected branch is recorded in ctx.var.bk_auth_flow, returned by bk-auth-verify in the
+-- X-Bkapi-Auth-Flow response header and available to loggers as $bk_auth_flow:
+--
+--     * oauth2: bkauth Bearer token, verified by bk-oauth2-verify
+--     * legacy: X-Bkapi-Authorization present
+--     * fallback_cookie: no OAuth2 credential, configured user ticket cookie
+--     * fallback_no_credential: no OAuth2 credential, challenge_on_missing_credential=false
+--     * oauth2_challenge: no credential, 401 with WWW-Authenticate
+--
 -- This plugin depends on:
 --     * bk-core.config: For hosts.bk-apigateway-host and bk_oauth2.bearer_token_rules configuration
 --
@@ -49,6 +58,13 @@ local BKAPI_AUTHORIZATION_HEADER = "X-Bkapi-Authorization"
 local AUTHORIZATION_HEADER = "Authorization"
 local BEARER_PREFIX = "bearer "
 local BEARER_PREFIX_LEN = #BEARER_PREFIX
+
+local AUTH_FLOW_OAUTH2 = "oauth2"
+local AUTH_FLOW_LEGACY = "legacy"
+local AUTH_FLOW_FALLBACK_COOKIE = "fallback_cookie"
+local AUTH_FLOW_FALLBACK_NO_CREDENTIAL = "fallback_no_credential"
+local AUTH_FLOW_OAUTH2_CHALLENGE = "oauth2_challenge"
+
 local bearer_token_rules
 
 local schema = {
@@ -136,6 +152,7 @@ function _M.rewrite(conf, ctx)
     local bkapi_auth = core.request.header(ctx, BKAPI_AUTHORIZATION_HEADER)
     if not pl_types.is_empty(bkapi_auth) then
         ctx.var.is_bk_oauth2 = false
+        ctx.var.bk_auth_flow = AUTH_FLOW_LEGACY
         core.log.info("bk-oauth2-protected-resource: X-Bkapi-Authorization present, using legacy auth")
         return
     end
@@ -145,6 +162,7 @@ function _M.rewrite(conf, ctx)
     if bearer_token and oauth2.is_bkauth_bearer_token(bearer_token, bearer_token_rules) then
         -- OAuth2 flow: set flag for downstream plugins
         ctx.var.is_bk_oauth2 = true
+        ctx.var.bk_auth_flow = AUTH_FLOW_OAUTH2
         core.log.info("bk-oauth2-protected-resource: bkauth Bearer detected, using OAuth2 flow")
         return
     end
@@ -157,6 +175,7 @@ function _M.rewrite(conf, ctx)
     -- The legacy flow still verifies the cookie and resource requirements.
     if has_configured_user_ticket_cookie(ctx) then
         ctx.var.is_bk_oauth2 = false
+        ctx.var.bk_auth_flow = AUTH_FLOW_FALLBACK_COOKIE
         core.log.info("bk-oauth2-protected-resource: user cookie detected, using legacy auth")
         return
     end
@@ -168,10 +187,12 @@ function _M.rewrite(conf, ctx)
     -- which can check credentials in the query string or request body.
     if conf.challenge_on_missing_credential == false then
         ctx.var.is_bk_oauth2 = false
+        ctx.var.bk_auth_flow = AUTH_FLOW_FALLBACK_NO_CREDENTIAL
         core.log.info("bk-oauth2-protected-resource: no OAuth2 credential, using legacy auth")
         return
     end
 
+    ctx.var.bk_auth_flow = AUTH_FLOW_OAUTH2_CHALLENGE
     core.log.info("bk-oauth2-protected-resource: no valid auth header, returning 401 with WWW-Authenticate")
     ngx.header["WWW-Authenticate"] = oauth2.build_www_authenticate_header(ctx)
 

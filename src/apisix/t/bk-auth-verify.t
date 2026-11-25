@@ -232,3 +232,105 @@ passed
 --- response_body
 header
 foo
+
+
+=== TEST 6: X-Bkapi-Auth-Flow on a route without OAuth2 protection
+--- request
+GET /hello
+--- more_headers
+X-Bkapi-Authorization: {"bk_app_code": "demo"}
+--- response_headers
+X-Bkapi-Auth-Flow: legacy
+
+
+=== TEST 7: enable OAuth2 protection to test bk_auth_flow
+--- config
+    location /t {
+        content_by_lua_block {
+            local t = require("lib.test_admin").test
+            local code, body = t('/apisix/admin/routes/1',
+                ngx.HTTP_PUT,
+                [[{
+                    "plugins": {
+                        "bk-stage-context": {
+                            "bk_gateway_name": "demo",
+                            "bk_stage_name": "prod",
+                            "jwt_private_key": "dGhpcyBpcyBhIGZha2Ugand0IHByaXZhdGUga2V5",
+                            "bk_api_auth": {
+                                "api_type": 10,
+                                "unfiltered_sensitive_keys": {}
+                            }
+                        },
+                        "bk-resource-context": {
+                            "bk_resource_name": "echo",
+                            "bk_resource_auth": {
+                                "verified_app_required": false,
+                                "verified_user_required": false,
+                                "resource_perm_required": false,
+                                "skip_user_verification": true
+                            }
+                        },
+                        "bk-oauth2-protected-resource": {},
+                        "bk-auth-verify": {},
+                        "bk-error-wrapper": {},
+                        "file-logger": {
+                            "path": "file.log",
+                            "log_format": {
+                                "auth_flow": "$bk_auth_flow"
+                            }
+                        }
+                    },
+                    "upstream": {
+                        "nodes": {
+                            "127.0.0.1:1980": 1
+                        },
+                        "type": "roundrobin"
+                    },
+                    "uri": "/hello"
+                }]]
+            )
+
+            if code >= 300 then
+                ngx.status = code
+            end
+            ngx.say(body)
+        }
+    }
+--- response_body
+passed
+
+
+=== TEST 8: bk_auth_flow is returned in the response header and logged, including errors
+--- config
+    location /t {
+        content_by_lua_block {
+            os.remove("file.log")
+
+            local core = require("apisix.core")
+            local http = require("resty.http")
+            local uri = "http://127.0.0.1:" .. ngx.var.server_port .. "/hello"
+
+            local res = http.new():request_uri(uri, {
+                headers = { ["X-Bkapi-Authorization"] = '{"bk_app_code": "demo"}' },
+            })
+            ngx.say(res.status, " ", res.headers["X-Bkapi-Auth-Flow"])
+
+            res = http.new():request_uri(uri)
+            ngx.say(res.status, " ", res.headers["X-Bkapi-Auth-Flow"])
+
+            local fd, err = io.open("file.log", "r")
+            if not fd then
+                core.log.error("failed to open file: file.log, error info: ", err)
+                return
+            end
+
+            ngx.say(core.json.decode(fd:read()).auth_flow)
+            ngx.say(core.json.decode(fd:read()).auth_flow)
+            fd:close()
+        }
+    }
+--- response_body
+200 legacy
+401 oauth2_challenge
+legacy
+oauth2_challenge

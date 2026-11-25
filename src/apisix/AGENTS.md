@@ -158,6 +158,9 @@ later plugins.
 - OAuth2 flow depends on `ctx.var.is_bk_oauth2` and `ctx.var.audience` across
   `bk-oauth2-protected-resource`, `bk-oauth2-verify`, and
   `bk-oauth2-audience-validate`. See "OAuth2 App Channel Contracts" below.
+- `ctx.var.bk_auth_flow` records the chosen authentication path. Set it in
+  every `bk-oauth2-protected-resource` branch; `bk-auth-verify` defaults it to
+  `legacy` and returns it in the `X-Bkapi-Auth-Flow` response header.
 - MCP virtual app codes use `v_mcp_{mcp_service_id}_{app_code}`. Use
   `bk_app:get_real_app_code()` when downstream services expect the real app
   code, such as tenant lookup or signing JWTs.

@@ -158,6 +158,7 @@
 ---@field bk_apigw_error table 网关返回的错误信息
 ---@field bk_concurrency_limit_key string 并发限制 key; 仅在 bk-concurrency-limit 中使用
 ---@field auth_params_location string 认证参数位置
+---@field bk_auth_flow string|nil 认证链路，取值见 bk-oauth2-protected-resource
 ---
 ---@class bk_gateway.LogContextVar 日志相关的上下文变量，仅在 log 阶段可用
 ---@field bk_log_request_timestamp integer|nil 日志请求秒级时间戳

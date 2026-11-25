@@ -572,7 +572,21 @@ describe(
                         assert.is_same(ctx.var.bk_app_code, "my-app")
                         assert.is_same(ctx.var.bk_username, "admin")
                         assert.is_same(ctx.var.auth_params_location, "")
+                        assert.is_equal("legacy", ctx.var.bk_auth_flow)
 
+                        plugin.verify:revert()
+                    end
+                )
+
+                it(
+                    "should keep the auth flow chosen by bk-oauth2-protected-resource", function()
+                        ctx.var.is_bk_oauth2 = false
+                        ctx.var.bk_auth_flow = "fallback_cookie"
+                        stub(plugin, "verify", function() return {}, {} end)
+
+                        plugin.rewrite({}, ctx)
+
+                        assert.is_equal("fallback_cookie", ctx.var.bk_auth_flow)
                         plugin.verify:revert()
                     end
                 )
@@ -593,6 +607,7 @@ describe(
                         assert.is_nil(result)
                         assert.is_nil(ctx.var.bk_app)
                         assert.is_nil(ctx.var.bk_user)
+                        assert.is_nil(ctx.var.bk_auth_flow)
 
                         plugin.verify:revert()
                     end
@@ -618,6 +633,38 @@ describe(
                         assert.is_same(ctx.var.bk_app_code, "test-app")
 
                         plugin.verify:revert()
+                    end
+                )
+            end
+        )
+
+        context(
+            "test header_filter function", function()
+                before_each(
+                    function()
+                        stub(core.response, "set_header")
+                    end
+                )
+
+                after_each(
+                    function()
+                        core.response.set_header:revert()
+                    end
+                )
+
+                it(
+                    "should return the auth flow in the response header", function()
+                        plugin.header_filter({}, { var = { bk_auth_flow = "oauth2_challenge" } })
+
+                        assert.stub(core.response.set_header).was_called_with("X-Bkapi-Auth-Flow", "oauth2_challenge")
+                    end
+                )
+
+                it(
+                    "should not set the header when no auth flow is chosen", function()
+                        plugin.header_filter({}, { var = {} })
+
+                        assert.stub(core.response.set_header).was_not_called()
                     end
                 )
             end

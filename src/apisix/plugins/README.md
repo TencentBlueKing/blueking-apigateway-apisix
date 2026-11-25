@@ -47,7 +47,7 @@ CORS（上下文初始化之后，认证之前）：
 - bk-oauth2-protected-resource              # priority: 18740  # OAuth2 资源保护：只拦截 bkauth Bearer，其他请求走传统认证或返回 WWW-Authenticate 头
 - bk-access-token-source                    # priority: 18735
 - bk-oauth2-verify                          # priority: 18732  # OAuth2 令牌验证：通过 bkauth 验证 OAuth2 访问令牌，并识别用户委托/应用 token
-- bk-auth-verify                            # priority: 18730
+- bk-auth-verify                            # priority: 18730  # 传统认证；并通过 X-Bkapi-Auth-Flow 响应头返回认证链路（ctx.var.bk_auth_flow）
 - bk-username-required                      # priority: 18725
 
 执行 - 响应：优先级：17500 ~ 18000
