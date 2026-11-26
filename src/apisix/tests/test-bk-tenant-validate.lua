@@ -175,7 +175,9 @@ describe("bk-tenant-validate", function()
                     bk_gateway_name = "gateway_name"
                 }
             }
-            local err = validate._validate_user_tenant_id(ctx, "single", "gateway_tenant_id", "single", "app_tenant_id")
+            local err = validate._validate_user_tenant_id(
+                ctx, "single", "gateway_tenant_id", "single", "app_tenant_id", "user_tenant_id"
+            )
             assert.is_not_nil(err)
         end)
 
@@ -196,7 +198,9 @@ describe("bk-tenant-validate", function()
                     bk_gateway_name = "gateway_name"
                 }
             }
-            local err = validate._validate_user_tenant_id(ctx, "global", "", "single", "app_tenant_id")
+            local err = validate._validate_user_tenant_id(
+                ctx, "global", "", "single", "app_tenant_id", "user_tenant_id"
+            )
             assert.is_not_nil(err)
         end)
 
@@ -211,7 +215,9 @@ describe("bk-tenant-validate", function()
                     bk_gateway_name = "gateway_name"
                 }
             }
-            local err = validate._validate_user_tenant_id(ctx, "global", "", "global", "")
+            local err = validate._validate_user_tenant_id(
+                ctx, "global", "", "global", "", "user_tenant_id"
+            )
             assert.is_nil(err)
         end)
     end)
@@ -314,6 +320,49 @@ describe("bk-tenant-validate", function()
             local err = validate.rewrite(conf, ctx)
             assert.is_not_nil(err)
             assert.equals(403, err)
+        end)
+
+        context("user and header tenant IDs", function()
+            before_each(function()
+                conf.tenant_mode = "global"
+                conf.tenant_id = ""
+                ctx.var.bk_app.tenant_mode = "global"
+            end)
+
+            it("should reject a verified user whose tenant differs from the header", function()
+                local status = validate.rewrite(conf, ctx)
+                assert.equals(403, status)
+                assert.equals("CROSS_TENANT_FORBIDDEN", ctx.var.bk_apigw_error.error.code_name)
+            end)
+
+            it("should reject a missing or empty header when no app tenant default applies", function()
+                ctx.var.bk_app.is_verified = function() return false end
+                ctx.var.bk_tenant_id = nil
+                local status = validate.rewrite(conf, ctx)
+                assert.equals(403, status)
+
+                ctx.var.bk_tenant_id = ""
+                status = validate.rewrite(conf, ctx)
+                assert.equals(403, status)
+            end)
+
+            it("should pass when the header matches the user tenant", function()
+                ctx.var.bk_tenant_id = ctx.var.bk_user.tenant_id
+                assert.is_nil(validate.rewrite(conf, ctx))
+            end)
+
+            it("should pass when the single-tenant app fills in the matching header", function()
+                ctx.var.bk_app.tenant_mode = "single"
+                ctx.var.bk_app.tenant_id = ctx.var.bk_user.tenant_id
+                ctx.var.bk_tenant_id = nil
+                assert.is_nil(validate.rewrite(conf, ctx))
+                assert.equals(ctx.var.bk_user.tenant_id, ctx.var.bk_tenant_id)
+            end)
+
+            it("should skip the user and header comparison for an unverified user", function()
+                ctx.var.bk_user.is_verified = function() return false end
+                assert.is_nil(validate.rewrite(conf, ctx))
+            end)
         end)
 
         it("should pass, not hit any conditions", function()
