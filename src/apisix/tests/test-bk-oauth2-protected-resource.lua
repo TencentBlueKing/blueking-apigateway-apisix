@@ -24,6 +24,8 @@ local plugin = require("apisix.plugins.bk-oauth2-protected-resource")
 
 -- matches the bearer_token_rules in tests/conf/config.yaml
 local BKAUTH_TOKEN = "bkp_" .. string.rep("a1B2", 9)
+local MISSING_HEADER_REASON = "no valid authentication header found"
+local NON_BKAUTH_BEARER_REASON = "the Bearer token is not a BlueKing OAuth2 token"
 
 describe(
     "bk-oauth2-protected-resource", function()
@@ -233,6 +235,10 @@ describe(
                             assert.is_equal(401, status)
                             assert.is_nil(ctx.var.is_bk_oauth2)
                             assert.matches('^Bearer resource_metadata="[^"]+"$', ngx.header["WWW-Authenticate"])
+                            local message = ctx.var.bk_apigw_error.error.message
+                            assert.is_truthy(message:find(NON_BKAUTH_BEARER_REASON, 1, true))
+                            assert.is_falsy(message:find(MISSING_HEADER_REASON, 1, true))
+                            assert.is_falsy(message:find(token, 1, true))
                         end
                     )
                 end
@@ -244,19 +250,26 @@ describe(
                         local status = plugin.rewrite({}, ctx)
 
                         assert.is_equal(401, status)
+                        local message = ctx.var.bk_apigw_error.error.message
+                        assert.is_truthy(message:find(MISSING_HEADER_REASON, 1, true))
                     end
                 )
 
-                it(
-                    "should not set is_bk_oauth2 when Authorization is not Bearer type", function()
-                        headers["Authorization"] = "Basic dXNlcjpwYXNz"
+                for _, authorization in ipairs({ "Basic dXNlcjpwYXNz", "Bearer   " }) do
+                    it(
+                        "should report a missing header for a non-Bearer or empty Bearer: " .. authorization,
+                        function()
+                            headers["Authorization"] = authorization
 
-                        local status = plugin.rewrite({}, ctx)
+                            local status = plugin.rewrite({}, ctx)
 
-                        -- Should return 401 as it's not a valid OAuth2 or legacy auth
-                        assert.is_equal(401, status)
-                    end
-                )
+                            assert.is_equal(401, status)
+                            assert.is_nil(ctx.var.is_bk_oauth2)
+                            local message = ctx.var.bk_apigw_error.error.message
+                            assert.is_truthy(message:find(MISSING_HEADER_REASON, 1, true))
+                        end
+                    )
+                end
             end
         )
 
@@ -554,6 +567,12 @@ describe(
                     "should return nil for nil input", function()
                         local token = plugin._parse_bearer_token(nil)
                         assert.is_nil(token)
+                    end
+                )
+
+                it(
+                    "should return nil for a whitespace-only Bearer token", function()
+                        assert.is_nil(plugin._parse_bearer_token("Bearer   "))
                     end
                 )
             end

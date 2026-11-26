@@ -27,7 +27,8 @@
 --         - configured user ticket cookies on a user-only resource: legacy flow
 --         - challenge_on_missing_credential=false (only the app channel is enabled): legacy flow
 --         - challenge_on_missing_credential=true (default, personal/public enabled): 401 with
---           a WWW-Authenticate header containing the resource_metadata URL for OAuth2 discovery
+--           a WWW-Authenticate header containing the resource_metadata URL for OAuth2 discovery;
+--           the error reason tells a missing Bearer apart from a non-bkauth Bearer
 --
 -- The selected branch is recorded in ctx.var.bk_auth_flow, returned by bk-auth-verify in the
 -- X-Bkapi-Auth-Flow response header and available to loggers as $bk_auth_flow:
@@ -121,7 +122,7 @@ local function parse_bearer_token(authorization)
 
     -- Extract token after prefix, trim leading whitespace
     local token = string_sub(authorization, BEARER_PREFIX_LEN + 1)
-    token = string_match(token, "^%s*(.+)$")
+    token = string_match(token, "^%s*(%S.*)$")
     return token
 end
 
@@ -196,9 +197,16 @@ function _M.rewrite(conf, ctx)
     core.log.info("bk-oauth2-protected-resource: no valid auth header, returning 401 with WWW-Authenticate")
     ngx.header["WWW-Authenticate"] = oauth2.build_www_authenticate_header(ctx)
 
+    local reason = "no valid authentication header found"
+    local expected = "Authorization: Bearer <token>"
+    if bearer_token then
+        reason = "the Bearer token is not a BlueKing OAuth2 token (prefix not matched)"
+        expected = "Authorization: Bearer <BlueKing OAuth2 token>"
+    end
+
     local err = errorx.new_general_unauthorized()
-        :with_field("reason", "no valid authentication header found")
-        :with_field("expected", "Authorization: Bearer <token>")
+        :with_field("reason", reason)
+        :with_field("expected", expected)
     return errorx.exit_with_apigw_err(ctx, err, _M)
 end
 
