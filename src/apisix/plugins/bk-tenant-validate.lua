@@ -114,7 +114,12 @@ local function validate_app_tenant_id(
     end
 end
 
-local function validate_user_tenant_id(ctx, gateway_tenant_mode, gateway_tenant_id, app_tenant_mode, app_tenant_id)
+local function validate_user_tenant_id(
+    ctx,
+    gateway_tenant_mode, gateway_tenant_id,
+    app_tenant_mode, app_tenant_id,
+    header_tenant_id
+)
     local user_tenant_id = ctx.var.bk_user.tenant_id
 
     -- 某个租户的用户，只能调用本租户或全租户的网关
@@ -140,6 +145,14 @@ local function validate_user_tenant_id(ctx, gateway_tenant_mode, gateway_tenant_
         end
     end
 
+    if is_empty(header_tenant_id) or user_tenant_id ~= header_tenant_id then
+        local err_msg = string.format(
+            "Cross-tenant calls are not allowed: current header X-Bk-Tenant-Id=%s, " ..
+            "user %s belongs to tenant %s. [UH]",
+            tostring(header_tenant_id), ctx.var.bk_user:get_username(), tostring(user_tenant_id)
+        )
+        return reject_cross_tenant(err_msg)
+    end
 end
 
 local function validate_header_tenant_id(ctx, gateway_tenant_mode, gateway_tenant_id, header_tenant_id)
@@ -189,7 +202,8 @@ function _M.rewrite(conf, ctx) -- luacheck: ignore
     -- 2. user verified, check tenant_id
     if ctx.var.bk_user:get_username() ~= "" and ctx.var.bk_user:is_verified() then
         local err = validate_user_tenant_id(
-            ctx, gateway_tenant_mode, gateway_tenant_id, app_tenant_mode, app_tenant_id
+            ctx, gateway_tenant_mode, gateway_tenant_id, app_tenant_mode, app_tenant_id,
+            ctx.var.bk_tenant_id
         )
         if err ~= nil then
             return errorx.exit_with_apigw_err(ctx, err, _M)
