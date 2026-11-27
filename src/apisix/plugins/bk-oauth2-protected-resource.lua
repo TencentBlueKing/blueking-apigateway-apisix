@@ -38,7 +38,7 @@
 --     * legacy: X-Bkapi-Authorization present
 --     * fallback_cookie: no OAuth2 credential, configured user ticket cookie
 --     * fallback_no_credential: no OAuth2 credential, challenge_on_missing_credential=false
---     * fallback_query: no OAuth2 credential, legacy query credentials allowed and detected
+--     * fallback_querystring: no OAuth2 credential, legacy query credentials allowed and detected
 --     * oauth2_challenge: no credential, 401 with WWW-Authenticate
 --
 -- This plugin depends on:
@@ -66,7 +66,7 @@ local AUTH_FLOW_OAUTH2 = "oauth2"
 local AUTH_FLOW_LEGACY = "legacy"
 local AUTH_FLOW_FALLBACK_COOKIE = "fallback_cookie"
 local AUTH_FLOW_FALLBACK_NO_CREDENTIAL = "fallback_no_credential"
-local AUTH_FLOW_FALLBACK_QUERY = "fallback_query"
+local AUTH_FLOW_FALLBACK_QUERYSTRING = "fallback_querystring"
 local AUTH_FLOW_OAUTH2_CHALLENGE = "oauth2_challenge"
 
 local bearer_token_rules
@@ -212,7 +212,7 @@ function _M.rewrite(conf, ctx)
 
     if has_legacy_query_credentials(ctx) then
         ctx.var.is_bk_oauth2 = false
-        ctx.var.bk_auth_flow = AUTH_FLOW_FALLBACK_QUERY
+        ctx.var.bk_auth_flow = AUTH_FLOW_FALLBACK_QUERYSTRING
         core.log.info("bk-oauth2-protected-resource: query credentials detected, using legacy auth")
         return
     end

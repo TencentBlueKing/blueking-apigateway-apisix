@@ -514,7 +514,7 @@ describe(
                         args = case.args
                         assert.is_nil(plugin.rewrite({}, ctx))
                         assert.is_false(ctx.var.is_bk_oauth2)
-                        assert.is_equal("fallback_query", ctx.var.bk_auth_flow)
+                        assert.is_equal("fallback_querystring", ctx.var.bk_auth_flow)
                     end)
                 end
 
@@ -552,7 +552,7 @@ describe(
                         args.access_token = "legacy-token"
                         assert.is_nil(plugin.rewrite({}, ctx))
                         assert.is_false(ctx.var.is_bk_oauth2)
-                        assert.is_equal("fallback_query", ctx.var.bk_auth_flow)
+                        assert.is_equal("fallback_querystring", ctx.var.bk_auth_flow)
                     end)
                 end
 

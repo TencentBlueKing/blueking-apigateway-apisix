@@ -494,7 +494,7 @@ GET /chain-app-disabled?bk_app_code=legacy-app&bk_app_secret=legacy-test-secret
 Authorization: Bearer backend-token
 --- error_code: 400
 --- response_headers
-X-Bkapi-Auth-Flow: fallback_query
+X-Bkapi-Auth-Flow: fallback_querystring
 WWW-Authenticate:
 --- response_body_like: "code_name":"INVALID_ARGS"
 --- no_error_log
