@@ -20,8 +20,8 @@
 -- This plugin detects whether a request uses OAuth2 authentication (Authorization: Bearer)
 -- or legacy BlueKing authentication (X-Bkapi-Authorization) and routes accordingly.
 --
--- Configured user ticket cookies also use legacy authentication when the resource
--- requires only user authentication. Otherwise, missing credentials return 401
+-- Allowed query credentials also use legacy authentication, as do configured user
+-- ticket cookies on resources that require only user authentication. Missing credentials return 401
 -- with a WWW-Authenticate header containing the resource_metadata URL for OAuth2 discovery.
 --
 -- This plugin depends on:
@@ -30,6 +30,7 @@
 local pl_types = require("pl.types")
 local core = require("apisix.core")
 local cookie = require("apisix.plugins.bk-core.cookie")
+local url = require("apisix.plugins.bk-core.url")
 local oauth2 = require("apisix.plugins.bk-core.oauth2")
 local errorx = require("apisix.plugins.bk-core.errorx")
 local ngx = ngx
@@ -103,6 +104,27 @@ local function has_configured_user_ticket_cookie(ctx)
 end
 
 
+local function has_query_credential(args, key)
+    local value = url.get_value(args, key)
+    return type(value) == "string" and value ~= ""
+end
+
+
+local function has_legacy_query_credentials(ctx)
+    local api_auth = ctx.var.bk_api_auth
+    if not api_auth or not api_auth:allow_get_auth_params_from_parameters() then
+        return false
+    end
+
+    local args = core.request.get_uri_args(ctx)
+    return has_query_credential(args, "access_token")
+        or has_query_credential(args, "bk_token")
+        or has_query_credential(args, "bk_ticket")
+        or ((has_query_credential(args, "bk_app_code") or has_query_credential(args, "app_code"))
+            and (has_query_credential(args, "bk_app_secret") or has_query_credential(args, "app_secret")))
+end
+
+
 function _M.rewrite(conf, ctx) -- luacheck: no unused
     -- Check for X-Bkapi-Authorization header first (legacy BlueKing auth)
     -- If present, skip OAuth2 flow and allow legacy flow to handle authentication
@@ -124,14 +146,20 @@ function _M.rewrite(conf, ctx) -- luacheck: no unused
         return
     end
 
-    -- An explicit but malformed Bearer credential must retain the challenge, not use cookies.
+    -- An explicit but malformed Bearer credential must retain the challenge.
     local auth_lower = string_lower(authorization or "")
     local is_bearer_auth = auth_lower == "bearer" or string_match(auth_lower, "^bearer%s")
 
-    -- Only select the legacy flow here; it still verifies the cookie and resource requirements.
+    -- The legacy flow still verifies credentials and resource requirements.
     if not is_bearer_auth and has_configured_user_ticket_cookie(ctx) then
         ctx.var.is_bk_oauth2 = false
         core.log.info("bk-oauth2-protected-resource: user cookie detected, using legacy auth")
+        return
+    end
+
+    if not is_bearer_auth and has_legacy_query_credentials(ctx) then
+        ctx.var.is_bk_oauth2 = false
+        core.log.info("bk-oauth2-protected-resource: query credentials detected, using legacy auth")
         return
     end
 
