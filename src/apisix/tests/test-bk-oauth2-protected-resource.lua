@@ -482,6 +482,92 @@ describe(
         )
 
         context(
+            "legacy query credentials", function()
+                local args
+
+                before_each(function()
+                    args = {}
+                    ctx.var.bk_api_auth = api_auth.new({})
+                    ctx.var.bk_resource_auth = resource_auth.new({
+                        verified_app_required = true,
+                        verified_user_required = true,
+                    })
+                    stub(core.request, "get_uri_args", function()
+                        return args
+                    end)
+                end)
+
+                after_each(function()
+                    core.request.get_uri_args:revert()
+                end)
+
+                for _, case in ipairs({
+                    {name = "application credentials", args = {bk_app_code = "app", bk_app_secret = "secret"}},
+                    {name = "old application aliases", args = {app_code = "app", app_secret = "secret"}},
+                    {name = "access_token", args = {access_token = "token"}},
+                    {name = "bk_token", args = {bk_token = "ticket"}},
+                    {name = "bk_ticket", args = {bk_ticket = "ticket"}},
+                }) do
+                    it("should accept " .. case.name .. " when parameter auth defaults to allowed", function()
+                        args = case.args
+                        assert.is_nil(plugin.rewrite({}, ctx))
+                        assert.is_false(ctx.var.is_bk_oauth2)
+                        assert.is_equal("fallback_query", ctx.var.bk_auth_flow)
+                    end)
+                end
+
+                it("should use the first value of a repeated credential with parameter auth enabled", function()
+                    ctx.var.bk_api_auth.allow_auth_from_params = true
+                    args.access_token = {"legacy-token", "other-token"}
+                    assert.is_nil(plugin.rewrite({}, ctx))
+                    assert.is_false(ctx.var.is_bk_oauth2)
+                end)
+
+                it("should retain the challenge when parameter auth is disabled", function()
+                    ctx.var.bk_api_auth.allow_auth_from_params = false
+                    args.bk_token = "ticket"
+                    assert.is_equal(401, plugin.rewrite({}, ctx))
+                    assert.matches("^Bearer ", ngx.header["WWW-Authenticate"])
+                    assert.stub(core.request.get_uri_args).was_not_called()
+                end)
+
+                it("should retain the challenge for incomplete or empty credentials", function()
+                    args.bk_app_code = "app"
+                    args.bk_app_secret = ""
+                    args.access_token = {"", "other-token"}
+                    args.bk_token = true
+                    assert.is_equal(401, plugin.rewrite({}, ctx))
+                end)
+
+                it("should preserve bkauth Bearer precedence over query credentials", function()
+                    headers["Authorization"] = "Bearer " .. BKAUTH_TOKEN
+                    args.access_token = "legacy-token"
+                    assert.is_nil(plugin.rewrite({}, ctx))
+                    assert.is_true(ctx.var.is_bk_oauth2)
+                    assert.stub(core.request.get_uri_args).was_not_called()
+                end)
+
+                for _, authorization in ipairs({"Bearer", "Bearer backend-token"}) do
+                    it("should fall back for query credentials with " .. authorization, function()
+                        headers["Authorization"] = authorization
+                        args.access_token = "legacy-token"
+                        assert.is_nil(plugin.rewrite({}, ctx))
+                        assert.is_false(ctx.var.is_bk_oauth2)
+                        assert.is_equal("fallback_query", ctx.var.bk_auth_flow)
+                    end)
+                end
+
+                it("should preserve the app-only fallback without reading query credentials", function()
+                    args.access_token = "legacy-token"
+                    assert.is_nil(plugin.rewrite({challenge_on_missing_credential = false}, ctx))
+                    assert.is_false(ctx.var.is_bk_oauth2)
+                    assert.is_equal("fallback_no_credential", ctx.var.bk_auth_flow)
+                    assert.stub(core.request.get_uri_args).was_not_called()
+                end)
+            end
+        )
+
+        context(
             "bk_auth_flow", function()
                 it("should be legacy when X-Bkapi-Authorization is present", function()
                     headers["X-Bkapi-Authorization"] = '{"bk_app_code": "test"}'

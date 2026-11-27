@@ -26,7 +26,8 @@
 --     * otherwise, a non-bkauth Bearer is treated as no OAuth2 credential and kept as is:
 --         - configured user ticket cookies on a user-only resource: legacy flow
 --         - challenge_on_missing_credential=false (only the app channel is enabled): legacy flow
---         - challenge_on_missing_credential=true (default, personal/public enabled): 401 with
+--         - allowed legacy credentials in the query string: legacy flow
+--         - otherwise (default, personal/public enabled): 401 with
 --           a WWW-Authenticate header containing the resource_metadata URL for OAuth2 discovery;
 --           the error reason tells a missing Bearer apart from a non-bkauth Bearer
 --
@@ -37,6 +38,7 @@
 --     * legacy: X-Bkapi-Authorization present
 --     * fallback_cookie: no OAuth2 credential, configured user ticket cookie
 --     * fallback_no_credential: no OAuth2 credential, challenge_on_missing_credential=false
+--     * fallback_query: no OAuth2 credential, legacy query credentials allowed and detected
 --     * oauth2_challenge: no credential, 401 with WWW-Authenticate
 --
 -- This plugin depends on:
@@ -45,6 +47,7 @@
 local pl_types = require("pl.types")
 local core = require("apisix.core")
 local cookie = require("apisix.plugins.bk-core.cookie")
+local url = require("apisix.plugins.bk-core.url")
 local oauth2 = require("apisix.plugins.bk-core.oauth2")
 local errorx = require("apisix.plugins.bk-core.errorx")
 local ngx = ngx
@@ -64,6 +67,7 @@ local AUTH_FLOW_OAUTH2 = "oauth2"
 local AUTH_FLOW_LEGACY = "legacy"
 local AUTH_FLOW_FALLBACK_COOKIE = "fallback_cookie"
 local AUTH_FLOW_FALLBACK_NO_CREDENTIAL = "fallback_no_credential"
+local AUTH_FLOW_FALLBACK_QUERY = "fallback_query"
 local AUTH_FLOW_OAUTH2_CHALLENGE = "oauth2_challenge"
 
 local bearer_token_rules
@@ -147,6 +151,27 @@ local function has_configured_user_ticket_cookie(ctx)
 end
 
 
+local function has_query_credential(args, key)
+    local value = url.get_value(args, key)
+    return type(value) == "string" and value ~= ""
+end
+
+
+local function has_legacy_query_credentials(ctx)
+    local api_auth = ctx.var.bk_api_auth
+    if not api_auth or not api_auth:allow_get_auth_params_from_parameters() then
+        return false
+    end
+
+    local args = core.request.get_uri_args(ctx)
+    return has_query_credential(args, "access_token")
+        or has_query_credential(args, "bk_token")
+        or has_query_credential(args, "bk_ticket")
+        or ((has_query_credential(args, "bk_app_code") or has_query_credential(args, "app_code"))
+            and (has_query_credential(args, "bk_app_secret") or has_query_credential(args, "app_secret")))
+end
+
+
 function _M.rewrite(conf, ctx)
     -- Check for X-Bkapi-Authorization header first (legacy BlueKing auth)
     -- If present, skip OAuth2 flow and allow legacy flow to handle authentication
@@ -183,13 +208,19 @@ function _M.rewrite(conf, ctx)
 
     -- Dashboard sets challenge_on_missing_credential = support_public or support_personal.
     -- Each flag requires user authentication on the resource and its client to be enabled.
-    -- When the checks above found no credential, true returns a 401 Bearer discovery challenge.
     -- False means only the app channel is enabled. Hand the request to legacy auth,
     -- which can check credentials in the query string or request body.
     if conf.challenge_on_missing_credential == false then
         ctx.var.is_bk_oauth2 = false
         ctx.var.bk_auth_flow = AUTH_FLOW_FALLBACK_NO_CREDENTIAL
         core.log.info("bk-oauth2-protected-resource: no OAuth2 credential, using legacy auth")
+        return
+    end
+
+    if has_legacy_query_credentials(ctx) then
+        ctx.var.is_bk_oauth2 = false
+        ctx.var.bk_auth_flow = AUTH_FLOW_FALLBACK_QUERY
+        core.log.info("bk-oauth2-protected-resource: query credentials detected, using legacy auth")
         return
     end
 

@@ -496,3 +496,45 @@ Authorization: Bearer bko_short
 X-Auth-Flow: oauth2
 --- no_error_log
 [error]
+
+=== TEST 28: legacy app credentials in the query select legacy authentication without a user ticket
+--- request
+GET /cookie-bk_token?app_code=test-app&app_secret=test-secret
+--- response_headers
+X-Auth-Flow: legacy
+--- no_error_log
+[error]
+
+=== TEST 29: a query access_token selects legacy authentication
+--- request
+GET /cookie-bk_token?access_token=legacy-token
+--- response_headers
+X-Auth-Flow: legacy
+--- no_error_log
+[error]
+
+=== TEST 30: query bk_token selects legacy authentication on the bk_ticket cookie route
+--- request
+GET /cookie-bk_ticket?bk_token=user-ticket
+--- response_headers
+X-Auth-Flow: legacy
+--- no_error_log
+[error]
+
+=== TEST 31: query bk_ticket selects legacy authentication on the bk_token cookie route
+--- request
+GET /cookie-bk_token?bk_ticket=user-ticket
+--- response_headers
+X-Auth-Flow: legacy
+--- no_error_log
+[error]
+
+=== TEST 32: body-only credentials retain the OAuth2 challenge
+--- request
+POST /cookie-bk_token
+{"access_token":"legacy-token"}
+--- more_headers
+Content-Type: application/json
+--- error_code: 401
+--- response_headers_like
+WWW-Authenticate: Bearer .*
