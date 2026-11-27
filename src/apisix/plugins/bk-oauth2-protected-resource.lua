@@ -30,7 +30,6 @@
 local pl_types = require("pl.types")
 local core = require("apisix.core")
 local cookie = require("apisix.plugins.bk-core.cookie")
-local url = require("apisix.plugins.bk-core.url")
 local oauth2 = require("apisix.plugins.bk-core.oauth2")
 local errorx = require("apisix.plugins.bk-core.errorx")
 local ngx = ngx
@@ -104,12 +103,6 @@ local function has_configured_user_ticket_cookie(ctx)
 end
 
 
-local function has_query_credential(args, key)
-    local value = url.get_value(args, key)
-    return type(value) == "string" and value ~= ""
-end
-
-
 local function has_legacy_query_credentials(ctx)
     local api_auth = ctx.var.bk_api_auth
     if not api_auth or not api_auth:allow_get_auth_params_from_parameters() then
@@ -117,11 +110,11 @@ local function has_legacy_query_credentials(ctx)
     end
 
     local args = core.request.get_uri_args(ctx)
-    return has_query_credential(args, "access_token")
-        or has_query_credential(args, "bk_token")
-        or has_query_credential(args, "bk_ticket")
-        or ((has_query_credential(args, "bk_app_code") or has_query_credential(args, "app_code"))
-            and (has_query_credential(args, "bk_app_secret") or has_query_credential(args, "app_secret")))
+    return args.access_token ~= nil
+        or args.bk_token ~= nil
+        or args.bk_ticket ~= nil
+        or ((args.bk_app_code ~= nil or args.app_code ~= nil)
+            and (args.bk_app_secret ~= nil or args.app_secret ~= nil))
 end
 
 

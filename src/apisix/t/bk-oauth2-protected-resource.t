@@ -417,3 +417,19 @@ Content-Type: application/json
 --- error_code: 401
 --- response_headers_like
 WWW-Authenticate: Bearer .*
+
+=== TEST 24: a query access_token key without a value selects legacy authentication
+--- request
+GET /cookie-bk_token?access_token
+--- response_headers
+X-Auth-Flow: legacy
+--- no_error_log
+[error]
+
+=== TEST 25: a query access_token key with an empty value selects legacy authentication
+--- request
+GET /cookie-bk_token?access_token=
+--- response_headers
+X-Auth-Flow: legacy
+--- no_error_log
+[error]
