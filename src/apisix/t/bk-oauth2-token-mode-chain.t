@@ -486,3 +486,29 @@ Authorization: Bearer tai_pat_null_username
 WWW-Authenticate: Bearer .*error="invalid_token".*token_mode=unknown"
 --- no_error_log
 [error]
+
+=== TEST 26: query fallback with a backend Bearer still requires a verified user
+--- request
+GET /chain-app-disabled?bk_app_code=legacy-app&bk_app_secret=legacy-test-secret
+--- more_headers
+Authorization: Bearer backend-token
+--- error_code: 400
+--- response_headers
+X-Bkapi-Auth-Flow: fallback_query
+WWW-Authenticate:
+--- response_body_like: "code_name":"INVALID_ARGS"
+--- no_error_log
+[error]
+
+=== TEST 27: a rejected bkauth Bearer retains the OAuth2 flow with query credentials
+--- request
+GET /chain-app-disabled?bk_app_code=legacy-app&bk_app_secret=legacy-test-secret
+--- more_headers
+Authorization: Bearer bkp_short
+--- error_code: 401
+--- response_headers
+X-Bkapi-Auth-Flow: oauth2
+--- response_headers_like
+WWW-Authenticate: Bearer .*error="invalid_token".*invalid token format.*
+--- no_error_log
+[error]

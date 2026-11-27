@@ -505,6 +505,8 @@ describe(
                     {name = "application credentials", args = {bk_app_code = "app", bk_app_secret = "secret"}},
                     {name = "old application aliases", args = {app_code = "app", app_secret = "secret"}},
                     {name = "access_token", args = {access_token = "token"}},
+                    {name = "access_token without a value", args = {access_token = true}},
+                    {name = "access_token with an empty value", args = {access_token = ""}},
                     {name = "bk_token", args = {bk_token = "ticket"}},
                     {name = "bk_ticket", args = {bk_ticket = "ticket"}},
                 }) do
@@ -516,9 +518,9 @@ describe(
                     end)
                 end
 
-                it("should use the first value of a repeated credential with parameter auth enabled", function()
+                it("should accept a repeated credential key with parameter auth enabled", function()
                     ctx.var.bk_api_auth.allow_auth_from_params = true
-                    args.access_token = {"legacy-token", "other-token"}
+                    args.access_token = {"", "legacy-token"}
                     assert.is_nil(plugin.rewrite({}, ctx))
                     assert.is_false(ctx.var.is_bk_oauth2)
                 end)
@@ -531,11 +533,8 @@ describe(
                     assert.stub(core.request.get_uri_args).was_not_called()
                 end)
 
-                it("should retain the challenge for incomplete or empty credentials", function()
+                it("should retain the challenge for an incomplete application credential pair", function()
                     args.bk_app_code = "app"
-                    args.bk_app_secret = ""
-                    args.access_token = {"", "other-token"}
-                    args.bk_token = true
                     assert.is_equal(401, plugin.rewrite({}, ctx))
                 end)
 
