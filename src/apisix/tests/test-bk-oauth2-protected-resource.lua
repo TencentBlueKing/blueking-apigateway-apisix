@@ -556,7 +556,15 @@ describe(
                     end)
                 end
 
-                it("should preserve the app-only fallback without reading query credentials", function()
+                it("should report query credentials before the default app-only fallback", function()
+                    args.access_token = "legacy-token"
+                    assert.is_nil(plugin.rewrite({challenge_on_missing_credential = false}, ctx))
+                    assert.is_false(ctx.var.is_bk_oauth2)
+                    assert.is_equal("fallback_querystring", ctx.var.bk_auth_flow)
+                end)
+
+                it("should retain the default app-only fallback when parameter auth is disabled", function()
+                    ctx.var.bk_api_auth.allow_auth_from_params = false
                     args.access_token = "legacy-token"
                     assert.is_nil(plugin.rewrite({challenge_on_missing_credential = false}, ctx))
                     assert.is_false(ctx.var.is_bk_oauth2)

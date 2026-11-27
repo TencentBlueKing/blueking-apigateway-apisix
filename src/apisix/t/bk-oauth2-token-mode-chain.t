@@ -442,6 +442,8 @@ authorization=Bearer backend-token
 GET /chain-app?bk_app_code=legacy-app&bk_app_secret=legacy-test-secret
 --- more_headers
 Authorization: Bearer backend-token
+--- response_headers
+X-Bkapi-Auth-Flow: fallback_querystring
 --- response_body
 app=legacy-app
 username=
@@ -457,6 +459,8 @@ POST /chain-app
 --- more_headers
 Content-Type: application/json
 Authorization: Bearer backend-token
+--- response_headers
+X-Bkapi-Auth-Flow: fallback_no_credential
 --- response_body
 app=legacy-app
 username=
